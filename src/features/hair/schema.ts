@@ -82,7 +82,7 @@ export const hairSchema: ParamSchema = {
         { type: 'vector3', key: 'axisP2', label: 'Point 2', unit: 'mm', step: 1, default: [0, 0, 10], visibleWhen: (v) => v.dirMode === 'radial' && v.axisMode === 'points' },
         { type: 'vector3', key: 'targetPoint', label: 'Target', unit: 'mm', step: 1, default: [0, 0, 0], visibleWhen: (v) => v.dirMode === 'point' },
         { type: 'number', key: 'normalBlend', label: 'Normal blend', min: 0, max: 1, step: 0.05, default: 0, visibleWhen: (v) => v.dirMode !== 'normal' },
-        { type: 'bool', key: 'printAware', label: 'Print-aware (horizontal)', default: false },
+        { type: 'bool', key: 'printAware', label: 'Print-aware', default: false },
       ],
     },
     {
@@ -93,7 +93,7 @@ export const hairSchema: ParamSchema = {
         { type: 'number', key: 'width', label: 'Width', unit: 'mm', min: 0.05, step: 0.05, default: 0.4 },
         { type: 'number', key: 'thickness', label: 'Thickness', unit: 'mm', min: 0.05, step: 0.05, default: 0.2 },
         { type: 'number', key: 'layerHeight', label: 'Layer height', unit: 'mm', min: 0.02, step: 0.02, default: 0.2 },
-        { type: 'bool', key: 'snapThickness', label: 'Snap to layer height', default: true },
+        { type: 'bool', key: 'snapThickness', label: 'Snap to layer', default: true },
         { type: 'number', key: 'taper', label: 'Taper', unit: '%', min: 0, max: 90, step: 5, default: 30 },
         { type: 'number', key: 'rootFlare', label: 'Root flare', unit: '%', min: 0, max: 300, step: 10, default: 0 },
       ],
@@ -101,7 +101,7 @@ export const hairSchema: ParamSchema = {
     {
       type: 'group', label: 'Styling', collapsed: true, children: [
         { type: 'number', key: 'waveAmp', label: 'Wave amplitude', unit: 'mm', min: 0, step: 0.1, default: 0 },
-        { type: 'number', key: 'waveFreq', label: 'Wave freq /10mm', min: 0, step: 0.1, default: 1, visibleWhen: (v) => (v.waveAmp as number) > 0 },
+        { type: 'number', key: 'waveFreq', label: 'Wave freq', min: 0, step: 0.1, default: 1, visibleWhen: (v) => (v.waveAmp as number) > 0 },
         { type: 'number', key: 'curl', label: 'Curl', unit: 'deg', step: 10, default: 0 },
         { type: 'number', key: 'jitter', label: 'Jitter angle', unit: 'deg', min: 0, max: 90, step: 1, default: 0 },
         { type: 'number', key: 'clumpCount', label: 'Clumps', min: 0, max: 200, step: 1, default: 0 },
@@ -119,12 +119,12 @@ export const hairSchema: ParamSchema = {
         { type: 'number', key: 'tipOverlap', label: 'Tip overlap', unit: 'mm', min: 0, step: 0.1, default: 0.6, visibleWhen: (v) => !!v.wall },
         { type: 'number', key: 'wallTop', label: 'Top margin', unit: 'mm', min: 0, step: 1, default: 2, visibleWhen: (v) => !!v.wall },
         { type: 'number', key: 'wallBottom', label: 'Bottom margin', unit: 'mm', min: 0, step: 1, default: 2, visibleWhen: (v) => !!v.wall },
-        { type: 'bool', key: 'wallSeparate', label: 'Keep wall as own body', default: false, visibleWhen: (v) => !!v.wall },
+        { type: 'bool', key: 'wallSeparate', label: 'Separate wall', default: false, visibleWhen: (v) => !!v.wall },
       ],
     },
     {
       type: 'group', label: 'Output', children: [
-        { type: 'bool', key: 'merge', label: 'Merge into target body', default: true },
+        { type: 'bool', key: 'merge', label: 'Merge into body', default: true },
       ],
     },
   ],

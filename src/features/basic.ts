@@ -6,7 +6,11 @@ import type { FeatureCtx } from '@/doc/types'
 import { bodyIdsOf } from '@/doc/refs'
 import { parseStl } from '@/io/stl'
 import { parse3mf } from '@/io/threemf'
-import type { ParamSchema } from '@/ui/schema'
+import { resolveParams } from '@/doc/params'
+import { getKernel } from '@/kernel/client'
+import { clearPreview, setPreview } from '@/viewport/preview'
+import { createRunner } from './previewKit'
+import type { ParamSchema, ParamValues } from '@/ui/schema'
 
 export const boxSchema: ParamSchema = {
   id: 'box',
@@ -27,8 +31,23 @@ registerFeature({
   async compute(ctx, p) {
     const [px, py, pz] = p.position as [number, number, number]
     const w = p.width as number, d = p.depth as number, h = p.height as number
-    const body = await ctx.kernel.makeBox({ id: ctx.newBodyId(), name: ctx.feature.name, size: [w, d, h], position: [px - w / 2, py - d / 2, pz] })
+    const body = await ctx.kernel.makeBox({ id: ctx.newBodyId(), name: ctx.feature.name, size: [w, d, h], position: [px, py, pz] })
     return { bodies: [body] }
+  },
+  preview({ values }) {
+    let cur: ParamValues = values
+    const runner = createRunner(async (stale) => {
+      let p: ParamValues
+      try { p = resolveParams(boxSchema, cur) } catch { clearPreview(); return }
+      const [px, py, pz] = p.position as [number, number, number]
+      const body = await getKernel().makeBox({ id: 'preview', name: 'preview', size: [p.width as number, p.depth as number, p.height as number], position: [px, py, pz] })
+      if (!stale()) setPreview([{ mesh: body.mesh, kind: 'add' }])
+    })
+    runner.schedule()
+    return {
+      update(v) { cur = v; runner.schedule() },
+      dispose() { runner.dispose(); clearPreview() },
+    }
   },
 })
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import {
-  BufferAttribute, BufferGeometry, DoubleSide, Material, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Vector3,
+  BufferAttribute, BufferGeometry, DoubleSide, LineSegments, Material, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Vector3,
 } from 'three'
 import { useUi, type SelectionRef } from '@/store/ui'
 import { useDoc } from '@/doc/store'
@@ -13,6 +13,9 @@ import { buildBvh } from './bvh'
 import { usePreview } from './preview'
 import { useVpColors } from './colors'
 import { useSketch } from '@/sketch/store'
+
+/** Passed explicitly in both states: R3F does not restore the prototype raycast when a prop goes back to undefined. */
+const noRaycast = () => null
 
 function sameRef(a: SelectionRef | null, b: SelectionRef) {
   return !!a && a.kind === b.kind && a.id === b.id && a.index === b.index
@@ -150,7 +153,7 @@ function EdgeLines({ body, color, accent, pickable }: { body: Body; color: strin
     <group>
       <lineSegments
         geometry={geo}
-        raycast={pickable ? undefined : () => null}
+        raycast={pickable ? LineSegments.prototype.raycast : noRaycast}
         onPointerMove={pickable ? (e) => { e.stopPropagation(); setHover({ kind: 'edge', id: body.id, index: edgeOf(e) }) } : undefined}
         onPointerOut={() => setHover(null)}
         onClick={pickable ? (e) => { e.stopPropagation(); setSelection([{ kind: 'edge', id: body.id, index: edgeOf(e) }], e.shiftKey || e.ctrlKey) } : undefined}

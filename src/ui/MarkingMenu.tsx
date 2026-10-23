@@ -3,7 +3,11 @@ import { getCommand, runCommand } from '@/app/commands'
 
 /** Eight slots clockwise from top. */
 const SLOTS = ['solid.extrude', 'solid.fillet', 'sketch.create', 'solid.move', 'inspect.measure', 'view.frame', 'edit.delete', 'app.palette']
-const RADIUS = 78
+/** Short labels so the eight items fit around the ring without overlapping. */
+const SHORT: Record<string, string> = { 'sketch.create': 'Sketch', 'view.frame': 'Frame', 'app.palette': 'Search', 'solid.move': 'Move', 'edit.delete': 'Delete' }
+/** Ellipse the items sit on: wide enough that neighbouring pills (74 x 24 px) never touch. */
+const RX = 118
+const RY = 92
 const DEAD = 22
 
 /** Radial right-click menu. Hold + drag + release to pick, or tap and click an item. */
@@ -82,7 +86,7 @@ export function MarkingMenu({ target }: { target: RefObject<HTMLElement | null> 
             key={id}
             className="m-item"
             data-hot={hot === i}
-            style={{ left: Math.sin(a) * RADIUS * 1.15, top: -Math.cos(a) * RADIUS * 0.8 }}
+            style={{ left: Math.sin(a) * RX, top: -Math.cos(a) * RY }}
             onPointerDown={(e) => {
               if (e.button === 0) {
                 e.stopPropagation()
@@ -92,7 +96,7 @@ export function MarkingMenu({ target }: { target: RefObject<HTMLElement | null> 
             }}
           >
             <c.icon size={13} />
-            {c.label.split(' ')[0]}
+            {SHORT[id] ?? c.label.split(' ')[0]}
           </div>
         )
       })}

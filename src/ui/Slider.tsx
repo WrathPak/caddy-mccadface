@@ -11,7 +11,7 @@ export function Slider({ value, onChange, min = 0, max = 100, step = 1, label }:
   )
   return label ? (
     <div className="field">
-      <span className="field-label">{label}</span>
+      <span className="field-label" title={label}>{label}</span>
       {ctl}
     </div>
   ) : ctl

@@ -57,7 +57,7 @@ export function NavControls() {
     } else {
       const p = cam as PerspectiveCamera
       p.near = Math.max(0.05, st.dist * 0.01)
-      p.far = st.dist * 200 + 5000
+      p.far = st.dist * 30 + 300
       p.updateProjectionMatrix()
     }
     cam.updateMatrixWorld()
@@ -70,7 +70,8 @@ export function NavControls() {
       const g = scene.getObjectByName('bodies')
       const box = g ? new Box3().setFromObject(g) : new Box3()
       const sph = box.isEmpty() ? new Sphere(new Vector3(0, 0, 0), 40) : box.getBoundingSphere(new Sphere())
-      goal.current = { az: s.current.az, el: s.current.el, dist: Math.max(sph.radius, 1) / Math.sin(MathUtils.degToRad(FOV) / 2) * 1.15, target: sph.center.clone() }
+      const g0 = goal.current ?? { az: s.current.az, el: s.current.el }
+      goal.current = { az: g0.az, el: g0.el, dist: Math.max(sph.radius, 1) / Math.sin(MathUtils.degToRad(FOV) / 2) * 1.15, target: sph.center.clone() }
       invalidate()
     }
     const view = (p: { az: number; el: number }) => {

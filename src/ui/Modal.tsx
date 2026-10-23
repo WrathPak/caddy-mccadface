@@ -1,13 +1,36 @@
 import { create } from 'zustand'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 
 /** Minimal centered dialog. */
 export function Modal({ title, children, footer, width = 420, onClose }: { title: string; children: ReactNode; footer?: ReactNode; width?: number; onClose?: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  useEffect(() => {
+    // Escape closes the dialog wherever the focus is; focus moves into the dialog so the keyboard works at once
+    const prev = document.activeElement as HTMLElement | null
+    ref.current?.focus()
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      closeRef.current?.()
+    }
+    window.addEventListener('keydown', key, true)
+    return () => {
+      window.removeEventListener('keydown', key, true)
+      prev?.focus?.()
+    }
+  }, [])
   return (
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000, display: 'grid', placeItems: 'center' }}
+      ref={ref}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      tabIndex={-1}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000, display: 'grid', placeItems: 'center', outline: 'none' }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}
-      onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose?.() }}
+      onKeyDown={(e) => e.stopPropagation()}
     >
       <div style={{ width, maxWidth: '92vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 4, boxShadow: 'var(--shadow-float)' }}>
         <div className="panel-title" style={{ background: 'var(--bg-2)' }}>{title}</div>

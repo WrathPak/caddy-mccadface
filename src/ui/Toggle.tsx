@@ -11,7 +11,7 @@ export function Checkbox({ checked, onChange, label }: { checked: boolean; onCha
   if (!label) return box
   return (
     <div className="field">
-      <span className="field-label">{label}</span>
+      <span className="field-label" title={label}>{label}</span>
       <div>{box}</div>
     </div>
   )

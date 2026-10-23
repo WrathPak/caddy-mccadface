@@ -31,7 +31,7 @@ export function Select({ value, onChange, options, label }: {
   )
   return label ? (
     <div className="field">
-      <span className="field-label">{label}</span>
+      <span className="field-label" title={label}>{label}</span>
       {ctl}
     </div>
   ) : ctl

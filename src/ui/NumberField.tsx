@@ -3,7 +3,7 @@ import { evalNumber } from '@/doc/params'
 
 export interface NumberFieldProps {
   label?: string
-  value: number
+  value: number | undefined
   onChange: (v: number, expr?: string) => void
   /** expression text (references user parameters) to display instead of the number */
   expr?: string
@@ -21,7 +21,8 @@ export interface NumberFieldProps {
 const clamp = (v: number, min?: number, max?: number) =>
   Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v))
 
-const fmt = (v: number, p: number) => String(+v.toFixed(p))
+const fmt = (v: number | undefined, p: number) =>
+  typeof v === 'number' && Number.isFinite(v) ? String(+v.toFixed(p)) : ''
 
 /** Evaluate an expression (mathjs, with user parameters). Returns a number in `unit`, or null if invalid. */
 export const evalExpr = (text: string, unit?: string): number | null => evalNumber(text, unit)
@@ -62,7 +63,7 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       e.preventDefault()
       const m = e.shiftKey ? 10 : e.altKey ? 0.1 : 1
-      const v = clamp(value + (e.key === 'ArrowUp' ? 1 : -1) * step * m, min, max)
+      const v = clamp((Number.isFinite(value) ? (value as number) : 0) + (e.key === 'ArrowUp' ? 1 : -1) * step * m, min, max)
       onChange(v)
       setText(fmt(v, precision))
     }
@@ -73,7 +74,7 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
     if (disabled) return
     const el = e.currentTarget
     el.setPointerCapture(e.pointerId)
-    let acc = value
+    let acc = Number.isFinite(value) ? (value as number) : 0
     const move = (ev: PointerEvent) => {
       const m = ev.shiftKey ? 10 : ev.altKey ? 0.1 : 1
       acc = clamp(acc + ev.movementX * step * 0.5 * m, min, max)
@@ -112,7 +113,7 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
   if (!label) return input
   return (
     <div className="field">
-      <span className="field-label scrub" onPointerDown={onScrub} title="Drag to adjust">
+      <span className="field-label scrub" onPointerDown={onScrub} title={label + " (drag to adjust)"}>
         {label}
       </span>
       {input}

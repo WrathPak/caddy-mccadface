@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { useUi } from '@/store/ui'
+import { useRef, useState } from 'react'
+import { Crosshair, X } from '@phosphor-icons/react'
+import { useUi, type InspectorSession } from '@/store/ui'
 import { useDoc } from '@/doc/store'
 import { evalNumber } from '@/doc/params'
 import { encodeSelection } from '@/doc/refs'
@@ -8,7 +9,7 @@ import { Select } from './Select'
 import { Checkbox } from './Toggle'
 import { Segmented } from './Segmented'
 import { Section } from './Section'
-import type { ParamDef, ParamValue, ParamValues } from './schema'
+import { schemaDefaults, type ParamDef, type ParamValue, type ParamValues } from './schema'
 
 type Setter = (key: string, v: ParamValue) => void
 
@@ -39,22 +40,22 @@ function Param({ def, values, set }: { def: ParamDef; values: ParamValues; set: 
     case 'bool':
       return <Checkbox label={def.label} checked={v as boolean} onChange={(b) => set(def.key, b)} />
     case 'vector3': {
-      const vec = v as [number, number, number]
+      const vec: number[] = Array.isArray(v) && v.length === 3 ? (v as number[]) : [0, 0, 0]
       return (
-        <div className="field">
-          <span className="field-label">{def.label}</span>
+        <div className="field stack">
+          <span className="field-label" title={def.label}>{def.label}{def.unit ? ` (${def.unit})` : ''}</span>
           <div className="vec3">
             {(['X', 'Y', 'Z'] as const).map((ax, i) => (
-              <NumberField key={ax} value={vec[i]} step={def.step} unit={def.unit}
-                prefix={<span className={'mono axis-' + ax.toLowerCase()} style={{ marginRight: 3 }}>{ax}</span>}
-                onChange={(n) => { const c: [number, number, number] = [...vec]; c[i] = n; set(def.key, c) }} />
+              <NumberField key={ax} value={vec[i]} step={def.step}
+                prefix={<span className={'mono axis-' + ax.toLowerCase()} style={{ marginRight: 4 }}>{ax}</span>}
+                onChange={(n) => { const c = [...vec] as [number, number, number]; c[i] = n; set(def.key, c) }} />
             ))}
           </div>
         </div>
       )
     }
     case 'selection-ref':
-      return <SelectionRef label={def.label} accepts={def.accepts} value={v as string[]} onChange={(s) => set(def.key, s)} />
+      return <SelectionRef label={def.label} accepts={def.accepts} value={Array.isArray(v) ? (v as string[]) : []} onChange={(s) => set(def.key, s)} />
   }
 }
 
@@ -62,18 +63,17 @@ function SelectionRef({ label, accepts, value, onChange }: { label: string; acce
   const sel = useUi((s) => s.selection)
   return (
     <div className="field">
-      <span className="field-label">{label}</span>
-      <div className="inp" style={{ gap: 6, borderColor: value.length ? undefined : 'var(--accent-line)' }}>
-        <span style={{ flex: 1, color: value.length ? 'var(--text)' : 'var(--text-faint)' }}>
-          {value.length ? `${value.length} selected` : `Select ${accepts.join(" / ")}`}
+      <span className="field-label" title={label}>{label}</span>
+      <div className="inp sel-ref" style={{ borderColor: value.length ? undefined : 'var(--accent-line)' }}>
+        <span className="txt" title={value.length ? `${value.length} selected` : undefined} style={{ color: value.length ? 'var(--text)' : 'var(--text-faint)' }}>
+          {value.length ? `${value.length} selected` : `Select ${accepts.join(' / ')}`}
         </span>
-        <button type="button" className="btn" style={{ height: 16, padding: '0 5px', fontSize: 10 }}
-          onClick={() => onChange(encodeSelection(sel, useDoc.getState().geometry))}>
-          Use sel.
+        <button type="button" className="icon-btn" title="Use current selection" aria-label="Use selection" onClick={() => onChange(encodeSelection(sel, useDoc.getState().geometry))}>
+          <Crosshair size={12} />
         </button>
         {value.length > 0 && (
-          <button type="button" className="btn" style={{ height: 16, padding: '0 5px', fontSize: 10 }} onClick={() => onChange([])}>
-            Clear
+          <button type="button" className="icon-btn" title="Clear" aria-label="Clear" onClick={() => onChange([])}>
+            <X size={12} />
           </button>
         )}
       </div>
@@ -84,19 +84,28 @@ function SelectionRef({ label, accepts, value, onChange }: { label: string; acce
 /** Schema-driven feature dialog. Renders `ui.inspector` (any ParamSchema) with OK / Cancel. */
 export function Inspector() {
   const session = useUi((s) => s.inspector)
-  const [values, setValues] = useState<ParamValues>({})
-  useEffect(() => {
-    if (session) setValues(session.values)
-  }, [session])
-
   if (!session) return <div className="panel"><div className="panel-title">Inspector</div><div className="empty">Select a feature or start a tool to edit its parameters.</div></div>
+  // a fresh form per session object: its initial state is the session's values (never an empty object)
+  return <InspectorForm key={sessionKey(session)} session={session} />
+}
 
+const sessionIds = new WeakMap<object, number>()
+let sessionSeq = 0
+const sessionKey = (s: InspectorSession) => {
+  let k = sessionIds.get(s)
+  if (!k) sessionIds.set(s, (k = ++sessionSeq))
+  return k
+}
+
+function InspectorForm({ session }: { session: InspectorSession }) {
+  const [values, setValues] = useState<ParamValues>(() => ({ ...schemaDefaults(session.schema), ...session.values }))
+
+  const latest = useRef(values)
   const set: Setter = (key, v) => {
-    setValues((prev) => {
-      const next = { ...prev, [key]: v }
-      session.onChange?.(next)
-      return next
-    })
+    const next = { ...latest.current, [key]: v }
+    latest.current = next
+    setValues(next)
+    session.onChange?.(next)
   }
   return (
     <div className="panel">
@@ -113,7 +122,7 @@ export function Inspector() {
       </div>
       <div className="inspector-foot">
         <button type="button" className="btn" onClick={session.onCancel}>Cancel</button>
-        <button type="button" className="btn primary" onClick={() => session.onOk(values)}>OK</button>
+        <button type="button" className="btn primary" onClick={() => session.onOk(latest.current)}>OK</button>
       </div>
     </div>
   )

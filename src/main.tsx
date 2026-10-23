@@ -10,8 +10,11 @@ import { registerSW } from 'virtual:pwa-register'
 import './app/commands'
 import './app/docCommands'
 import { App } from './app/App'
+import { installDebugHandle } from './app/debug'
 
-registerSW({ immediate: true })
+// the service worker would cache across e2e runs and is pointless in dev
+if (import.meta.env.PROD) registerSW({ immediate: true })
+if (import.meta.env.DEV) installDebugHandle()
 document.documentElement.dataset.theme = 'dark'
 
 createRoot(document.getElementById('root')!).render(
