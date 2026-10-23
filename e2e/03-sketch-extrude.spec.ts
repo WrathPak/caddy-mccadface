@@ -1,0 +1,61 @@
+import { test, expect } from './helpers'
+
+test('sketch -> extrude 10 -> fillet an edge -> edit extrude from the timeline', async ({ app, page }) => {
+  await app.open()
+  await app.sketchRect('XY', 30, 20)
+  await app.shot('sketch-rect')
+  const sk = await app.ev((c) => {
+    const s = c.sketch.getState()
+    return { dims: s.model.constraints.filter((k: any) => k.value !== undefined).map((k: any) => k.value).sort((a: number, b: number) => a - b), profiles: s.profiles.length }
+  })
+  expect(sk).toEqual({ dims: [20, 30], profiles: 1 })
+  await app.finishSketch()
+
+  await app.ribbon('Extrude').click()
+  await expect(app.inspector().locator('.panel-title')).toHaveText('Extrude')
+  await app.field('Distance', '10')
+  await app.shot('extrude-dialog')
+  await app.ok()
+  let feats = await app.features()
+  expect(feats.map((f) => [f.type, f.state])).toEqual([['sketch', 'ok'], ['extrude', 'ok']])
+  expect(feats[1].params.distance).toBe(10)
+  await expect.poll(() => app.tris()).toBe(12)
+  let bb = await app.bbox()
+  expect(bb.max[2] - bb.min[2]).toBeCloseTo(10, 4)
+  expect(bb.max[0] - bb.min[0]).toBeCloseTo(30, 4)
+
+  // fillet one edge: pick the top-front edge in the viewport
+  await app.ev((c) => { c.runCommand('view.home'); c.runCommand('view.frame') })
+  const edgeMid = [(bb.min[0] + bb.max[0]) / 2, bb.min[1], bb.max[2]]
+  await app.ev((c) => c.ui.getState().setSelectionFilter('edge'))
+  const p = await app.project(edgeMid[0], edgeMid[1], edgeMid[2])
+  await page.mouse.move(p.x - 25, p.y + 12)
+  await page.mouse.move(p.x, p.y, { steps: 6 })
+  await page.mouse.click(p.x, p.y)
+  await expect.poll(() => app.ev((c) => c.ui.getState().selection.map((r: any) => r.kind))).toEqual(['edge'])
+  await app.ribbon('Fillet').click()
+  await expect(app.inspector().locator('.panel-title')).toHaveText('Fillet')
+  await app.field('Radius', '2')
+  await expect.poll(() => app.ev((c) => c.ui.getState().selection.length)).toBe(1)
+  const trisBefore = await app.tris()
+  await app.shot('fillet-dialog')
+  await app.ok()
+  feats = await app.features()
+  expect(feats.map((f) => [f.type, f.state])).toEqual([['sketch', 'ok'], ['extrude', 'ok'], ['fillet', 'ok']])
+  await expect.poll(() => app.tris()).toBeGreaterThan(trisBefore)
+  await app.shot('fillet-done')
+
+  // edit the extrude distance from the timeline (double-click its chip) and confirm regeneration
+  const chips = page.locator('.tl .chip')
+  await expect(chips).toHaveCount(3)
+  await chips.nth(1).dblclick()
+  await expect(app.inspector().locator('.panel-title')).toHaveText('Extrude')
+  await app.field('Distance', '16')
+  await app.ok()
+  feats = await app.features()
+  expect(feats[1].params.distance).toBe(16)
+  expect(feats.map((f) => f.state)).toEqual(['ok', 'ok', 'ok'])
+  bb = await app.bbox()
+  expect(bb.max[2] - bb.min[2]).toBeCloseTo(16, 3)
+  await app.shot('extrude-edited')
+})

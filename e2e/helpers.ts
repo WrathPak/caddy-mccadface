@@ -1,0 +1,192 @@
+import { test as base, expect, type Page } from '@playwright/test'
+import path from 'node:path'
+
+export { expect }
+export const SHOTS = path.resolve(import.meta.dirname, 'screenshots')
+
+/** Every spec runs with: console.error / pageerror / external requests => test failure. */
+export const test = base.extend<{ app: App }>({
+  app: async ({ page }, use) => {
+    const problems: string[] = []
+    const external: string[] = []
+    page.on('console', (m) => {
+      if (m.type() === 'error') problems.push(`console.error: ${m.text()}`)
+    })
+    page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`))
+    page.on('request', (r) => {
+      const u = new URL(r.url())
+      if (!['localhost', '127.0.0.1', ''].includes(u.hostname) && !['data:', 'blob:'].includes(u.protocol)) external.push(r.url())
+    })
+    // force the download fallback for project saves / opens
+    await page.addInitScript(() => {
+      delete (window as unknown as Record<string, unknown>).showSaveFilePicker
+      delete (window as unknown as Record<string, unknown>).showOpenFilePicker
+    })
+    const app = new App(page)
+    await use(app)
+    const left = problems.filter((p) => !app.allowed.some((re) => re.test(p)))
+    expect(left, 'console errors / page errors').toEqual([])
+    expect(external, 'external network requests').toEqual([])
+  },
+})
+
+export class App {
+  /** console errors a spec expects (e.g. a deliberately crashed panel) */
+  allowed: RegExp[] = []
+  constructor(public page: Page) {}
+  allow(re: RegExp) { this.allowed.push(re) }
+
+  async open() {
+    await this.page.goto('/')
+    await this.page.waitForFunction(() => !!(window as any).__caddy) // eslint-disable-line
+    await expect(this.page.locator('canvas').first()).toBeVisible()
+    // let the kernel worker spin up
+    await this.page.waitForTimeout(500)
+  }
+
+  /** Run `fn` in the page with the debug handle. */
+  ev<T, A = undefined>(fn: (c: any, arg: A) => T | Promise<T>, arg?: A): Promise<T> { // eslint-disable-line
+    return this.page.evaluate(`(async () => (${fn.toString()})(window.__caddy, ${JSON.stringify(arg ?? null)}))()`) as Promise<T>
+  }
+
+  async shot(name: string) {
+    await this.page.waitForTimeout(250)
+    await this.page.screenshot({ path: path.join(SHOTS, name + '.png') })
+  }
+
+  async idle() {
+    await this.page.waitForFunction(() => {
+      const c = (window as any).__caddy // eslint-disable-line
+      return !!c && !c.doc.getState().regenerating
+    })
+    await this.page.waitForTimeout(150)
+  }
+
+  async tris() {
+    return this.ev((c) => c.ui.getState().triangles)
+  }
+
+  async features(): Promise<{ id: string; type: string; name: string; state: string; error?: string; params: any }[]> { // eslint-disable-line
+    return this.ev((c) => c.doc.getState().features.map((f: any) => ({ id: f.id, type: f.type, name: f.name, state: f.state, error: f.error, params: f.params }))) // eslint-disable-line
+  }
+
+  async bodies(): Promise<{ id: string; name: string; kind: string; tris: number }[]> {
+    return this.ev((c) => c.doc.getState().geometry.map((b: any) => ({ id: b.id, name: b.name, kind: b.kind, tris: b.mesh.indices.length / 3 }))) // eslint-disable-line
+  }
+
+  /** Wait until the camera stops moving (view transitions animate). */
+  async cameraStable() {
+    const read = () => this.page.evaluate(() => JSON.stringify((window as any).__caddy.three.camera.matrixWorld.elements)) // eslint-disable-line
+    let prev = await read()
+    for (let i = 0; i < 40; i++) {
+      await this.page.waitForTimeout(150)
+      const cur = await read()
+      if (cur === prev) return
+      prev = cur
+    }
+  }
+
+  /** Client-space pixel of a world point (needs the dev camera probe). */
+  async project(x: number, y: number, z: number): Promise<{ x: number; y: number }> {
+    await this.cameraStable()
+    return this.page.evaluate(([x, y, z]) => {
+      const t = (window as any).__caddy.three // eslint-disable-line
+      const cam = t.camera
+      cam.updateMatrixWorld()
+      const V = cam.matrixWorldInverse.elements, P = cam.projectionMatrix.elements
+      const mul = (m: number[], v: number[]) => [0, 1, 2, 3].map((r) => m[r] * v[0] + m[4 + r] * v[1] + m[8 + r] * v[2] + m[12 + r] * v[3])
+      const c = mul(P, mul(V, [x, y, z, 1]))
+      const r = document.querySelector('.vp canvas')!.getBoundingClientRect()
+      return { x: r.left + ((c[0] / c[3] + 1) / 2) * r.width, y: r.top + ((1 - c[1] / c[3]) / 2) * r.height }
+    }, [x, y, z] as [number, number, number])
+  }
+
+  async bbox(id?: string): Promise<{ min: number[]; max: number[] }> {
+    return this.ev((c, id) => {
+      const bs = c.doc.getState().geometry
+      const b = id ? bs.find((x: any) => x.id === id) : bs[0] // eslint-disable-line
+      const p = b.mesh.positions
+      const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity]
+      for (let i = 0; i < p.length; i += 3) for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], p[i + k]); max[k] = Math.max(max[k], p[i + k]) }
+      return { min, max }
+    }, id)
+  }
+
+  /** Draw a w x h rectangle (typed dims) on an origin plane and finish the sketch. */
+  async sketchRect(plane: 'XY' | 'XZ' | 'YZ', w: number, h: number, at = { x: 500, y: 400 }) {
+    const { page } = this
+    await this.ribbon('Sketch').first().click()
+    const planes = page.getByText('Planes', { exact: true })
+    if (!(await page.getByText(plane + ' plane').isVisible())) await planes.click()
+    await page.getByText(plane + ' plane').click()
+    await expect(page.locator('.sk-bar')).toBeVisible()
+    await this.ribbon('Rectangle').first().click()
+    const b = (await page.locator('.vp canvas').boundingBox())!
+    await page.mouse.move(b.x + at.x, b.y + at.y)
+    await page.mouse.click(b.x + at.x, b.y + at.y)
+    await page.mouse.move(b.x + at.x + 80, b.y + at.y - 60, { steps: 3 })
+    await page.keyboard.type(String(w))
+    await page.keyboard.press('Tab')
+    await page.keyboard.type(String(h))
+    await page.keyboard.press('Enter')
+    await expect.poll(() => this.ev((c) => c.sketch.getState().profiles.length)).toBe(1)
+    await page.keyboard.press('Escape') // leave the rectangle tool
+  }
+  async finishSketch() {
+    await this.ribbon('Finish Sketch').click()
+    await this.idle()
+    await expect(this.page.locator('.sk-bar')).toBeHidden()
+  }
+
+  /** Enclosed volume of a body mesh (signed tetrahedra sum). */
+  async volume(id?: string): Promise<number> {
+    return this.ev((c, id) => {
+      const bs = c.doc.getState().geometry
+      const b = id ? bs.find((x: any) => x.id === id) : bs[0] // eslint-disable-line
+      const p = b.mesh.positions, ix = b.mesh.indices
+      let v = 0
+      for (let t = 0; t < ix.length; t += 3) {
+        const a = ix[t] * 3, bb = ix[t + 1] * 3, cc = ix[t + 2] * 3
+        v += (p[a] * (p[bb + 1] * p[cc + 2] - p[bb + 2] * p[cc + 1]) - p[a + 1] * (p[bb] * p[cc + 2] - p[bb + 2] * p[cc]) + p[a + 2] * (p[bb] * p[cc + 1] - p[bb + 1] * p[cc])) / 6
+      }
+      return Math.abs(v)
+    }, id)
+  }
+
+  /** Set one component (0..2) of a vector3 field. */
+  async vec(label: string, axis: 0 | 1 | 2, value: string) {
+    const f = this.page.locator('.field', { has: this.page.locator('.field-label', { hasText: label }) }).filter({ has: this.page.locator('input') }).first()
+    const input = f.locator('input').nth(axis)
+    await input.click()
+    await input.fill(value)
+    await input.press('Enter')
+  }
+
+  ribbon(name: string | RegExp) {
+    return this.page.locator('.ribbon-body').getByRole('button', { name })
+  }
+  async tab(name: string) {
+    await this.page.locator('.ribbon-tabs').getByRole('tab', { name }).click()
+  }
+  inspector() {
+    return this.page.locator('.panel', { has: this.page.locator('.inspector-foot') })
+  }
+  async ok() {
+    await this.page.locator('.inspector-foot').getByRole('button', { name: 'OK' }).click()
+    await this.idle()
+  }
+  /** Set a labelled field in the Inspector (types the text, Enter). */
+  async field(label: string, value: string) {
+    const f = this.page.locator('.field', { has: this.page.locator('.field-label', { hasText: label }) }).filter({ has: this.page.locator('input') }).first()
+    const input = f.locator('input').first()
+    await input.click()
+    await input.fill(value)
+    await input.press('Enter')
+  }
+}
+
+/** Canvas pixel position of a point given in viewport-relative fractions. */
+export async function canvasPoint(page: Page, fx: number, fy: number) {
+  const b = (await page.locator('.vp canvas').first().boundingBox())!
+  return { x: b.x + b.width * fx, y: b.y + b.height * fy }
+}

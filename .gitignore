@@ -3,3 +3,7 @@ dist
 *.local
 .DS_Store
 dev-dist
+e2e/screenshots/
+e2e/results/
+test-results/
+playwright-report/
