@@ -13,6 +13,7 @@ import { startRevolve } from '@/features/revolve'
 import { startExtrude } from '@/features/extrude'
 import { startEdgeMod } from '@/features/fillet'
 import { startMove } from '@/features/move'
+import { startHair, toggleHairPreview } from '@/features/hair'
 import { createFeature } from '@/doc/editor'
 import { useDoc } from '@/doc/store'
 import { exportDialog, importDialog, newDocument, openDocument, saveDocument } from '@/io/actions'
@@ -41,6 +42,10 @@ override('solid.extrude', solid(startExtrude))
 override('solid.revolve', solid(startRevolve))
 override('solid.fillet', solid(() => startEdgeMod('fillet')))
 override('solid.chamfer', solid(() => startEdgeMod('chamfer')))
+override('hair.create', solid(() => startHair('create')))
+override('hair.faces', solid(() => startHair('faces')))
+override('hair.wall', solid(() => startHair('wall')))
+override('hair.preview', toggleHairPreview)
 override('edit.delete', () => {
   const ui = useUi.getState()
   const ids = [...new Set(ui.selection.map((r) => r.id))].filter((id) => useDoc.getState().geometry.some((b) => b.id === id))

@@ -7,6 +7,7 @@ import {
 import { useUi, type SelectionRef } from '@/store/ui'
 import { useDoc } from '@/doc/store'
 import { useMove } from '@/features/move'
+import { useHairPaint } from '@/features/hair/paint'
 import { composeTransform, type Body } from '@/kernel/types'
 import { buildBvh } from './bvh'
 import { usePreview } from './preview'
@@ -82,7 +83,8 @@ function BodyView({ body, mats, colors }: { body: Body; mats: Mats; colors: Retu
   const move = useMove()
 
   const sketching = useUi((s) => s.sketchMode)
-  const pickFaces = filter !== 'edge' && !sketching
+  const painting = useHairPaint((s) => s.mode !== 'off')
+  const pickFaces = filter !== 'edge' && !sketching && !painting
   const showEdges = displayMode !== 'shaded' || filter === 'edge'
   const refFor = (e: ThreeEvent<PointerEvent | MouseEvent>): SelectionRef =>
     filter === 'body' ? { kind: 'body', id: body.id } : { kind: 'face', id: body.id, index: body.mesh.faceIds[e.faceIndex ?? 0] ?? 0 }

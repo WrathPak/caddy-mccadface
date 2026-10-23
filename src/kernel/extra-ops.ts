@@ -8,5 +8,6 @@
  * This module is imported once by worker.ts; import your op modules below.
  */
 import './model-ops'
+import './hair-ops'
 
 export {}

@@ -1,0 +1,5 @@
+.hair-bar { position: absolute; left: 8px; top: 8px; z-index: 6; }
+.hair-ring { position: absolute; left: 0; top: 0; border: 1px solid #27d3e6; border-radius: 50%; pointer-events: none; z-index: 4; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
+.hair-num { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px; font-size: var(--fs-sm); color: var(--text-dim); }
+.hair-num input { width: 44px; height: 18px; background: var(--bg-3); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--text); font-size: var(--fs-sm); padding: 0 3px; }
+.hair-count { padding: 0 8px; font-size: var(--fs-sm); color: var(--text-dim); font-variant-numeric: tabular-nums; }

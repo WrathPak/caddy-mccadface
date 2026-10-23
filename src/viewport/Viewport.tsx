@@ -9,6 +9,8 @@ import { MarkingMenu } from '@/ui/MarkingMenu'
 import { Tip } from '@/ui/Tooltip'
 import { runCommand } from '@/app/commands'
 import { SketchHud } from '@/sketch/SketchHud'
+import { HairPaintBar } from '@/features/hair/PaintTool'
+import { useHairPaint } from '@/features/hair/paint'
 
 const MODES: { id: DisplayMode; label: string; icon: typeof Cube }[] = [
   { id: 'shaded', label: 'Shaded', icon: Cube },
@@ -29,12 +31,13 @@ export function Viewport() {
         dpr={[1, 2]}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         raycaster={{ params: { Line: { threshold: 1.2 }, Mesh: {}, Points: { threshold: 1 }, LOD: {}, Sprite: {} } }}
-        onPointerMissed={(e) => e.button === 0 && clear()}
+        onPointerMissed={(e) => e.button === 0 && useHairPaint.getState().mode === 'off' && clear()}
       >
         <Scene />
       </Canvas>
       <ViewCube />
       <SketchHud />
+      <HairPaintBar />
       <div className="vp-toolbar">
         <div className="vp-bar">
           {MODES.map((m) => (

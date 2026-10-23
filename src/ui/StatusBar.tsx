@@ -1,10 +1,13 @@
 import * as D from '@radix-ui/react-dropdown-menu'
 import { useUi, type SelectionFilter } from '@/store/ui'
+import { useHairView } from '@/features/hair/store'
 
 const FILTERS: SelectionFilter[] = ['body', 'face', 'edge']
 
 export function StatusBar() {
   const { units, setUnits, snap, toggleSnap, selectionFilter, setSelectionFilter, triangles, kernelBusy, selection } = useUi()
+  const hair = useHairView()
+  const hs = hair.result?.stats
   return (
     <div className="status">
       <D.Root>
@@ -29,6 +32,11 @@ export function StatusBar() {
         </D.Portal>
       </D.Root>
       <span className="cell">{selection.length ? `${selection.length} selected` : 'Nothing selected'}</span>
+      {(hs || hair.error || hair.busy) && (
+        <span className="cell" title={hair.error ?? undefined} style={hair.error ? { color: 'var(--danger, #d9625a)' } : undefined}>
+          {hair.error ? `Hair: ${hair.error}` : hs ? `Hair: ${hs.strands.toLocaleString()} strands${hs.dropped ? ` (${hs.dropped} skipped)` : ''}${hs.capped ? ' (capped)' : ''} | ${Math.round(hs.triangles / 1000).toLocaleString()}k tris | ${hs.ms} ms${hair.busy ? ' ...' : ''}` : 'Hair: generating ...'}
+        </span>
+      )}
       <span className="grow" />
       <span className="cell">Tris: <span className="num">{triangles.toLocaleString()}</span></span>
       <span className="cell" title={kernelBusy ? 'Kernel busy' : 'Kernel idle'}>

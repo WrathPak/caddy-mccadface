@@ -13,6 +13,8 @@ import { ArrowManipulator, PreviewLayer, ProfilePicker } from './preview'
 import { SketchOverlay } from '@/sketch/SketchOverlay'
 import { SketchDisplay } from '@/sketch/SketchDisplay'
 import { PlanePicker } from '@/sketch/PlanePicker'
+import { HairPaintTool, HairRegionOverlay } from '@/features/hair/PaintTool'
+import { HairPreviewLayer } from '@/features/hair/layer'
 
 const S = 32 // origin plane half-size
 
@@ -69,6 +71,9 @@ export function Scene() {
       <PreviewLayer />
       <ProfilePicker />
       <ArrowManipulator />
+      <HairRegionOverlay />
+      <HairPreviewLayer />
+      <HairPaintTool />
       <CaptureRegistrar />
       {ssao && (
         <EffectComposer enableNormalPass multisampling={0}>
