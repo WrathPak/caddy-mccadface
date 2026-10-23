@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 
 export function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
   const box = (
-    <C.Root className="chk" checked={checked} onCheckedChange={(v) => onChange(v === true)}>
+    <C.Root className="chk" aria-label={label} checked={checked} onCheckedChange={(v) => onChange(v === true)}>
       <C.Indicator><Check size={9} weight="bold" /></C.Indicator>
     </C.Root>
   )

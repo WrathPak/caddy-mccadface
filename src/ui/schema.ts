@@ -40,7 +40,19 @@ export interface SelectionRefParam extends Base {
   /** which entity kinds may be picked */
   accepts: ('body' | 'face' | 'edge' | 'sketch' | 'plane')[]
   multiple?: boolean
+  /** the dialog cannot be confirmed until this (visible) selection has at least one entry */
+  required?: boolean
+  /** with `required`: the smallest number of entries that satisfies it (default 1) */
+  min?: number
+  /** viewport / Browser picks flow into this field while it is the active one (click the field to activate it) */
+  pick?: boolean
   default: string[]
+}
+/** Read-only text computed from the current values (e.g. the Measure results). */
+export interface InfoParam extends Base {
+  type: 'info'
+  text: (values: ParamValues) => string
+  default: string
 }
 export interface GroupParam {
   type: 'group'
@@ -55,6 +67,7 @@ export type ParamDef =
   | BoolParam
   | Vector3Param
   | SelectionRefParam
+  | InfoParam
   | GroupParam
 
 export type ParamValue = number | string | boolean | [number, number, number] | string[]
@@ -77,6 +90,27 @@ export function schemaDefaults(schema: ParamSchema): ParamValues {
   }
   walk(schema.params)
   return out
+}
+
+/** Visible selection-ref params, in order. */
+export function selectionParams(schema: ParamSchema, values: ParamValues): SelectionRefParam[] {
+  const out: SelectionRefParam[] = []
+  const walk = (defs: ParamDef[]) => {
+    for (const d of defs) {
+      if (d.type === 'group') walk(d.children)
+      else if (d.type === 'selection-ref' && !(d.visibleWhen && !d.visibleWhen(values))) out.push(d)
+    }
+  }
+  walk(schema.params)
+  return out
+}
+
+/** Labels of required selections that are still empty (OK stays disabled while this is non-empty). */
+export function missingRequired(schema: ParamSchema, values: ParamValues): string[] {
+  const full = { ...schemaDefaults(schema), ...values }
+  return selectionParams(schema, full)
+    .filter((d) => d.required && !(Array.isArray(full[d.key]) && (full[d.key] as string[]).length >= (d.min ?? 1)))
+    .map((d) => d.label + ((d.min ?? 1) > 1 ? ` (at least ${d.min})` : ''))
 }
 
 /** Demo schema (Extrude-like) so the Inspector is visible. Later agents replace with real ones. */

@@ -1,6 +1,6 @@
 /** Opens the schema-driven Inspector to create or edit timeline features. */
 import { useUi } from '@/store/ui'
-import { schemaDefaults, type ParamValues } from '@/ui/schema'
+import { missingRequired, schemaDefaults, type ParamValues } from '@/ui/schema'
 import { getFeature } from './registry'
 import { useDoc } from './store'
 import type { FeatureDef, PreviewHandle } from './types'
@@ -22,7 +22,12 @@ function openSession(def: FeatureDef, start: ParamValues, tool: string, onOk: (v
     schema: def.schema,
     values,
     onChange: (v: ParamValues) => handle?.update(v),
-    onOk: (v: ParamValues) => { finish(); onOk(v) },
+    onOk: (v: ParamValues) => {
+      // the dialog disables OK while required selections are missing; never create a feature in an error state from an empty dialog
+      if (missingRequired(def.schema, v).length) return
+      finish()
+      onOk(v)
+    },
     onCancel: finish,
   })
   handle = def.preview?.({ values: start, setValues: (v) => { useUi.getState().openInspector(session(v)); handle?.update(v) } })

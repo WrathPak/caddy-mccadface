@@ -61,7 +61,7 @@ export const hairSchema: ParamSchema = {
   id: 'hair',
   title: 'Hair',
   params: [
-    { type: 'selection-ref', key: 'region', label: 'Surface', accepts: ['face'], multiple: true, default: [] },
+    { type: 'selection-ref', key: 'region', label: 'Surface', accepts: ['face'], multiple: true, required: true, default: [] },
     {
       type: 'group', label: 'Distribution', children: [
         { type: 'enum', key: 'distribution', label: 'Pattern', display: 'segmented', default: 'poisson', options: [{ value: 'poisson', label: 'Poisson' }, { value: 'grid', label: 'Grid' }, { value: 'rows', label: 'Rows' }] },
@@ -77,7 +77,7 @@ export const hairSchema: ParamSchema = {
         { type: 'enum', key: 'dirMode', label: 'Mode', display: 'select', default: 'normal', options: [{ value: 'normal', label: 'Surface normal' }, { value: 'fixed', label: 'Fixed vector' }, { value: 'radial', label: 'Radial from axis' }, { value: 'point', label: 'Toward point' }] },
         { type: 'vector3', key: 'fixedDir', label: 'Vector', step: 0.1, default: [0, 1, 0], visibleWhen: (v) => v.dirMode === 'fixed' },
         { type: 'enum', key: 'axisMode', label: 'Axis', display: 'select', default: 'worldZ', visibleWhen: (v) => v.dirMode === 'radial', options: [{ value: 'worldX', label: 'World X' }, { value: 'worldY', label: 'World Y' }, { value: 'worldZ', label: 'World Z' }, { value: 'edge', label: 'Edge' }, { value: 'points', label: '2 points' }] },
-        { type: 'selection-ref', key: 'axisEdge', label: 'Axis edge', accepts: ['edge'], default: [], visibleWhen: (v) => v.dirMode === 'radial' && v.axisMode === 'edge' },
+        { type: 'selection-ref', key: 'axisEdge', label: 'Axis edge', accepts: ['edge'], required: true, default: [], visibleWhen: (v) => v.dirMode === 'radial' && v.axisMode === 'edge' },
         { type: 'vector3', key: 'axisP1', label: 'Point 1', unit: 'mm', step: 1, default: [0, 0, 0], visibleWhen: (v) => v.dirMode === 'radial' && v.axisMode === 'points' },
         { type: 'vector3', key: 'axisP2', label: 'Point 2', unit: 'mm', step: 1, default: [0, 0, 10], visibleWhen: (v) => v.dirMode === 'radial' && v.axisMode === 'points' },
         { type: 'vector3', key: 'targetPoint', label: 'Target', unit: 'mm', step: 1, default: [0, 0, 0], visibleWhen: (v) => v.dirMode === 'point' },

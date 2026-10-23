@@ -21,7 +21,7 @@ const schemaFor = (mode: Mode): ParamSchema => ({
   id: mode,
   title: mode === 'fillet' ? 'Fillet' : 'Chamfer',
   params: [
-    { type: 'selection-ref', key: 'edges', label: 'Edges', accepts: ['edge'], multiple: true, default: [] },
+    { type: 'selection-ref', key: 'edges', label: 'Edges', accepts: ['edge'], multiple: true, required: true, default: [] },
     { type: 'number', key: 'size', label: mode === 'fillet' ? 'Radius' : 'Distance', unit: 'mm', min: 0.001, step: 0.25, default: 1 },
   ],
 })

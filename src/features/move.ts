@@ -15,7 +15,7 @@ export const moveSchema: ParamSchema = {
   id: 'move',
   title: 'Move / Transform',
   params: [
-    { type: 'selection-ref', key: 'bodyIds', label: 'Bodies', accepts: ['body'], multiple: true, default: [] },
+    { type: 'selection-ref', key: 'bodyIds', label: 'Bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] },
     {
       type: 'enum', key: 'gizmo', label: 'Gizmo', display: 'segmented', default: 'translate',
       options: [{ value: 'translate', label: 'Move' }, { value: 'rotate', label: 'Rotate' }, { value: 'scale', label: 'Scale' }],

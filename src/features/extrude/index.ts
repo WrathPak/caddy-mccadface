@@ -19,7 +19,7 @@ export const extrudeSchema: ParamSchema = {
   id: 'extrude',
   title: 'Extrude',
   params: [
-    { type: 'selection-ref', key: 'profiles', label: 'Profiles', accepts: ['sketch', 'face'], multiple: true, default: [] },
+    { type: 'selection-ref', key: 'profiles', label: 'Profiles', accepts: ['sketch', 'face'], multiple: true, required: true, default: [] },
     {
       type: 'group',
       label: 'Extent',

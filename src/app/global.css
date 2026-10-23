@@ -165,10 +165,25 @@ button.cell:hover { background: var(--bg-hover); color: var(--text); }
 .vp-bar button:hover { background: var(--bg-hover); color: var(--text); }
 .vp-bar button[data-active='true'] { background: var(--accent-dim); color: var(--accent); }
 .vp-bar .sep { width: 1px; height: 14px; background: var(--line); margin: 0 2px; }
-.viewcube { position: absolute; top: 10px; right: 10px; width: 96px; height: 96px; z-index: 5; perspective: 360px; }
+.viewcube { position: absolute; top: 8px; right: 8px; width: 140px; height: 140px; z-index: 5; user-select: none; }
+.vc-stage { position: absolute; inset: 22px; perspective: 440px; cursor: grab; touch-action: none; }
+.vc-stage:active { cursor: grabbing; }
 .vc-scene { position: absolute; inset: 0; transform-style: preserve-3d; }
-.vc-face { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; display: flex; align-items: center; justify-content: center; background: var(--bg-2); border: 1px solid var(--line-strong); color: var(--text-dim); font-size: 9px; letter-spacing: 0.06em; font-weight: 600; text-transform: uppercase; backface-visibility: hidden; cursor: default; padding: 0; }
-.vc-face:hover { background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); }
+.vc-face { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; display: grid; background: var(--bg-2); border: 1px solid var(--line-strong); backface-visibility: hidden; box-sizing: border-box; }
+.vc-zone { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; overflow: hidden; color: var(--text-dim); font-size: 9px; letter-spacing: 0.06em; font-weight: 600; text-transform: uppercase; background: var(--bg-2); box-sizing: border-box; }
+.vc-zone.edge, .vc-zone.corner { background: var(--bg-3); }
+.vc-zone.edge { border: 0 solid var(--line); }
+.vc-zone.corner { border: 1px solid var(--line); }
+.vc-zone[data-hot='true'] { background: var(--accent); color: var(--text-on-accent); }
+.vc-btn { position: absolute; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-sm); color: var(--text-faint); cursor: default; opacity: 0.8; }
+.vc-btn:hover { background: var(--bg-hover); color: var(--accent); opacity: 1; }
+.vc-btn.home { left: 0; top: 0; }
+.vc-btn.up { left: 60px; top: 1px; }
+.vc-btn.down { left: 60px; bottom: 1px; }
+.vc-btn.left { left: 1px; top: 60px; }
+.vc-btn.right { right: 1px; top: 60px; }
+.vc-btn.roll-ccw { left: 0; bottom: 0; }
+.vc-btn.roll-cw { right: 0; bottom: 0; }
 .marking { position: fixed; z-index: 1200; width: 0; height: 0; }
 .marking .m-item { position: absolute; transform: translate(-50%, -50%); min-width: 74px; height: 24px; padding: 0 8px; display: flex; align-items: center; justify-content: center; gap: 5px; background: var(--bg-3); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: var(--shadow-float); font-size: var(--fs-sm); white-space: nowrap; }
 .marking .m-item[data-hot='true'] { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
@@ -195,6 +210,10 @@ button.cell:hover { background: var(--bg-hover); color: var(--text); }
 
 /* selection-ref row in the Inspector */
 .sel-ref { gap: 4px; }
+.sel-ref.active { box-shadow: 0 0 0 1px var(--accent-line); }
+.info-text { white-space: pre-line; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text); line-height: 1.55; padding: 4px 6px; background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--radius); min-height: 22px; user-select: text; }
+.inspector-hint { padding: 5px 10px; font-size: var(--fs-sm); color: var(--text-dim); border-top: 1px solid var(--line); background: var(--bg-1); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .sel-ref .txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; background: transparent; border: none; border-radius: var(--radius-sm); color: var(--text-dim); cursor: default; }
 .icon-btn:hover { background: var(--bg-hover); color: var(--accent); }

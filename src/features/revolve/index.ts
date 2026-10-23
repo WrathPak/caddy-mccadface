@@ -23,7 +23,7 @@ export const revolveSchema: ParamSchema = {
   id: 'revolve',
   title: 'Revolve',
   params: [
-    { type: 'selection-ref', key: 'profiles', label: 'Profiles', accepts: ['sketch'], multiple: true, default: [] },
+    { type: 'selection-ref', key: 'profiles', label: 'Profiles', accepts: ['sketch'], multiple: true, required: true, default: [] },
     {
       type: 'enum', key: 'axis', label: 'Axis', display: 'select', default: 'line',
       options: [
@@ -31,7 +31,7 @@ export const revolveSchema: ParamSchema = {
         { value: 'worldX', label: 'World X' }, { value: 'worldY', label: 'World Y' }, { value: 'worldZ', label: 'World Z' }, { value: 'edge', label: 'Edge' },
       ],
     },
-    { type: 'selection-ref', key: 'edge', label: 'Axis edge', accepts: ['edge'], default: [], visibleWhen: (v) => v.axis === 'edge' },
+    { type: 'selection-ref', key: 'edge', label: 'Axis edge', accepts: ['edge'], required: true, default: [], visibleWhen: (v) => v.axis === 'edge' },
     { type: 'number', key: 'angle', label: 'Angle', unit: 'deg', step: 5, default: 360 },
     {
       type: 'enum', key: 'operation', label: 'Operation', display: 'select', default: 'new',

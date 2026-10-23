@@ -58,7 +58,7 @@ registerFeature({
   schema: {
     id: 'delete',
     title: 'Delete body',
-    params: [{ type: 'selection-ref', key: 'bodyIds', label: 'Bodies', accepts: ['body'], multiple: true, default: [] }],
+    params: [{ type: 'selection-ref', key: 'bodyIds', label: 'Bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] }],
   },
   async compute(ctx, p) {
     return { remove: bodyIdsOf(p.bodyIds as string[]) }
