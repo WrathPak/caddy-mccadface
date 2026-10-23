@@ -9,5 +9,7 @@
  */
 import './model-ops'
 import './hair-ops'
+import './solid-ops'
+import './mesh-ops'
 
 export {}

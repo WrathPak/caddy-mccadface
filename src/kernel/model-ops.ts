@@ -33,8 +33,14 @@ const isCcw = (loop: Loop) => polyArea(loopPoly(loop)) >= 0
 /** Loop with the requested winding (outer boundaries counter-clockwise, holes clockwise: OCC needs opposite windings). */
 const oriented = (loop: Loop, ccw: boolean) => (isCcw(loop) === ccw ? loop : reverseLoop(loop))
 
-function planeOf(p: PlaneDef) {
+export function planeOf(p: PlaneDef) {
   return new Plane(p.origin, p.xDir, p.normal)
+}
+
+/** Outer wire and hole wires (opposite windings) of a profile on a plane. */
+export function profileWires(plane: Plane, pr: ProfileIn) {
+  const wire = (l: Loop, ccw: boolean) => (loopDrawing(oriented(l, ccw)).sketchOnPlane(plane) as unknown as { wire: Parameters<typeof makeFace>[0] }).wire
+  return { outer: wire(pr.outer, true), holes: pr.holes.map((h) => wire(h, false)) }
 }
 
 /** Planar face (with holes) for a profile on a plane. */
@@ -43,7 +49,7 @@ export function profileFace(plane: Plane, pr: ProfileIn): Face {
   return makeFace(wire(pr.outer, true), pr.holes.map((h) => wire(h, false)))
 }
 
-const fuseAll = (shapes: Sh[]): Sh => shapes.slice(1).reduce((a, b) => a.fuse(b) as Sh, shapes[0])
+export const fuseAll = (shapes: Sh[]): Sh => shapes.slice(1).reduce((a, b) => a.fuse(b) as Sh, shapes[0])
 
 const norm3 = (v: Vec3): Vec3 => {
   const l = Math.hypot(v[0], v[1], v[2]) || 1

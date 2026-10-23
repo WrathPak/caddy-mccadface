@@ -1,0 +1,94 @@
+/** Worker ops for the primitive and advanced solid tools: cylinder, sweep, loft and shell. */
+import { assembleWire, genericSweep, loft, makeCylinder, makeLine, makeThreePointArc, measureVolume, type AnyShape, type Wire } from 'replicad'
+import { registerOp } from './store'
+import { topoOf, type Shape } from './occ'
+import { fuseAll, planeOf, profileWires, type ProfileGroup, type ProfileIn } from './model-ops'
+import type { PlaneDef, Vec3 } from '../sketch/types'
+
+type Sh = Shape
+
+export interface CylinderArgs { id: string; name: string; radius: number; height: number; origin: Vec3; dir: Vec3 }
+registerOp<CylinderArgs>('cylinderTool', (a, h) => {
+  if (!(a.radius > 0) || !(a.height > 0)) throw new Error('Radius and height must be greater than zero')
+  return h.sendBody(h.bodyFromShape(a.id, a.name, makeCylinder(a.radius, a.height, a.origin, a.dir) as unknown as Sh))
+})
+
+/** A world-space path segment (lines and three-point arcs). */
+export type PathSeg = { k: 'l'; a: Vec3; b: Vec3 } | { k: 'a'; a: Vec3; m: Vec3; b: Vec3 }
+
+export interface SweepArgs { id: string; name: string; groups: ProfileGroup[]; path: PathSeg[] }
+
+function pathWire(path: PathSeg[]): Wire {
+  if (!path.length) throw new Error('The sweep path is empty')
+  return assembleWire(path.map((s) => (s.k === 'l' ? makeLine(s.a, s.b) : makeThreePointArc(s.a, s.m, s.b))))
+}
+
+const valid = (s: Sh) => Math.abs(measureVolume(s as never)) > 1e-9
+
+registerOp<SweepArgs>('sweepTool', (a, h) => {
+  const solids: Sh[] = []
+  for (const g of a.groups) {
+    const plane = planeOf(g.plane)
+    for (const pr of g.profiles) {
+      // the spine and profiles are consumed by the sweep, so build fresh wires each time
+      const sweepWire = (w: Wire) => genericSweep(w, pathWire(a.path), { transitionMode: 'right' }) as unknown as Sh
+      const { outer, holes } = profileWires(plane, pr)
+      let solid = sweepWire(outer)
+      for (const hw of holes) solid = solid.cut(sweepWire(hw) as unknown as AnyShape) as Sh
+      if (!valid(solid)) throw new Error('The sweep produced no solid; check that the profile touches the path start')
+      solids.push(solid)
+    }
+  }
+  if (!solids.length) throw new Error('Nothing to sweep')
+  return h.sendBody(h.bodyFromShape(a.id, a.name, fuseAll(solids)))
+})
+
+export interface LoftSection { plane: PlaneDef; profile: ProfileIn }
+export interface LoftArgs { id: string; name: string; sections: LoftSection[]; ruled: boolean }
+
+registerOp<LoftArgs>('loftTool', (a, h) => {
+  if (a.sections.length < 2) throw new Error('A loft needs at least two profiles')
+  const sets = a.sections.map((s) => profileWires(planeOf(s.plane), s.profile))
+  let solid = loft(sets.map((s) => s.outer), { ruled: a.ruled }) as unknown as Sh
+  const holeCount = sets[0].holes.length
+  if (sets.some((s) => s.holes.length !== holeCount)) throw new Error('All loft profiles must have the same number of holes')
+  for (let i = 0; i < holeCount; i++) {
+    const cutter = loft(sets.map((s) => s.holes[i]), { ruled: a.ruled }) as unknown as Sh
+    solid = solid.cut(cutter as unknown as AnyShape) as Sh
+  }
+  if (!valid(solid)) throw new Error('The loft produced no solid; check the profile order and positions')
+  return h.sendBody(h.bodyFromShape(a.id, a.name, solid))
+})
+
+export interface ShellArgs {
+  id: string
+  name: string
+  key: string
+  /** B-rep face indices to remove (positions in `topoOf(shape).faces`) */
+  faces: number[]
+  thickness: number
+  /** 'inside' keeps the outer surface, 'outside' grows the wall outwards */
+  side: 'inside' | 'outside'
+}
+
+registerOp<ShellArgs>('shellOp', (a, h) => {
+  if (!(a.thickness > 0)) throw new Error('Thickness must be greater than zero')
+  const shape = h.getBrep(a.key)
+  const all = topoOf(shape as unknown as AnyShape).faces
+  const list = a.faces.map((i) => all[i]).filter(Boolean)
+  if (!list.length || list.length !== a.faces.length) throw new Error('Some of the selected faces no longer exist')
+  if (a.side === 'inside') {
+    const [lo, hi] = (shape as unknown as { boundingBox: { bounds: [Vec3, Vec3] } }).boundingBox.bounds
+    const minDim = Math.min(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2])
+    if (a.thickness * 2 >= minDim * 0.995) throw new Error(`The thickness must be less than half the smallest dimension of the body (${+(minDim / 2).toFixed(3)} mm)`)
+  }
+  const body = shape as unknown as { shell(t: number, f: (f: { inList(l: AnyShape[]): unknown }) => unknown): Sh }
+  let out: Sh
+  try {
+    out = body.shell(a.side === 'inside' ? a.thickness : -a.thickness, (f) => f.inList(list))
+  } catch (e) {
+    throw new Error(`A shell of ${a.thickness} mm is not possible here (${e instanceof Error ? e.message : e})`)
+  }
+  if (!valid(out)) throw new Error(`A shell of ${a.thickness} mm is not possible here`)
+  return h.sendBody(h.bodyFromShape(a.id, a.name, out))
+})

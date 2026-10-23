@@ -16,6 +16,11 @@ export interface SelectionRef {
   index?: number
 }
 
+export interface SectionState { on: boolean; axis: 'X' | 'Y' | 'Z'; offset: number; flip: boolean }
+
+/** Origin planes start hidden (like Fusion); the Browser's eye toggles show them. */
+export const DEFAULT_HIDDEN: Record<string, true> = { planeXY: true, planeXZ: true, planeYZ: true }
+
 export interface InspectorSession {
   schema: ParamSchema
   values: ParamValues
@@ -44,6 +49,8 @@ interface UiState {
   hiddenIds: Record<string, true>
   paletteOpen: boolean
   inspector: InspectorSession | null
+  /** section analysis clipping plane */
+  section: SectionState
   /** viewport stats */
   triangles: number
   kernelBusy: boolean
@@ -67,6 +74,9 @@ interface UiState {
   openInspector: (s: InspectorSession) => void
   closeInspector: () => void
   setStats: (p: { triangles?: number; kernelBusy?: boolean }) => void
+  setSection: (p: Partial<SectionState>) => void
+  /** hide everything except `id` (or show everything again when it is already isolated) */
+  isolate: (id: string, all: string[]) => void
 }
 
 const sameRef = (a: SelectionRef, b: SelectionRef) => a.kind === b.kind && a.id === b.id && a.index === b.index
@@ -86,9 +96,10 @@ export const useUi = create<UiState>((set, get) => ({
   selectionFilter: 'face',
   selection: [],
   hover: null,
-  hiddenIds: {},
+  hiddenIds: { ...DEFAULT_HIDDEN },
   paletteOpen: false,
   inspector: null,
+  section: { on: false, axis: 'Z', offset: 0, flip: false },
   triangles: 0,
   kernelBusy: false,
 
@@ -130,4 +141,15 @@ export const useUi = create<UiState>((set, get) => ({
   openInspector: (inspector) => set({ inspector }),
   closeInspector: () => set({ inspector: null }),
   setStats: (p) => set(p),
+  setSection: (p) => set((s) => ({ section: { ...s.section, ...p } })),
+  isolate: (id, all) =>
+    set((s) => {
+      const others = all.filter((x) => x !== id)
+      const isolated = !s.hiddenIds[id] && others.every((x) => s.hiddenIds[x])
+      if (isolated) return { hiddenIds: { ...DEFAULT_HIDDEN } }
+      const h: Record<string, true> = { ...DEFAULT_HIDDEN }
+      for (const x of others) h[x] = true
+      delete h[id]
+      return { hiddenIds: h }
+    }),
 }))

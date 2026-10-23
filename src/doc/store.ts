@@ -5,6 +5,7 @@
 import { create } from 'zustand'
 import type { Body } from '@/kernel/types'
 import type { ParamValues } from '@/ui/schema'
+import { DEFAULT_HIDDEN, useUi } from '@/store/ui'
 import { getFeature } from './registry'
 import { setUserParams as applyUserParams } from './params'
 import type { DocData, Feature, FeatureState, UserParam } from './types'
@@ -179,11 +180,13 @@ export const useDoc = create<DocState>((set, get) => {
     newDocument: () => {
       past.length = 0
       future.length = 0
+      useUi.setState({ selection: [], hover: null, hiddenIds: { ...DEFAULT_HIDDEN } })
       apply(empty(), { blobs: {}, selectedFeatureId: null, dirty: false })
     },
     loadDocument: (data, blobs) => {
       past.length = 0
       future.length = 0
+      useUi.setState({ selection: [], hover: null, hiddenIds: { ...DEFAULT_HIDDEN } })
       apply({ ...empty(), ...data }, { blobs, selectedFeatureId: null, dirty: false })
     },
     getData: pick,

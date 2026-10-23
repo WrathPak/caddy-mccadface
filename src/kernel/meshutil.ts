@@ -199,3 +199,115 @@ export function meshDisplay(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG): Mes
   }
   return { positions, normals, indices, faceIds, edges: segs, edgeIds, faceCount, edgeCount: ids.size }
 }
+
+// ---------------------------------------------------------------- smoothing and repair (pure, no WASM)
+
+/** Vertex -> neighbouring vertices of a welded mesh, plus which vertices lie on an open (boundary) edge. */
+function vertexRings(topo: TopoMesh) {
+  const nv = topo.positions.length / 3
+  const rings: Set<number>[] = Array.from({ length: nv }, () => new Set<number>())
+  const edgeUse = new Map<number, number>()
+  const idx = topo.indices
+  for (let t = 0; t < idx.length; t += 3) {
+    for (let k = 0; k < 3; k++) {
+      const a = idx[t + k], b = idx[t + ((k + 1) % 3)]
+      rings[a].add(b)
+      rings[b].add(a)
+      const key = a < b ? a * nv + b : b * nv + a
+      edgeUse.set(key, (edgeUse.get(key) ?? 0) + 1)
+    }
+  }
+  const boundary = new Uint8Array(nv)
+  for (const [key, n] of edgeUse) if (n !== 2) { boundary[Math.floor(key / nv)] = 1; boundary[key % nv] = 1 }
+  return { rings, boundary }
+}
+
+/**
+ * Taubin (lambda | mu) smoothing: each iteration moves every vertex towards the average of its neighbours, then back out
+ * a little, so surfaces relax without shrinking. Vertices on open boundaries stay put. `strength` is 0..1.
+ */
+export function smoothTopo(topo: TopoMesh, iterations: number, strength: number): TopoMesh {
+  const { rings, boundary } = vertexRings(topo)
+  const lambda = Math.min(1, Math.max(0, strength)) * 0.6
+  const mu = -lambda * 1.03
+  let cur = Float32Array.from(topo.positions)
+  const nv = cur.length / 3
+  const pass = (src: Float32Array, k: number) => {
+    const out = Float32Array.from(src)
+    for (let v = 0; v < nv; v++) {
+      const r = rings[v]
+      if (boundary[v] || !r.size) continue
+      let x = 0, y = 0, z = 0
+      for (const n of r) { x += src[n * 3]; y += src[n * 3 + 1]; z += src[n * 3 + 2] }
+      out[v * 3] = src[v * 3] + k * (x / r.size - src[v * 3])
+      out[v * 3 + 1] = src[v * 3 + 1] + k * (y / r.size - src[v * 3 + 1])
+      out[v * 3 + 2] = src[v * 3 + 2] + k * (z / r.size - src[v * 3 + 2])
+    }
+    return out
+  }
+  for (let i = 0; i < iterations; i++) cur = pass(pass(cur, lambda), mu)
+  return { positions: cur, indices: topo.indices.slice() }
+}
+
+export interface RepairReport { welded: number; degenerate: number; duplicates: number; holesFilled: number }
+
+/**
+ * Make a triangle soup a closed mesh where that is unambiguous: weld vertices within `eps`, drop degenerate and duplicate
+ * triangles, and close each open boundary loop with a fan around its centroid.
+ */
+export function repairTopo(topo: TopoMesh, eps: number): { mesh: TopoMesh; report: RepairReport } {
+  const before = topo.positions.length / 3
+  const w = weld(topo.positions, topo.indices, Math.max(eps, 1e-9))
+  const report: RepairReport = { welded: before - w.positions.length / 3, degenerate: topo.indices.length / 3 - w.indices.length / 3, duplicates: 0, holesFilled: 0 }
+  // duplicate triangles (same vertex set)
+  const seen = new Set<string>()
+  const tri: number[] = []
+  for (let t = 0; t < w.indices.length; t += 3) {
+    const k = [w.indices[t], w.indices[t + 1], w.indices[t + 2]].sort((a, b) => a - b).join(',')
+    if (seen.has(k)) { report.duplicates++; continue }
+    seen.add(k)
+    tri.push(w.indices[t], w.indices[t + 1], w.indices[t + 2])
+  }
+  const pos = Array.from(w.positions)
+  // boundary half-edges: directed edges whose opposite does not exist; the hole is walked against them
+  const directed = new Set<string>()
+  for (let t = 0; t < tri.length; t += 3) for (let k = 0; k < 3; k++) directed.add(tri[t + k] + '>' + tri[t + ((k + 1) % 3)])
+  const next = new Map<number, number[]>()
+  for (const key of directed) {
+    const [a, b] = key.split('>').map(Number)
+    if (!directed.has(b + '>' + a)) (next.get(b) ?? next.set(b, []).get(b)!).push(a)
+  }
+  const used = new Set<string>()
+  for (const [start] of next) {
+    let cur = start
+    const loop: number[] = [cur]
+    for (let guard = 0; guard < 1e6; guard++) {
+      const outs = next.get(cur)?.filter((n) => !used.has(cur + '>' + n))
+      if (!outs?.length) break
+      const n = outs[0]
+      used.add(cur + '>' + n)
+      if (n === start) { cur = n; break }
+      loop.push(n)
+      cur = n
+    }
+    if (cur !== start || loop.length < 3) continue
+    let cx = 0, cy = 0, cz = 0
+    for (const v of loop) { cx += pos[v * 3]; cy += pos[v * 3 + 1]; cz += pos[v * 3 + 2] }
+    const c = pos.length / 3
+    pos.push(cx / loop.length, cy / loop.length, cz / loop.length)
+    for (let i = 0; i < loop.length; i++) tri.push(c, loop[i], loop[(i + 1) % loop.length])
+    report.holesFilled++
+  }
+  return { mesh: { positions: Float32Array.from(pos), indices: Uint32Array.from(tri) }, report }
+}
+
+/** Signed enclosed volume of a closed triangle mesh. */
+export function topoVolume(t: TopoMesh): number {
+  const p = t.positions, ix = t.indices
+  let v = 0
+  for (let k = 0; k < ix.length; k += 3) {
+    const a = ix[k] * 3, b = ix[k + 1] * 3, c = ix[k + 2] * 3
+    v += (p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1]) - p[a + 1] * (p[b] * p[c + 2] - p[b + 2] * p[c]) + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c])) / 6
+  }
+  return v
+}
