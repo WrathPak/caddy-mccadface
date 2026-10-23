@@ -22,20 +22,30 @@ export interface Surf {
   tn: Float32Array
   area: Float64Array
   total: number
+  /** open boundary as directed edges (in triangle winding order) */
+  boundary: [number, number][]
 }
 
-/** Welded, validated surface with vertex normals. */
+/** Welded, validated surface with vertex normals. Throws a readable error on non-manifold / inconsistently wound input. */
 export function prepSurface(positions: Float32Array, indices: Uint32Array): Surf {
   const w = weld(positions, indices)
   const pos = w.positions, idx = w.indices
   const T = idx.length / 3
   if (!T) throw new Error('The selected surface is empty')
+  const nv = pos.length / 3
   const vn = new Float32Array(pos.length)
   const tn = new Float32Array(T * 3)
   const area = new Float64Array(T)
   let total = 0
+  const dir = new Set<number>()
   for (let t = 0; t < T; t++) {
-    const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3
+    const ia = idx[t * 3], ib = idx[t * 3 + 1], ic = idx[t * 3 + 2]
+    for (const [p, q] of [[ia, ib], [ib, ic], [ic, ia]]) {
+      const key = p * nv + q
+      if (dir.has(key)) throw new Error('The selected surface is non-manifold or has inconsistently oriented triangles (an edge is shared by more than two triangles or two triangles disagree on winding); repair the mesh or pick a cleaner region')
+      dir.add(key)
+    }
+    const a = ia * 3, b = ib * 3, c = ic * 3
     const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2]
     const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2]
     const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx
@@ -46,7 +56,12 @@ export function prepSurface(positions: Float32Array, indices: Uint32Array): Surf
     for (const v of [a, b, c]) { vn[v] += x; vn[v + 1] += y; vn[v + 2] += z }
   }
   normalizeAll(vn)
-  return { pos, idx, vn, tn, area, total }
+  const boundary: [number, number][] = []
+  for (const key of dir) {
+    const a = Math.floor(key / nv), b = key % nv
+    if (!dir.has(b * nv + a)) boundary.push([a, b])
+  }
+  return { pos, idx, vn, tn, area, total, boundary }
 }
 
 export function normalizeAll(a: Float32Array) {
@@ -56,27 +71,9 @@ export function normalizeAll(a: Float32Array) {
   }
 }
 
-/** Laplacian-smoothed copy of the vertex normals (keeps offset surfaces from folding). */
-export function smoothNormals(s: Surf, iters: number): Float32Array {
-  let n = s.vn.slice()
-  for (let it = 0; it < iters; it++) {
-    const acc = n.slice()
-    for (let t = 0; t < s.idx.length; t += 3) {
-      for (let k = 0; k < 3; k++) {
-        const a = s.idx[t + k] * 3, b = s.idx[t + ((k + 1) % 3)] * 3
-        acc[a] += n[b]; acc[a + 1] += n[b + 1]; acc[a + 2] += n[b + 2]
-        acc[b] += n[a]; acc[b + 1] += n[a + 1]; acc[b + 2] += n[a + 2]
-      }
-    }
-    normalizeAll(acc)
-    n = acc
-  }
-  return n
-}
-
 export interface Roots { p: Float32Array; n: Float32Array; count: number; capped: boolean }
 
-const MAX_STRANDS = 20000
+export const MAX_STRANDS = 20000
 
 function bary(s: Surf, t: number, p: V3): V3 {
   const a = s.idx[t * 3] * 3, b = s.idx[t * 3 + 1] * 3, c = s.idx[t * 3 + 2] * 3
@@ -113,6 +110,89 @@ function triPoint(s: Surf, t: number, u: number, v: number): V3 {
 export const snappedThickness = (p: HairParams) =>
   p.snapThickness ? Math.max(p.layerHeight, Math.round(p.thickness / p.layerHeight) * p.layerHeight) : p.thickness
 
+/**
+ * Layer-aligned rows: contour lines of the surface at z = k * rowGap + thickness/2 (so each strand's underside sits on a layer boundary),
+ * chained into polylines and walked at uniform spacing.
+ */
+function rowRoots(s: Surf, P: HairParams, dens: number, rand: () => number, pts: V3[], tris: number[]) {
+  const nv = s.pos.length / 3
+  const lh = P.layerHeight
+  const half = snappedThickness(P) / 2
+  const spacing = 1 / Math.sqrt(dens)
+  const rowGap = Math.max(1, Math.round(spacing / lh)) * lh
+  const zOf = (k: number) => k * rowGap + half
+  const rows = new Map<number, number[]>()
+  for (let t = 0; t < s.idx.length / 3; t++) {
+    const z = [0, 1, 2].map((k) => s.pos[s.idx[t * 3 + k] * 3 + 2])
+    const lo = Math.min(...z), hi = Math.max(...z)
+    for (let k = Math.floor((lo - half) / rowGap); zOf(k) <= hi; k++) {
+      if (zOf(k) > lo) { const l = rows.get(k); if (l) l.push(t); else rows.set(k, [t]) }
+    }
+  }
+  for (const k of [...rows.keys()].sort((a, b) => a - b)) {
+    const z = zOf(k)
+    interface Seg { ka: number; kb: number; A: V3; B: V3; t: number; along: number }
+    const segs: Seg[] = []
+    const link = new Map<number, number[]>()
+    for (const t of rows.get(k)!) {
+      const hits: { key: number; p: V3 }[] = []
+      for (let e = 0; e < 3; e++) {
+        const a = s.idx[t * 3 + e], b = s.idx[t * 3 + ((e + 1) % 3)]
+        const za = s.pos[a * 3 + 2], zb = s.pos[b * 3 + 2]
+        if ((za < z) === (zb < z)) continue
+        const f = (z - za) / (zb - za)
+        hits.push({ key: Math.min(a, b) * nv + Math.max(a, b), p: [s.pos[a * 3] + (s.pos[b * 3] - s.pos[a * 3]) * f, s.pos[a * 3 + 1] + (s.pos[b * 3 + 1] - s.pos[a * 3 + 1]) * f, z] })
+      }
+      if (hits.length !== 2) continue
+      // steepness of the surface along z: distance along the surface per unit of height
+      const g = Math.max(0.15, Math.sqrt(Math.max(0, 1 - s.tn[t * 3 + 2] ** 2)))
+      const id = segs.length
+      segs.push({ ka: hits[0].key, kb: hits[1].key, A: hits[0].p, B: hits[1].p, t, along: g / (dens * rowGap) })
+      for (const key of [hits[0].key, hits[1].key]) { const l = link.get(key); if (l) l.push(id); else link.set(key, [id]) }
+    }
+    const used = new Uint8Array(segs.length)
+    const walk = (start: number, fromKey: number) => {
+      let ph = rand()
+      let seg = start, key = fromKey
+      while (seg >= 0 && !used[seg]) {
+        used[seg] = 1
+        const S = segs[seg]
+        const fwd = S.ka === key
+        const [A, B] = fwd ? [S.A, S.B] : [S.B, S.A]
+        const L = Math.hypot(B[0] - A[0], B[1] - A[1])
+        const rate = 1 / Math.max(0.05, S.along)
+        let d = 0
+        for (;;) {
+          const need = (1 - ph) / rate
+          if (d + need > L) { ph += (L - d) * rate; break }
+          d += need; ph = 0
+          if (pts.length >= MAX_STRANDS) return
+          const f = L > 0 ? d / L : 0
+          pts.push([A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, z]); tris.push(S.t)
+        }
+        key = fwd ? S.kb : S.ka
+        seg = (link.get(key) ?? []).find((x) => x !== seg && !used[x]) ?? -1
+      }
+    }
+    for (const key of [...link.keys()].sort((a, b) => a - b)) if (link.get(key)!.length === 1 && !used[link.get(key)![0]]) walk(link.get(key)![0], key)
+    for (let i = 0; i < segs.length; i++) if (!used[i]) walk(i, segs[i].ka)
+    if (pts.length >= MAX_STRANDS) break
+  }
+}
+
+/** Move a root along its triangle so its height is a layer-aligned strand centre (underside on a layer boundary). */
+function snapToLayer(s: Surf, P: HairParams, p: V3, t: number): V3 {
+  const lh = P.layerHeight, half = snappedThickness(P) / 2
+  const nz = s.tn[t * 3 + 2]
+  const nrm: V3 = [s.tn[t * 3], s.tn[t * 3 + 1], nz]
+  const g: V3 = [-nz * nrm[0], -nz * nrm[1], 1 - nz * nz] // z projected onto the triangle plane
+  const gl2 = g[0] * g[0] + g[1] * g[1] + g[2] * g[2]
+  if (gl2 < 0.0625) return p // plane within ~14 deg of horizontal: height cannot be controlled by sliding along it
+  const target = Math.round((p[2] - half) / lh) * lh + half
+  const k = (target - p[2]) / gl2
+  return [p[0] + g[0] * k, p[1] + g[1] * k, target]
+}
+
 /** Area-weighted root sampling (Poisson dart throwing / triangle grid / layer-aligned rows). */
 export function sampleRoots(s: Surf, P: HairParams): Roots {
   const rand = rng(P.seed * 1013 + 7)
@@ -121,51 +201,16 @@ export function sampleRoots(s: Surf, P: HairParams): Roots {
   const capped = dens < dens0
   const spacing = 1 / Math.sqrt(dens)
   const pts: V3[] = [], tris: number[] = []
-  const rows = P.distribution === 'rows' || P.printAware
 
-  if (rows) {
-    let zmin = Infinity, zmax = -Infinity
-    for (let i = 2; i < s.pos.length; i += 3) { zmin = Math.min(zmin, s.pos[i]); zmax = Math.max(zmax, s.pos[i]) }
-    const lh = P.layerHeight
-    const stride = Math.max(1, Math.round(spacing / lh))
-    const half = snappedThickness(P) / 2
-    for (let j = Math.floor((zmin - half) / (lh * stride)); j * lh * stride + half <= zmax && pts.length < MAX_STRANDS; j++) {
-      const z = j * lh * stride + half
-      if (z < zmin || z > zmax) continue
-      let carry = spacing * rand()
-      for (let t = 0; t < s.idx.length / 3 && pts.length < MAX_STRANDS; t++) {
-        const vi = [0, 1, 2].map((k) => s.idx[t * 3 + k] * 3)
-        const zs = vi.map((v) => s.pos[v + 2])
-        if (Math.min(...zs) >= z || Math.max(...zs) < z) continue
-        const hits: V3[] = []
-        for (let k = 0; k < 3; k++) {
-          const a = vi[k], b = vi[(k + 1) % 3]
-          const za = s.pos[a + 2], zb = s.pos[b + 2]
-          if ((za < z) === (zb < z)) continue
-          const f = (z - za) / (zb - za)
-          hits.push([s.pos[a] + (s.pos[b] - s.pos[a]) * f, s.pos[a + 1] + (s.pos[b + 1] - s.pos[a + 1]) * f, z])
-        }
-        if (hits.length < 2) continue
-        const [A, B] = hits
-        const L = Math.hypot(B[0] - A[0], B[1] - A[1])
-        let d = carry
-        while (d < L && pts.length < MAX_STRANDS) {
-          const f = d / L
-          pts.push([A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, z])
-          tris.push(t)
-          d += spacing
-        }
-        carry = d - L
-      }
-    }
+  if (P.distribution === 'rows') {
+    rowRoots(s, P, dens, rand, pts, tris)
   } else if (P.distribution === 'grid') {
     for (let t = 0; t < s.idx.length / 3; t++) {
       const n = s.area[t] * dens
-      if (n < 1) {
-        if (rand() < n) { let u = rand(), v = rand(); if (u + v > 1) { u = 1 - u; v = 1 - v } pts.push(triPoint(s, t, u, v)); tris.push(t) }
-        continue
-      }
-      const k = Math.max(1, Math.round(Math.sqrt(n)))
+      // k*k points per triangle; k is rounded stochastically so the expected count equals n
+      const k0 = Math.floor(Math.sqrt(n))
+      const k = rand() < (n - k0 * k0) / ((k0 + 1) ** 2 - k0 * k0) ? k0 + 1 : k0
+      if (k === 1) { let u = rand(), v = rand(); if (u + v > 1) { u = 1 - u; v = 1 - v } pts.push(triPoint(s, t, u, v)); tris.push(t); continue }
       for (let i = 0; i < k; i++) {
         for (let j = 0; i + j < k; j++) {
           pts.push(triPoint(s, t, (i + 1 / 3) / k, (j + 1 / 3) / k)); tris.push(t)
@@ -180,9 +225,9 @@ export function sampleRoots(s: Surf, P: HairParams): Roots {
     const cum = new Float64Array(s.area.length)
     let acc = 0
     for (let t = 0; t < cum.length; t++) cum[t] = acc += s.area[t]
-    const grid = new Map<number, number[]>()
-    const key = (x: number, y: number, z: number) => ((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) | 0
-    for (let tries = 0; pts.length < target && tries < target * 12; tries++) {
+    const grid = new Map<string, number[]>()
+    const key = (x: number, y: number, z: number) => x + ',' + y + ',' + z
+    for (let tries = 0; pts.length < target && tries < target * 30; tries++) {
       const f = rand() * acc
       let lo = 0, hi = cum.length - 1
       while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < f) lo = m + 1; else hi = m }
@@ -207,6 +252,9 @@ export function sampleRoots(s: Surf, P: HairParams): Roots {
     }
   }
 
+  // print-aware: layer-align the root heights for every pattern (rows already are)
+  if (P.printAware && P.distribution !== 'rows') for (let i = 0; i < pts.length; i++) pts[i] = snapToLayer(s, P, pts[i], tris[i])
+
   // edge margin: distance to the region's open boundary
   const keep = P.edgeMargin > 0 ? farFromBoundary(s, pts, P.edgeMargin) : null
   const outP: number[] = [], outN: number[] = []
@@ -220,28 +268,8 @@ export function sampleRoots(s: Surf, P: HairParams): Roots {
   return { p: new Float32Array(outP), n: new Float32Array(outN), count, capped }
 }
 
-/** Open (boundary) edges of the surface as segment endpoints. */
-export function boundaryEdges(s: Surf): [number, number][] {
-  const nv = s.pos.length / 3
-  const dir = new Map<number, number>()
-  for (let t = 0; t < s.idx.length; t += 3) {
-    for (let k = 0; k < 3; k++) {
-      const a = s.idx[t + k], b = s.idx[t + ((k + 1) % 3)]
-      const key = a * nv + b
-      if (dir.has(key)) throw new Error('The selected surface has flipped or non-manifold triangles')
-      dir.set(key, 1)
-    }
-  }
-  const out: [number, number][] = []
-  for (const key of dir.keys()) {
-    const a = Math.floor(key / nv), b = key % nv
-    if (!dir.has(b * nv + a)) out.push([a, b])
-  }
-  return out
-}
-
 function farFromBoundary(s: Surf, pts: V3[], margin: number): Uint8Array {
-  const edges = boundaryEdges(s)
+  const edges = s.boundary
   const ok = new Uint8Array(pts.length).fill(1)
   if (!edges.length) return ok
   const cell = Math.max(margin * 2, 1)

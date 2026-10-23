@@ -47,8 +47,6 @@ export interface HairParams {
   wallDir: V3
   wallTop: number
   wallBottom: number
-  breakLine: 'none' | 'perforation' | 'groove'
-  breakSize: number
   wallSeparate: boolean
   // output
   merge: boolean
@@ -119,10 +117,8 @@ export const hairSchema: ParamSchema = {
         { type: 'vector3', key: 'wallDir', label: 'Plane normal', step: 0.1, default: [0, 0, 0], visibleWhen: (v) => !!v.wall && v.wallMode === 'planar' },
         { type: 'number', key: 'wallThickness', label: 'Thickness', unit: 'mm', min: 0.4, step: 0.2, default: 2, visibleWhen: (v) => !!v.wall },
         { type: 'number', key: 'tipOverlap', label: 'Tip overlap', unit: 'mm', min: 0, step: 0.1, default: 0.6, visibleWhen: (v) => !!v.wall },
-        { type: 'number', key: 'wallTop', label: 'Top margin', unit: 'mm', min: 0, step: 1, default: 2, visibleWhen: (v) => !!v.wall && v.wallMode !== 'follow' },
-        { type: 'number', key: 'wallBottom', label: 'Bottom margin', unit: 'mm', min: 0, step: 1, default: 2, visibleWhen: (v) => !!v.wall && v.wallMode !== 'follow' },
-        { type: 'enum', key: 'breakLine', label: 'Break line', display: 'segmented', default: 'none', visibleWhen: (v) => !!v.wall, options: [{ value: 'none', label: 'None' }, { value: 'perforation', label: 'Holes' }, { value: 'groove', label: 'V-groove' }] },
-        { type: 'number', key: 'breakSize', label: 'Break size', unit: 'mm', min: 0.1, step: 0.1, default: 0.6, visibleWhen: (v) => !!v.wall && v.breakLine !== 'none' },
+        { type: 'number', key: 'wallTop', label: 'Top margin', unit: 'mm', min: 0, step: 1, default: 2, visibleWhen: (v) => !!v.wall },
+        { type: 'number', key: 'wallBottom', label: 'Bottom margin', unit: 'mm', min: 0, step: 1, default: 2, visibleWhen: (v) => !!v.wall },
         { type: 'bool', key: 'wallSeparate', label: 'Keep wall as own body', default: false, visibleWhen: (v) => !!v.wall },
       ],
     },

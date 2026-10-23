@@ -46,7 +46,17 @@ export function encodeRegion(body: Body, sel: Set<number>): string[] {
 
 export interface RegionSet { body: Body; kind: 'mesh' | 'brep'; set: Set<number> }
 
-/** Resolve region param strings against the current bodies. */
+/** Every triangle (mesh bodies) / every face id (B-reps) of a body. */
+function wholeBody(body: Body): RegionSet {
+  if (body.kind === 'mesh') return { body, kind: 'mesh', set: new Set(Array.from({ length: body.mesh.indices.length / 3 }, (_, i) => i)) }
+  return { body, kind: 'brep', set: new Set(body.mesh.faceIds) }
+}
+
+/**
+ * Resolve region param strings against the current bodies. Accepts paint-tool tokens (mesh triangle runs), B-rep face refs,
+ * and what the Inspector's "Use sel." produces: face refs / whole-body ids. Mesh bodies have no per-face ids, so a face or body
+ * selection on a mesh body means the whole mesh (use the paint tools for a sub-region).
+ */
 export function resolveRegionSet(region: string[], bodies: Body[]): RegionSet | null {
   if (!region.length) return null
   const t = decodeTris(region[0])
@@ -56,15 +66,20 @@ export function resolveRegionSet(region: string[], bodies: Body[]): RegionSet | 
   }
   let body: Body | null = null
   const set = new Set<number>()
+  let whole: Body | null = null
   for (const r of region) {
     const ref = decodeRef(r)
-    if (!ref || ref.kind !== 'face') continue
+    if (!ref) continue
+    if (ref.kind === 'body') { whole ??= bodies.find((b) => b.id === ref.bodyId) ?? null; continue }
+    if (ref.kind !== 'face') continue
     const res = resolveFace(ref as FaceRef, bodies)
     if (!res || (body && body.id !== res.body.id)) continue
     body = res.body
     set.add(res.index)
   }
-  return body ? { body, kind: 'brep', set } : null
+  if (body?.kind === 'mesh') return wholeBody(body)
+  if (body) return { body, kind: 'brep', set }
+  return whole ? wholeBody(whole) : null
 }
 
 /** Triangles of the region as a standalone (unwelded) triangle soup for the worker. */
