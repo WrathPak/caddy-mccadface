@@ -1,0 +1,44 @@
+.dockview-theme-weeb {
+  --dv-paneview-active-outline-color: var(--accent);
+  --dv-tabs-and-actions-container-font-size: 11px;
+  --dv-tabs-and-actions-container-height: 24px;
+  --dv-drag-over-background-color: var(--accent-dim);
+  --dv-drag-over-border-color: var(--accent-line);
+  --dv-tabs-container-scrollbar-color: var(--line-strong);
+  --dv-icon-hover-background-color: var(--bg-hover);
+  --dv-floating-box-shadow: var(--shadow-float);
+  --dv-overlay-z-index: 900;
+  --dv-tab-font-size: 11px;
+  --dv-border-radius: 0px;
+  --dv-tab-margin: 0;
+  --dv-sash-color: var(--line);
+  --dv-active-sash-color: var(--accent);
+  --dv-active-sash-transition-duration: 0.1s;
+  --dv-active-sash-transition-delay: 0.2s;
+  --dv-group-view-background-color: var(--bg-1);
+  --dv-tabs-and-actions-container-background-color: var(--bg-0);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--bg-1);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--bg-0);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg-1);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--bg-0);
+  --dv-tab-divider-color: var(--line);
+  --dv-activegroup-visiblepanel-tab-color: var(--text);
+  --dv-activegroup-hiddenpanel-tab-color: var(--text-dim);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--text-dim);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--text-faint);
+  --dv-separator-border: var(--line);
+  --dv-paneview-header-border-color: var(--line);
+}
+.dockview-theme-weeb .dv-tab {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 10px;
+}
+.dockview-theme-weeb .dv-groupview { border: none; }
+.dockview-theme-weeb .dv-groupview.dv-active-group > .dv-tabs-and-actions-container .dv-tab.dv-active-tab {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.dockview-theme-weeb .dv-tabs-and-actions-container { border-bottom: 1px solid var(--line); }
+.dockview-theme-weeb .dv-watermark { display: none; }

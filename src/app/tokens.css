@@ -1,0 +1,97 @@
+/* WeebCAD design tokens. Dark graphite default; light via [data-theme="light"]. */
+:root {
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --fs-xs: 10px;
+  --fs-sm: 11px;
+  --fs-md: 12px;
+  --fs-lg: 13px;
+
+  --radius: 3px;
+  --radius-sm: 2px;
+
+  /* surfaces: 0 base, 1 panel, 2 raised, 3 floating */
+  --bg-0: #16181b;
+  --bg-1: #1b1d21;
+  --bg-2: #22252a;
+  --bg-3: #2a2d33;
+  --bg-input: #15171a;
+  --bg-hover: #2b2f35;
+  --bg-active: #323740;
+
+  --line: #2a2d33;
+  --line-strong: #3a3e46;
+
+  --text: #d4d7dc;
+  --text-dim: #9096a0;
+  --text-faint: #636973;
+  --text-on-accent: #0b1417;
+
+  --accent: #5fb3c4;
+  --accent-hover: #78c4d3;
+  --accent-dim: rgba(95, 179, 196, 0.16);
+  --accent-line: rgba(95, 179, 196, 0.55);
+
+  --danger: #d9625a;
+  --warn: #d2a24a;
+  --ok: #6dae7a;
+
+  --shadow-float: 0 4px 14px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.35);
+
+  --ribbon-h: 84px;
+  --tabs-h: 24px;
+  --status-h: 22px;
+
+  /* viewport colors (also read from JS via getComputedStyle) */
+  --vp-bg: #1f2227;
+  --vp-grid: #3b4048;
+  --vp-grid-major: #4d535d;
+  --vp-axis-x: #c0584f;
+  --vp-axis-y: #6aa36a;
+  --vp-axis-z: #5a85c4;
+  --vp-body: #8e969f;
+  --vp-edge: #14161a;
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg-0: #e4e6e9;
+  --bg-1: #f0f1f3;
+  --bg-2: #e8eaed;
+  --bg-3: #dcdfe3;
+  --bg-input: #ffffff;
+  --bg-hover: #dde0e4;
+  --bg-active: #d0d5db;
+
+  --line: #d2d5da;
+  --line-strong: #b9bec6;
+
+  --text: #1f2328;
+  --text-dim: #565d67;
+  --text-faint: #8a919b;
+  --text-on-accent: #ffffff;
+
+  --accent: #1f7f94;
+  --accent-hover: #186a7c;
+  --accent-dim: rgba(31, 127, 148, 0.14);
+  --accent-line: rgba(31, 127, 148, 0.6);
+
+  --danger: #b8443c;
+  --warn: #9a7220;
+  --ok: #3f8150;
+
+  --shadow-float: 0 4px 14px rgba(20, 24, 30, 0.22), 0 0 0 1px rgba(20, 24, 30, 0.12);
+
+  --vp-bg: #d9dce0;
+  --vp-grid: #b4b9c1;
+  --vp-grid-major: #959ca6;
+  --vp-axis-x: #b24a42;
+  --vp-axis-y: #4f8c4f;
+  --vp-axis-z: #3f6cae;
+  --vp-body: #9aa1aa;
+  --vp-edge: #2a2d33;
+
+  color-scheme: light;
+}
