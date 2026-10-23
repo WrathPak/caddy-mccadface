@@ -1,4 +1,5 @@
-export function Segmented({ value, onChange, options, label }: {
+export function Segmented({ value, onChange, options, label, help }: {
+  help?: string
   value: string
   onChange: (v: string) => void
   options: { value: string; label: string }[]
@@ -15,7 +16,7 @@ export function Segmented({ value, onChange, options, label }: {
   )
   return label ? (
     <div className={'field' + (options.length > 2 ? ' stack' : '')}>
-      <span className="field-label" title={label}>{label}</span>
+      <span className="field-label" title={help ?? label}>{label}</span>
       {ctl}
     </div>
   ) : ctl

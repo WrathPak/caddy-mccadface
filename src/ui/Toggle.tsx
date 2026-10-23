@@ -2,7 +2,7 @@ import * as C from '@radix-ui/react-checkbox'
 import { Check } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
-export function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
+export function Checkbox({ checked, onChange, label, help }: { checked: boolean; onChange: (v: boolean) => void; label?: string; help?: string }) {
   const box = (
     <C.Root className="chk" aria-label={label} checked={checked} onCheckedChange={(v) => onChange(v === true)}>
       <C.Indicator><Check size={9} weight="bold" /></C.Indicator>
@@ -11,7 +11,7 @@ export function Checkbox({ checked, onChange, label }: { checked: boolean; onCha
   if (!label) return box
   return (
     <div className="field">
-      <span className="field-label" title={label}>{label}</span>
+      <span className="field-label" title={help ?? label}>{label}</span>
       <div>{box}</div>
     </div>
   )

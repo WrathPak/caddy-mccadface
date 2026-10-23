@@ -3,7 +3,9 @@ import { CaretDown, Check } from '@phosphor-icons/react'
 
 export interface Option { value: string; label: string }
 
-export function Select({ value, onChange, options, label }: {
+export function Select({ value, onChange, options, label, help, placeholder }: {
+  help?: string
+  placeholder?: string
   value: string
   onChange: (v: string) => void
   options: Option[]
@@ -12,7 +14,7 @@ export function Select({ value, onChange, options, label }: {
   const ctl = (
     <S.Root value={value} onValueChange={onChange}>
       <S.Trigger className="sel">
-        <S.Value />
+        <S.Value placeholder={placeholder} />
         <S.Icon><CaretDown size={10} /></S.Icon>
       </S.Trigger>
       <S.Portal>
@@ -31,7 +33,7 @@ export function Select({ value, onChange, options, label }: {
   )
   return label ? (
     <div className="field">
-      <span className="field-label" title={label}>{label}</span>
+      <span className="field-label" title={help ?? label}>{label}</span>
       {ctl}
     </div>
   ) : ctl

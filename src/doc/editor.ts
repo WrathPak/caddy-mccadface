@@ -29,6 +29,7 @@ function openSession(def: FeatureDef, start: ParamValues, tool: string, onOk: (v
       onOk(v)
     },
     onCancel: finish,
+    onActiveGroup: (id: string) => handle?.activeGroup?.(id),
   })
   handle = def.preview?.({ values: start, setValues: (v) => { useUi.getState().openInspector(session(v)); handle?.update(v) } })
   ui.setActiveTool(tool)

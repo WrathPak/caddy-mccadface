@@ -62,7 +62,12 @@ export interface PreviewCtx {
   /** push new values into the open Inspector (e.g. from an on-canvas manipulator) */
   setValues(v: ParamValues): void
 }
-export interface PreviewHandle { update(values: ParamValues): void; dispose(): void }
+export interface PreviewHandle {
+  update(values: ParamValues): void
+  dispose(): void
+  /** the pointer / focus moved into a schema group that has an id */
+  activeGroup?(id: string): void
+}
 
 export interface FeatureDef {
   type: string

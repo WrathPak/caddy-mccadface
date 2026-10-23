@@ -6,8 +6,19 @@ interface Base {
   /** key in the values object */
   key: string
   label: string
+  /** plain-language explanation: tooltip on the label and a hint line under the field while it is focused */
+  help?: string
   /** hide unless predicate over current values is true */
   visibleWhen?: (values: ParamValues) => boolean
+}
+
+export interface EnumOption {
+  value: string
+  label: string
+  /** one-line description (shown under the label in 'list' display) */
+  desc?: string
+  /** icon name resolved by the Inspector (see ui/optionIcons) */
+  icon?: string
 }
 
 export interface NumberParam extends Base {
@@ -20,9 +31,11 @@ export interface NumberParam extends Base {
 }
 export interface EnumParam extends Base {
   type: 'enum'
-  options: { value: string; label: string }[]
-  /** 'segmented' for <=4 short options, else dropdown */
-  display?: 'segmented' | 'select'
+  options: EnumOption[]
+  /** 'segmented' for <=4 short options, 'list' for a visual option list (icon + description), else dropdown */
+  display?: 'segmented' | 'select' | 'list'
+  /** old stored values that now mean another option (older projects) */
+  aliases?: Record<string, string>
   default: string
 }
 export interface BoolParam extends Base {
@@ -54,9 +67,18 @@ export interface InfoParam extends Base {
   text: (values: ParamValues) => string
   default: string
 }
+/** A dropdown that fills several other parameters at once. Its own value remembers the last preset chosen. */
+export interface PresetParam extends Base {
+  type: 'preset'
+  presets: { id: string; label: string; help?: string; values: Record<string, ParamValue> }[]
+  default: string
+}
 export interface GroupParam {
   type: 'group'
   label: string
+  /** identifies the group to the feature (see InspectorSession.onActiveGroup) */
+  id?: string
+  help?: string
   collapsed?: boolean
   children: ParamDef[]
 }
@@ -68,6 +90,7 @@ export type ParamDef =
   | Vector3Param
   | SelectionRefParam
   | InfoParam
+  | PresetParam
   | GroupParam
 
 export type ParamValue = number | string | boolean | [number, number, number] | string[]
@@ -77,6 +100,8 @@ export interface ParamSchema {
   id: string
   title: string
   params: ParamDef[]
+  /** non-blocking advice about the current values, shown above the OK button */
+  warnings?: (values: ParamValues) => string[]
 }
 
 /** Collect default values from a schema (recursing into groups). */

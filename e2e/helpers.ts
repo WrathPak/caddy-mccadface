@@ -76,12 +76,14 @@ export class App {
 
   /** Wait until the camera stops moving (view transitions animate). */
   async cameraStable() {
+    // software WebGL can take over a hundred milliseconds per frame, so one unchanged reading proves nothing: require several
     const read = () => this.page.evaluate(() => JSON.stringify((window as any).__caddy.three.camera.matrixWorld.elements)) // eslint-disable-line
     let prev = await read()
-    for (let i = 0; i < 40; i++) {
+    let same = 0
+    for (let i = 0; i < 80 && same < 3; i++) {
       await this.page.waitForTimeout(150)
       const cur = await read()
-      if (cur === prev) return
+      same = cur === prev ? same + 1 : 0
       prev = cur
     }
   }
@@ -159,7 +161,7 @@ export class App {
     const input = f.locator('input').nth(axis)
     await input.click()
     await input.fill(value)
-    await input.press('Enter')
+    await input.press('Tab')
   }
 
   ribbon(name: string | RegExp) {
@@ -175,13 +177,13 @@ export class App {
     await this.page.locator('.inspector-foot').getByRole('button', { name: 'OK' }).click()
     await this.idle()
   }
-  /** Set a labelled field in the Inspector (types the text, Enter). */
+  /** Set a labelled field in the Inspector (types the text, Tab commits it (Enter would also accept the dialog)). */
   async field(label: string, value: string) {
     const f = this.page.locator('.field', { has: this.page.locator('.field-label', { hasText: label }) }).filter({ has: this.page.locator('input') }).first()
     const input = f.locator('input').first()
     await input.click()
     await input.fill(value)
-    await input.press('Enter')
+    await input.press('Tab')
   }
 }
 

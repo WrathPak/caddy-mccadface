@@ -89,6 +89,8 @@ def('file.export', 'Export', DownloadSimple, 'File', undefined, undefined, 'Expo
 def('edit.undo', 'Undo', ArrowUUpLeft, 'Edit', 'Ctrl+Z')
 def('edit.redo', 'Redo', ArrowUUpRight, 'Edit', 'Ctrl+Y')
 def('edit.delete', 'Delete', Trash, 'Edit', 'Delete')
+// Enter: feature dialogs handle it themselves (Inspector); the sketcher ends the polyline / tool / sketch (sketch/commands.ts)
+registerCommand({ id: 'edit.accept', label: 'Accept', icon: Check, category: 'Edit', shortcut: 'Enter', hidden: true, run: () => {} })
 def('edit.escape', 'Cancel / Clear Selection', Check, 'Edit', 'Escape', () => {
   const ui = useUi.getState()
   if (ui.inspector) return ui.inspector.onCancel()

@@ -12,7 +12,9 @@ import type { MeshData } from '@/kernel/types'
 import { useSketchData, profileGeometry } from '@/sketch/draw'
 import { planeQuaternion } from '@/sketch/plane'
 import { useSketch } from '@/sketch/store'
+import { evalNumber } from '@/doc/params'
 import { useUi } from '@/store/ui'
+import { acceptInspector } from '@/ui/accept'
 import { useVpColors } from './colors'
 
 // ---------------------------------------------------------------- mesh previews
@@ -130,6 +132,17 @@ export function ArrowManipulator() {
   const drag = useRef<{ t0: number; tip0: number } | null>(null)
   const quat = useMemo(() => new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3(...m.dir).normalize()), [m.dir])
   const [hot, setHot] = useState(false)
+  const [typing, setTyping] = useState<string | null>(null)
+  useEffect(() => { if (!m.active) setTyping(null) }, [m.active])
+  /** Enter in the value box: take the typed distance, then accept the dialog like OK does. */
+  const commitTyped = (text: string) => {
+    const v = evalNumber(text, 'mm')
+    if (v === null || !Number.isFinite(v)) return false
+    useManip.getState().onChange?.(+v.toFixed(4))
+    setTyping(null)
+    setTimeout(() => acceptInspector(), 0)
+    return true
+  }
 
   // constant on-screen size
   useFrame((state) => {
@@ -200,7 +213,22 @@ export function ArrowManipulator() {
           </mesh>
         </group>
         <Html position={[0, 0, 0]} zIndexRange={[25, 0]} style={{ pointerEvents: 'none' }}>
-          <div className="sk-tip" style={{ transform: 'translate(14px, -26px)' }}>{m.label(m.tip * m.factor)}</div>
+          {typing === null ? (
+            <div className="sk-tip" data-testid="manip-value" style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', cursor: 'text' }}
+              title="Click to type a value, Enter to accept" onClick={() => setTyping(String(+(m.tip * m.factor).toFixed(3)))}>{m.label(m.tip * m.factor)}</div>
+          ) : (
+            <input className="sk-tip sk-tip-input" data-testid="manip-input" data-accept-on-enter autoFocus value={typing} spellCheck={false}
+              style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', width: 84 }}
+              onFocus={(e) => e.currentTarget.select()}
+              onChange={(e) => setTyping(e.target.value)}
+              onPointerDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                if (e.key === 'Enter') { e.preventDefault(); commitTyped(typing) }
+                else if (e.key === 'Escape') setTyping(null)
+              }}
+              onBlur={() => setTyping(null)} />
+          )}
         </Html>
       </group>
     </group>

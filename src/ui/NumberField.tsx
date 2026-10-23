@@ -16,6 +16,8 @@ export interface NumberFieldProps {
   /** small node inside the left of the input (e.g. axis letter) */
   prefix?: ReactNode
   disabled?: boolean
+  /** plain-language explanation shown as the label tooltip */
+  help?: string
 }
 
 const clamp = (v: number, min?: number, max?: number) =>
@@ -27,11 +29,12 @@ const fmt = (v: number | undefined, p: number) =>
 /** Evaluate an expression (mathjs, with user parameters). Returns a number in `unit`, or null if invalid. */
 export const evalExpr = (text: string, unit?: string): number | null => evalNumber(text, unit)
 
-export function NumberField({ label, value, onChange, expr, unit, min, max, step = 1, precision = 3, prefix, disabled }: NumberFieldProps) {
+export function NumberField({ label, value, onChange, expr, unit, min, max, step = 1, precision = 3, prefix, disabled, help }: NumberFieldProps) {
   const [text, setText] = useState(expr ?? fmt(value, precision))
   const [editing, setEditing] = useState(false)
   const [bad, setBad] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const escaped = useRef(false)
 
   useEffect(() => {
     if (!editing) setText(expr ?? fmt(value, precision))
@@ -57,8 +60,12 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
       commit()
       inputRef.current?.blur()
     } else if (e.key === 'Escape') {
-      e.stopPropagation()
-      setText(fmt(value, precision))
+      // a pending edit is reverted first; with nothing to revert the key reaches the dialog (which cancels)
+      if (text !== fmt(value, precision) && !expr) {
+        e.stopPropagation()
+        escaped.current = true // the blur below must not commit the abandoned text
+        setText(fmt(value, precision))
+      }
       inputRef.current?.blur()
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       e.preventDefault()
@@ -101,7 +108,8 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
           e.currentTarget.select()
         }}
         onBlur={() => {
-          if (editing) commit()
+          if (editing && !escaped.current) commit()
+          escaped.current = false
           setEditing(false)
         }}
         onChange={(e) => setText(e.target.value)}
@@ -113,7 +121,7 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
   if (!label) return input
   return (
     <div className="field">
-      <span className="field-label scrub" onPointerDown={onScrub} title={label + " (drag to adjust)"}>
+      <span className="field-label scrub" onPointerDown={onScrub} title={help ? help + ' (drag the label to adjust)' : label + ' (drag to adjust)'}>
         {label}
       </span>
       {input}

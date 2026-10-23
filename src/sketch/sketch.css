@@ -96,3 +96,4 @@
 .sk-field .caret { display: inline-block; width: 1px; height: 11px; margin-left: 1px; background: var(--accent); vertical-align: -2px; animation: sk-blink 1s steps(1) infinite; }
 .sk-keys { font: 500 9px var(--font-ui); color: var(--text-faint); padding: 0 2px; }
 @keyframes sk-blink { 50% { opacity: 0; } }
+.sk-tip-input { background: var(--bg-input); border: 1px solid var(--accent); border-radius: 3px; color: var(--text); padding: 1px 4px; outline: none; }

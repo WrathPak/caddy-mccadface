@@ -28,6 +28,8 @@ export interface InspectorSession {
   onChange?: (values: ParamValues) => void
   onOk: (values: ParamValues) => void
   onCancel: () => void
+  /** the pointer or keyboard focus moved into a schema group that has an id */
+  onActiveGroup?: (id: string) => void
 }
 
 interface UiState {
@@ -51,6 +53,8 @@ interface UiState {
   inspector: InspectorSession | null
   /** a selection field that accepts sketches is active: finished sketch curves become clickable */
   pickSketches: boolean
+  /** a message from the open feature's live preview (e.g. "no strands fit"), shown in the dialog */
+  inspectorNotice: string | null
   /** extra entities drawn highlighted without being selected (e.g. both Measure picks) */
   highlight: SelectionRef[]
   /** section analysis clipping plane */
@@ -104,6 +108,7 @@ export const useUi = create<UiState>((set, get) => ({
   paletteOpen: false,
   inspector: null,
   pickSketches: false,
+  inspectorNotice: null,
   highlight: [],
   section: { on: false, axis: 'Z', offset: 0, flip: false },
   triangles: 0,

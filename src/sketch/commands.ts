@@ -4,7 +4,7 @@ import { getCommand, registerCommand, type Command } from '@/app/commands'
 import { useUi } from '@/store/ui'
 import { startSketchCommand, stopPicking, useSketchPick } from './create'
 import {
-  deleteSelection, escapeSketch, finishSketch, redoSketch, runConstraintCommand, setTool, toggleConstruction, undoSketch, useSketch,
+  deleteSelection, enterSketch, escapeSketch, finishSketch, redoSketch, runConstraintCommand, setTool, toggleConstruction, undoSketch, useSketch,
   type ToolId,
 } from './store'
 import type { CKind } from './constraints'
@@ -60,6 +60,7 @@ export function installSketchCommands() {
   wrap('edit.redo', redoSketch)
   wrap('edit.delete', deleteSelection)
   wrap('edit.escape', escapeSketch)
+  wrap('edit.accept', enterSketch)
 
   // Esc while waiting for a plane pick cancels the pick
   const esc = getCommand('edit.escape')!

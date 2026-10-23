@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Crosshair, X } from '@phosphor-icons/react'
 import { useUi, type InspectorSession, type SelectionRef } from '@/store/ui'
 import { useDoc } from '@/doc/store'
@@ -8,16 +8,37 @@ import { NumberField } from './NumberField'
 import { Select } from './Select'
 import { Checkbox } from './Toggle'
 import { Segmented } from './Segmented'
+import { NUDGE_EVENT } from './accept'
+import { OptionList } from './OptionList'
 import { Section } from './Section'
 import { missingRequired, schemaDefaults, selectionParams, type ParamDef, type ParamValue, type ParamValues, type SelectionRefParam } from './schema'
 
 type Setter = (key: string, v: ParamValue) => void
-interface Pick { active: string | null; activate: (key: string) => void }
+interface Pick { active: string | null; activate: (key: string) => void; many: (v: ParamValues) => void; group: (id: string) => void }
 
-function Param({ def, values, set, pick }: { def: ParamDef; values: ParamValues; set: Setter; pick: Pick }) {
+/** Shows the field's help line under it while any control inside has the keyboard focus. */
+function Hinted({ help, children }: { help?: string; children: ReactNode }) {
+  const [focus, setFocus] = useState(false)
+  if (!help) return <>{children}</>
+  return (
+    <div className="hinted" onFocusCapture={() => setFocus(true)} onBlurCapture={() => setFocus(false)}>
+      {children}
+      {focus && <div className="field-hint" data-testid="field-hint">{help}</div>}
+    </div>
+  )
+}
+
+function Param(props: { def: ParamDef; values: ParamValues; set: Setter; pick: Pick }) {
+  const { def } = props
+  if (def.type === 'group') return <ParamInner {...props} />
+  if (def.visibleWhen && !def.visibleWhen(props.values)) return null
+  return <Hinted help={def.help}><ParamInner {...props} /></Hinted>
+}
+
+function ParamInner({ def, values, set, pick }: { def: ParamDef; values: ParamValues; set: Setter; pick: Pick }) {
   if (def.type === 'group') {
     return (
-      <Section title={def.label} defaultOpen={!def.collapsed}>
+      <Section title={def.label} defaultOpen={!def.collapsed} help={def.help} onActive={def.id ? () => pick.group(def.id!) : undefined}>
         {def.children.map((c, i) => (
           <Param key={i} def={c} values={values} set={set} pick={pick} />
         ))}
@@ -29,22 +50,28 @@ function Param({ def, values, set, pick }: { def: ParamDef; values: ParamValues;
   switch (def.type) {
     case 'number':
       return (
-        <NumberField label={def.label} value={typeof v === 'string' ? (evalNumber(v, def.unit) ?? 0) : (v as number)} expr={typeof v === 'string' ? v : undefined} unit={def.unit} min={def.min} max={def.max} step={def.step}
+        <NumberField label={def.label} help={def.help} value={typeof v === 'string' ? (evalNumber(v, def.unit) ?? 0) : (v as number)} expr={typeof v === 'string' ? v : undefined} unit={def.unit} min={def.min} max={def.max} step={def.step}
           onChange={(n, ex) => set(def.key, ex ?? n)} />
       )
     case 'enum':
+      if (def.display === 'list') return <OptionList label={def.label} value={def.aliases?.[v as string] ?? (v as string)} options={def.options} onChange={(s) => set(def.key, s)} />
       return def.display === 'segmented' ? (
-        <Segmented label={def.label} value={v as string} options={def.options} onChange={(s) => set(def.key, s)} />
+        <Segmented label={def.label} help={def.help} value={v as string} options={def.options} onChange={(s) => set(def.key, s)} />
       ) : (
-        <Select label={def.label} value={v as string} options={def.options} onChange={(s) => set(def.key, s)} />
+        <Select label={def.label} help={def.help} value={v as string} options={def.options} onChange={(s) => set(def.key, s)} />
+      )
+    case 'preset':
+      return (
+        <Select label={def.label} help={def.help} placeholder="Choose a preset" value={v as string} options={def.presets.map((p) => ({ value: p.id, label: p.label }))}
+          onChange={(id) => { const p = def.presets.find((x) => x.id === id); if (p) pick.many({ ...p.values, [def.key]: id }) }} />
       )
     case 'bool':
-      return <Checkbox label={def.label} checked={v as boolean} onChange={(b) => set(def.key, b)} />
+      return <Checkbox label={def.label} help={def.help} checked={v as boolean} onChange={(b) => set(def.key, b)} />
     case 'vector3': {
       const vec: number[] = Array.isArray(v) && v.length === 3 ? (v as number[]) : [0, 0, 0]
       return (
         <div className="field stack">
-          <span className="field-label" title={def.label}>{def.label}{def.unit ? ` (${def.unit})` : ''}</span>
+          <span className="field-label" title={def.help ?? def.label}>{def.label}{def.unit ? ` (${def.unit})` : ''}</span>
           <div className="vec3">
             {(['X', 'Y', 'Z'] as const).map((ax, i) => (
               <NumberField key={ax} value={vec[i]} step={def.step}
@@ -73,7 +100,7 @@ function SelectionRef({ def, value, onChange, active, onActivate }: { def: Selec
   const empty = value.length === 0
   return (
     <div className="field" data-sel-key={def.key} data-active={active} data-empty={empty}>
-      <span className="field-label" title={label}>{label}{def.required ? ' *' : ''}</span>
+      <span className="field-label" title={def.help ?? label}>{label}{def.required ? ' *' : ''}</span>
       <div className={'inp sel-ref' + (active ? ' active' : '')} data-testid={'sel-' + def.key} style={{ borderColor: active || empty ? 'var(--accent-line)' : undefined, cursor: def.pick ? 'pointer' : undefined }} onClick={onActivate}>
         <span className="txt" title={empty ? undefined : `${value.length} selected`} style={{ color: empty ? 'var(--text-faint)' : 'var(--text)' }}>
           {empty ? `Select ${accepts.join(' / ')}` : `${value.length} selected`}
@@ -178,25 +205,71 @@ function InspectorForm({ session }: { session: InspectorSession }) {
     setValues(next)
     session.onChange?.(next)
   }
+  const many = (vals: ParamValues) => {
+    const next = { ...latest.current, ...vals }
+    latest.current = next
+    setValues(next)
+    session.onChange?.(next)
+  }
   const missing = missingRequired(session.schema, values)
   let invalid: string | null = null
   try { resolveParams(session.schema, values) } catch (e) { invalid = e instanceof Error ? e.message : String(e) }
   const blocked = missing.length > 0 || invalid !== null
   const hint = missing.length ? `Select ${missing.map((m) => m.toLowerCase()).join(' and ')} to continue` : (invalid ?? '')
+  const warnings = session.schema.warnings ? session.schema.warnings(values) : []
+  const notice = useUi((s) => s.inspectorNotice)
+
+  // Enter accepts a valid dialog (an invalid one flashes its hint), Escape cancels. Keys typed into the command palette,
+  // rename boxes, menus or other dialogs belong to those, not to the feature dialog.
+  const [nudge, setNudge] = useState(0)
+  const live = useRef({ blocked, session })
+  live.current = { blocked, session }
+  useEffect(() => {
+    const flash = () => setNudge((n) => n + 1)
+    window.addEventListener(NUDGE_EVENT, flash)
+    return () => window.removeEventListener(NUDGE_EVENT, flash)
+  }, [])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key !== 'Enter' && e.key !== 'Escape') return
+      const t = e.target as HTMLElement | null
+      if (t?.closest?.('.cmdk-overlay, [role="dialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper], .sk-dim-input, .rename')) return
+      const inForm = !!t?.closest?.('[data-inspector-root], [data-accept-on-enter]')
+      const editable = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+      if (editable && !inForm) return
+      if (e.key === 'Escape') {
+        // buttons / the global shortcut handle Escape elsewhere; here only text boxes of this form, which the global handler skips
+        if (editable && inForm) { e.preventDefault(); live.current.session.onCancel() }
+        return
+      }
+      // controls of the dialog itself keep their own Enter; a focused ribbon / toolbar button must not swallow it
+      if (!editable && inForm && t?.closest?.('button, a, [role="checkbox"], [role="radio"], [role="combobox"], [role="tab"], select')) return
+      if (editable && (t as HTMLInputElement).type === 'checkbox') return
+      e.preventDefault()
+      if (live.current.blocked) setNudge((n) => n + 1)
+      else live.current.session.onOk(latest.current)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  const pickCtx: Pick = { active, activate, many, group: (id) => session.onActiveGroup?.(id) }
   return (
-    <div className="panel">
+    <div className="panel" data-inspector-root>
       <div className="panel-title">{session.schema.title}</div>
       <div className="panel-scroll">
         <div className="section-body">
           {session.schema.params.filter((p) => p.type !== 'group').map((p, i) => (
-            <Param key={i} def={p} values={values} set={set} pick={{ active, activate }} />
+            <Param key={i} def={p} values={values} set={set} pick={pickCtx} />
           ))}
         </div>
         {session.schema.params.filter((p) => p.type === 'group').map((p, i) => (
-          <Param key={i} def={p} values={values} set={set} pick={{ active, activate }} />
+          <Param key={i} def={p} values={values} set={set} pick={pickCtx} />
         ))}
       </div>
-      {blocked && <div className="inspector-hint" role="status" data-testid="inspector-hint">{hint}</div>}
+      {notice && <div className="inspector-warn error" role="alert" data-testid="inspector-notice">{notice}</div>}
+      {warnings.map((w, i) => <div key={i} className="inspector-warn" role="note" data-testid="inspector-warning">{w}</div>)}
+      {blocked && <div key={nudge} className={'inspector-hint' + (nudge ? ' nudge' : '')} role="status" data-testid="inspector-hint">{hint}</div>}
       <div className="inspector-foot">
         <button type="button" className="btn" onClick={session.onCancel}>Cancel</button>
         <button type="button" className="btn primary" disabled={blocked} title={blocked ? hint : undefined} onClick={() => !blocked && session.onOk(latest.current)}>OK</button>

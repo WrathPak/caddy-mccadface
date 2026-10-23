@@ -273,6 +273,18 @@ export function deleteSelection() {
   set({ sel: [] })
 }
 
+/**
+ * Enter: commit a typed value (handled by typedKey); otherwise end what is in progress - the open polyline / shape, then the
+ * active tool - and, with no tool active, finish the sketch.
+ */
+export function enterSketch() {
+  const s = get()
+  if (!s.active || s.dimEdit) return
+  if (s.draft || s.picks.length || s.placing || s.offset) { resetTransient(); invalidate(); return }
+  if (s.tool !== 'select') { setTool('select'); return }
+  finishSketch()
+}
+
 /** Escape: cancel typed values, then the draft / placing / offset, then the tool, then the selection. */
 export function escapeSketch() {
   const s = get()
@@ -776,7 +788,8 @@ export function typedKey(e: { key: string; shiftKey: boolean; ctrlKey: boolean; 
   }
   if (k === 'Enter') {
     if (s.tool === 'offset') commitOffset()
-    else commitTyped()
+    else if (hasText(t)) commitTyped()
+    else enterSketch()
     return true
   }
   const f = t.fields[t.active]
