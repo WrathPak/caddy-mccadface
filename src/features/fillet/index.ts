@@ -8,9 +8,10 @@ import { useDoc } from '@/doc/store'
 import type { PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel } from '@/kernel/client'
 import type { Body } from '@/kernel/types'
+import type { EdgeFrame } from '@/kernel/model-ops'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
-import { clearPreview, setPreview } from '@/viewport/preview'
+import { clearPreview, resetManip, setPreview, useManip } from '@/viewport/preview'
 import { liveEnv, type Env } from '../modeling'
 import { createRunner, watchSelection } from '../previewKit'
 
@@ -70,7 +71,20 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
     let p: ParamValues
     try { p = resolveParams(schema, cur) } catch { clearPreview(); return }
     let groups
-    try { groups = resolveEdges(p.edges as string[], liveEnv()) } catch { clearPreview(); return }
+    try { groups = resolveEdges(p.edges as string[], liveEnv()) } catch { clearPreview(); resetManip(); return }
+    // drag arrow on the first selected edge: pulling it away from the edge grows the radius / distance
+    try {
+      const first = groups[0]
+      const frames = (await getKernel().call('edgeFrames', { key: first.body.key, edges: first.edges.slice(0, 1) })) as (EdgeFrame | null)[]
+      const f = frames[0]
+      if (f && !stale()) {
+        useManip.setState({
+          active: true, origin: f.mid, dir: f.dir, tip: p.size as number, factor: 1,
+          label: (v) => `${v.toFixed(2)} mm`,
+          onChange: (v) => { cur = { ...cur, size: Math.max(0.05, v) }; setValues(cur) },
+        })
+      }
+    } catch { resetManip() }
     const out: Body[] = []
     for (const g of groups) out.push((await getKernel().call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size: p.size as number, mode })) as Body)
     if (stale()) return
@@ -87,6 +101,7 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
       off()
       runner.dispose()
       clearPreview()
+      resetManip()
       ui.getState().setSelectionFilter(prevFilter)
     },
   }

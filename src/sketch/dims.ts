@@ -6,6 +6,20 @@ import { isDim, type Constraint, type SketchModel, type Vec2 } from './types'
 
 export interface Measured { value: number; sgn: 1 | -1 }
 
+/** Direction vector measured by a single-line / two-point angle dimension. */
+export function directionOf(m: SketchModel, refs: string[]): Vec2 | null {
+  const [a, b] = refs
+  const ea = entityById(m, a)
+  if (ea?.type === 'line') { const [p, q] = lineEnds(m, ea); return sub(q, p) }
+  if (b && (a === 'O' || ea?.type === 'point') ) return sub(pos(m, b), pos(m, a))
+  return null
+}
+/** Start point of a single-line / two-point angle dimension (where the angle is measured). */
+export function angleOrigin(m: SketchModel, refs: string[]): Vec2 {
+  const ea = entityById(m, refs[0])
+  return ea?.type === 'line' ? pos(m, ea.p1) : pos(m, refs[0])
+}
+
 /** Current actual value of a dimension-type constraint (mm / deg), from the geometry. */
 export function measure(m: SketchModel, type: Constraint['type'], refs: string[]): Measured | null {
   const [a, b] = refs
@@ -29,12 +43,30 @@ export function measure(m: SketchModel, type: Constraint['type'], refs: string[]
       return { value: type === 'radius' ? r : r * 2, sgn: 1 }
     }
     case 'angle': {
-      const la = entityById(m, a), lb = entityById(m, b)
-      if (la?.type !== 'line' || lb?.type !== 'line') return null
-      const [p1, p2] = lineEnds(m, la), [q1, q2] = lineEnds(m, lb)
-      const d1 = sub(p2, p1), d2 = sub(q2, q1)
-      const ang = (Math.atan2(cross(d1, d2), dot(d1, d2)) * 180) / Math.PI
+      const la = entityById(m, a), lb = b ? entityById(m, b) : undefined
+      if (la?.type === 'line' && lb?.type === 'line') {
+        const [p1, p2] = lineEnds(m, la), [q1, q2] = lineEnds(m, lb)
+        const d1 = sub(p2, p1), d2 = sub(q2, q1)
+        const ang = (Math.atan2(cross(d1, d2), dot(d1, d2)) * 180) / Math.PI
+        return { value: Math.abs(ang), sgn: sg(ang) }
+      }
+      const dv = directionOf(m, refs)
+      if (!dv) return null
+      const ang = (Math.atan2(dv[1], dv[0]) * 180) / Math.PI
       return { value: Math.abs(ang), sgn: sg(ang) }
+    }
+    case 'offset': {
+      const ea = entityById(m, a), eb = entityById(m, b)
+      if (ea?.type === 'line' && eb?.type === 'line') {
+        const [p, q] = lineEnds(m, eb)
+        const A = pos(m, ea.p1)
+        return { value: dist(A, closestOnLine(A, p, q)), sgn: 1 }
+      }
+      if ((ea?.type === 'circle' || ea?.type === 'arc') && (eb?.type === 'circle' || eb?.type === 'arc')) {
+        const d = circleOf(m, ea).r - circleOf(m, eb).r
+        return { value: Math.abs(d), sgn: sg(d) }
+      }
+      return null
     }
   }
   return null
@@ -155,24 +187,54 @@ export function layoutDim(m: SketchModel, c: Constraint, k = 1): DimLayout | nul
       }
     }
     case 'angle': {
-      const la = entityById(m, a), lb = entityById(m, b)
-      if (la?.type !== 'line' || lb?.type !== 'line') return null
-      const [p1, p2] = lineEnds(m, la), [q1, q2] = lineEnds(m, lb)
-      const hit = intersectLineLine(p1, p2, q1, q2)
-      const I: Vec2 = hit ? hit.p : mid(p1, q1)
-      const d1 = sub(p2, p1)
-      const a1 = Math.atan2(d1[1], d1[0])
+      const la = entityById(m, a), lb = b ? entityById(m, b) : undefined
       const sweep = (((c.value ?? 0) * (c.sgn ?? 1)) * Math.PI) / 180
-      const R = Math.max(dist(off, I), 2 * k)
-      const pts: Vec2[] = []
-      const n = Math.max(6, Math.ceil(Math.abs(sweep) / 0.1))
-      for (let i = 0; i <= n; i++) pts.push(polar(I, R, a1 + (sweep * i) / n))
-      const tA = a1 + Math.PI / 2 * Math.sign(sweep || 1), tB = a1 + sweep - Math.PI / 2 * Math.sign(sweep || 1)
-      return {
-        lines: [pts],
-        arrows: [{ tip: pts[0], dir: [Math.cos(tA), Math.sin(tA)] }, { tip: pts[n], dir: [Math.cos(tB), Math.sin(tB)] }],
-        label: polar(I, R, a1 + sweep / 2),
+      const arcOf = (I: Vec2, a1: number, R: number) => {
+        const pts: Vec2[] = []
+        const n = Math.max(6, Math.ceil(Math.abs(sweep) / 0.1))
+        for (let i = 0; i <= n; i++) pts.push(polar(I, R, a1 + (sweep * i) / n))
+        const tA = a1 + (Math.PI / 2) * Math.sign(sweep || 1), tB = a1 + sweep - (Math.PI / 2) * Math.sign(sweep || 1)
+        return { pts, n, tA, tB }
       }
+      if (la?.type === 'line' && lb?.type === 'line') {
+        const [p1, p2] = lineEnds(m, la), [q1, q2] = lineEnds(m, lb)
+        const hit = intersectLineLine(p1, p2, q1, q2)
+        const I: Vec2 = hit ? hit.p : mid(p1, q1)
+        const d1 = sub(p2, p1)
+        const a1 = Math.atan2(d1[1], d1[0])
+        const R = Math.max(dist(off, I), 2 * k)
+        const { pts, n, tA, tB } = arcOf(I, a1, R)
+        return {
+          lines: [pts],
+          arrows: [{ tip: pts[0], dir: [Math.cos(tA), Math.sin(tA)] }, { tip: pts[n], dir: [Math.cos(tB), Math.sin(tB)] }],
+          label: polar(I, R, a1 + sweep / 2),
+        }
+      }
+      // direction of one line / of two points, measured from the sketch +X axis
+      if (!directionOf(m, c.refs)) return null
+      const I = angleOrigin(m, c.refs)
+      const R = Math.max(dist(off, I), 2 * k)
+      const { pts, n, tA, tB } = arcOf(I, 0, R)
+      return {
+        lines: [pts, [I, [I[0] + R * 1.15, I[1]]], [I, polar(I, R * 1.15, sweep)]],
+        arrows: [{ tip: pts[0], dir: [Math.cos(tA), Math.sin(tA)] }, { tip: pts[n], dir: [Math.cos(tB), Math.sin(tB)] }],
+        label: polar(I, R, sweep / 2),
+      }
+    }
+    case 'offset': {
+      const ea = entityById(m, a), eb = entityById(m, b)
+      if (ea?.type === 'line' && eb?.type === 'line') return layoutDim(m, { ...c, type: 'distance', refs: [ea.p1, b] }, k)
+      if ((ea?.type === 'circle' || ea?.type === 'arc') && (eb?.type === 'circle' || eb?.type === 'arc')) {
+        const { c: C, r: r0 } = circleOf(m, eb)
+        const r1 = circleOf(m, ea).r
+        let dir = sub(off, C)
+        dir = len(dir) < 1e-9 ? [1, 0] : norm(dir)
+        const P0 = add(C, [dir[0] * r0, dir[1] * r0]), P1 = add(C, [dir[0] * r1, dir[1] * r1])
+        if (dist(P0, P1) < 1e-9) return null
+        const u = norm(sub(P1, P0))
+        return { lines: [[P0, P1]], arrows: [{ tip: P0, dir: u }, { tip: P1, dir: [-u[0], -u[1]] }], label: mid(P0, P1) }
+      }
+      return null
     }
   }
   return null
@@ -204,13 +266,27 @@ export function defaultOff(m: SketchModel, type: Constraint['type'], refs: strin
       return polar(c, r * 1.4, Math.PI / 4)
     }
     case 'angle': {
-      const la = entityById(m, a), lb = entityById(m, b)
-      if (la?.type !== 'line' || lb?.type !== 'line') return [0, 0]
-      const [p1, p2] = lineEnds(m, la), [q1, q2] = lineEnds(m, lb)
-      const hit = intersectLineLine(p1, p2, q1, q2)
-      const I = hit ? hit.p : mid(p1, q1)
-      const d1 = norm(sub(p2, p1)), d2 = norm(sub(q2, q1))
-      return add(I, [(d1[0] + d2[0]) * 5 * k, (d1[1] + d2[1]) * 5 * k])
+      const la = entityById(m, a), lb = b ? entityById(m, b) : undefined
+      if (la?.type === 'line' && lb?.type === 'line') {
+        const [p1, p2] = lineEnds(m, la), [q1, q2] = lineEnds(m, lb)
+        const hit = intersectLineLine(p1, p2, q1, q2)
+        const I = hit ? hit.p : mid(p1, q1)
+        const d1 = norm(sub(p2, p1)), d2 = norm(sub(q2, q1))
+        return add(I, [(d1[0] + d2[0]) * 5 * k, (d1[1] + d2[1]) * 5 * k])
+      }
+      const dv = directionOf(m, refs)
+      if (!dv) return [0, 0]
+      const I = angleOrigin(m, refs)
+      return polar(I, 7 * k, Math.atan2(dv[1], dv[0]) / 2)
+    }
+    case 'offset': {
+      const ea = entityById(m, a), eb = entityById(m, b)
+      if (ea?.type === 'line' && eb?.type === 'line') return defaultOff(m, 'distance', [ea.p1, b], k)
+      if ((ea?.type === 'circle' || ea?.type === 'arc') && (eb?.type === 'circle' || eb?.type === 'arc')) {
+        const { c, r } = circleOf(m, ea)
+        return polar(c, r + 2 * k, Math.PI / 4)
+      }
+      return [0, 0]
     }
   }
   return [0, 0]

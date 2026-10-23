@@ -37,7 +37,7 @@ export function gc(live: string[]) {
 }
 
 const buffers = (m: MeshData): Transferable[] =>
-  [m.positions.buffer, m.normals.buffer, m.indices.buffer, m.faceIds.buffer, m.edges.buffer, m.edgeIds?.buffer].filter(
+  [m.positions.buffer, m.normals.buffer, m.indices.buffer, m.faceIds.buffer, m.edges.buffer, m.edgeIds?.buffer, m.faceHashes?.buffer, m.edgeHashes?.buffer].filter(
     (b): b is ArrayBuffer => !!b,
   )
 
@@ -67,7 +67,7 @@ export const helpers: OpHelpers = { getBrep, getTopo, bodyFromShape, bodyFromTop
 
 const ops = new Map<string, OpFn>()
 /** Register a custom worker operation, callable from features as `ctx.kernel.call(name, args)`. */
-export function registerOp<A = never>(name: string, fn: (args: A, ctx: OpHelpers) => Promise<unknown> | unknown) {
+export function registerOp<A = never, R = unknown>(name: string, fn: (args: A, ctx: OpHelpers) => Promise<R> | R) {
   ops.set(name, fn as OpFn)
 }
 export const getOp = (name: string) => ops.get(name)

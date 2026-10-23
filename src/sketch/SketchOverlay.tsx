@@ -13,10 +13,12 @@ import { dimText, layoutDim } from './dims'
 import { curvePoints, entityPolylines, profileGeometry } from './draw'
 import { circumcircle, arcInfo, cross, dist, perp, polar, sampleArc, sub, TAU } from './geom'
 import { circleOf, entityById, lineEnds, pos } from './model'
+import { previewPolys } from './offsetTool'
+import { fieldsFor, liveValues, resolveEnd, valuesOf, hasText, arcThrough, type DrawTool, type Typed } from './typed'
 import { planeQuaternion, toLocal } from './plane'
 import { gridStep, type Snap } from './snap'
 import {
-  applyDimEdit, cancelDimEdit, doubleClick, editDim, pointerDown, pointerMove, pointerUp, select, setWpp, useSketch, type SketchState,
+  applyDimEdit, cancelDimEdit, doubleClick, editDim, pointerDown, pointerMove, pointerUp, select, setWpp, typedKey, useSketch, type SketchState,
 } from './store'
 import { isDim, type Constraint, type SketchModel, type Vec2 } from './types'
 
@@ -30,7 +32,7 @@ function useSketchColors() {
   return useMemo(
     () => ({
       free: c.accent, fixed: read('--text', '#d4d7dc'), sel: read('--warn', '#d2a24a'), hover: read('--accent-hover', '#78c4d3'),
-      cons: read('--text-faint', '#636973'), dim: read('--text-dim', '#9096a0'), danger: read('--danger', '#d9625a'), grid: c.grid, major: c.gridMajor,
+      cons: read('--text-faint', '#636973'), dim: read('--text-dim', '#9096a0'), ref: read('--text-dim', '#9096a0'), danger: read('--danger', '#d9625a'), grid: c.grid, major: c.gridMajor,
       axisX: c.axisX, axisY: c.axisY,
     }),
     [c],
@@ -177,19 +179,19 @@ function Geometry({ wpp }: { wpp: number }) {
   const picks = useSketch((s) => s.picks)
 
   const groups = useMemo(() => {
-    const g: Record<'free' | 'fixed' | 'sel' | 'hover' | 'cons', Vec2[]> = { free: [], fixed: [], sel: [], hover: [], cons: [] }
+    const g: Record<'free' | 'fixed' | 'sel' | 'hover' | 'cons' | 'ref', Vec2[]> = { free: [], fixed: [], sel: [], hover: [], cons: [], ref: [] }
     for (const pl of entityPolylines(model)) {
-      const cls = sel.includes(pl.id) || picks.includes(pl.id) ? 'sel' : hover === pl.id ? 'hover' : pl.construction ? 'cons' : info.fixed.has(pl.id) ? 'fixed' : 'free'
+      const cls = sel.includes(pl.id) || picks.includes(pl.id) ? 'sel' : hover === pl.id ? 'hover' : pl.ref ? 'ref' : pl.construction ? 'cons' : info.fixed.has(pl.id) ? 'fixed' : 'free'
       g[cls].push(...toPairs(pl.pts))
     }
     return g
   }, [model, info, sel, hover, picks])
 
   const dots = useMemo(() => {
-    const d: Record<'free' | 'fixed' | 'sel' | 'hover', Vec2[]> = { free: [], fixed: [], sel: [], hover: [] }
+    const d: Record<'free' | 'fixed' | 'sel' | 'hover' | 'ref', Vec2[]> = { free: [], fixed: [], sel: [], hover: [], ref: [] }
     for (const e of model.entities) {
       if (e.type !== 'point') continue
-      const cls = sel.includes(e.id) || picks.includes(e.id) ? 'sel' : hover === e.id ? 'hover' : info.fixed.has(e.id) ? 'fixed' : 'free'
+      const cls = sel.includes(e.id) || picks.includes(e.id) ? 'sel' : hover === e.id ? 'hover' : e.ref ? 'ref' : info.fixed.has(e.id) ? 'fixed' : 'free'
       d[cls].push([e.x, e.y])
     }
     return d
@@ -198,12 +200,14 @@ function Geometry({ wpp }: { wpp: number }) {
   return (
     <>
       <Segments pairs={groups.cons} color={c.cons} width={1.4} dashed wpp={wpp} />
+      <Segments pairs={groups.ref} color={c.ref} width={1.6} wpp={wpp} />
       <Segments pairs={groups.free} color={c.free} width={1.8} wpp={wpp} />
       <Segments pairs={groups.fixed} color={c.fixed} width={1.8} wpp={wpp} />
       <Segments pairs={groups.hover} color={c.hover} width={2.8} wpp={wpp} order={13} />
       <Segments pairs={groups.sel} color={c.sel} width={2.8} wpp={wpp} order={14} />
       <Dots pts={dots.free} color={c.free} size={6} />
       <Dots pts={dots.fixed} color={c.fixed} size={6} />
+      <Dots pts={dots.ref} color={c.ref} size={5} />
       <Dots pts={dots.hover} color={c.hover} size={9} order={15} />
       <Dots pts={dots.sel} color={c.sel} size={9} order={16} />
       <Dots pts={[[0, 0]]} color={info.fixed.size ? c.fixed : c.dim} size={7} order={11} />
@@ -229,39 +233,43 @@ function ProfileFills() {
 
 // ---------------------------------------------------------------- draft & snap preview
 
-interface Preview { lines: Vec2[][]; label?: { at: Vec2; text: string } }
+interface Preview { lines: Vec2[][]; /** where the next point is going */ end: Vec2; stage: number; live: Partial<Record<string, number>> }
 
-function draftPreview(d: SketchState['draft'], cur: Snap | null): Preview | null {
+/** The geometry the active drawing tool would create at the cursor, honouring typed values. */
+function draftPreview(d: SketchState['draft'], cur: Snap | null, typed: Typed | null): Preview | null {
   if (!d || !cur) return null
-  const p = cur.pos
+  const tool = d.tool as DrawTool
+  const stage = d.tool === 'arc' ? Math.max(0, d.pts.length - 1) : 0
+  const vals = valuesOf(typed && typed.tool === d.tool && typed.stage === stage ? typed : null)
+  const typedNow = Object.keys(vals).length > 0
+  const p = typedNow || d.tool === 'arc' ? resolveEnd(tool, stage, d.pts, cur.pos, vals) : cur.pos
   switch (d.tool) {
     case 'line': {
       const a = d.pts[d.pts.length - 1]
-      const l = dist(a, p)
-      const ang = (Math.atan2(p[1] - a[1], p[0] - a[0]) * 180) / Math.PI
-      return { lines: [[a, p]], label: { at: p, text: `${l.toFixed(2)}  ${ang.toFixed(1)}°` } }
+      return { lines: [[a, p]], end: p, stage, live: liveValues('line', 0, d.pts, p) }
     }
     case 'rect':
     case 'rectC': {
       const [x0, y0] = d.pts[0], [x1, y1] = p
       const ax = d.tool === 'rect' ? x0 : x0 - (x1 - x0), ay = d.tool === 'rect' ? y0 : y0 - (y1 - y0)
-      return { lines: [[[ax, ay], [x1, ay], [x1, y1], [ax, y1], [ax, ay]]], label: { at: p, text: `${Math.abs(x1 - ax).toFixed(2)} × ${Math.abs(y1 - ay).toFixed(2)}` } }
+      return { lines: [[[ax, ay], [x1, ay], [x1, y1], [ax, y1], [ax, ay]]], end: p, stage, live: liveValues(d.tool, 0, d.pts, p) }
     }
     case 'circle': {
       const r = dist(d.pts[0], p)
       const pts: Vec2[] = []
       for (let i = 0; i <= 96; i++) pts.push(polar(d.pts[0], r, (i / 96) * TAU))
-      return { lines: [pts, [d.pts[0], p]], label: { at: p, text: `R ${r.toFixed(2)}` } }
+      return { lines: [pts, [d.pts[0], p]], end: p, stage, live: liveValues('circle', 0, d.pts, p) }
     }
     case 'arc': {
-      if (d.pts.length === 1) return { lines: [[d.pts[0], p]], label: { at: p, text: dist(d.pts[0], p).toFixed(2) } }
+      if (d.pts.length === 1) return { lines: [[d.pts[0], p]], end: p, stage, live: liveValues('arc', 0, d.pts, p) }
       const [p1, p2] = d.pts
-      const cc = circumcircle(p1, p2, p)
-      if (!cc) return { lines: [[p1, p2]] }
-      const ccw = cross(sub(p, p1), sub(p2, p)) > 0
+      const third = arcThrough(p1, p2, cur.pos, vals.rad)
+      const cc = circumcircle(p1, p2, third)
+      if (!cc) return { lines: [[p1, p2]], end: third, stage, live: {} }
+      const ccw = cross(sub(third, p1), sub(p2, third)) > 0
       const i = ccw ? arcInfo(cc.c, p1, p2) : arcInfo(cc.c, p2, p1)
       const pts = [ccw ? p1 : p2, ...sampleArc(cc.c, i.r, i.a0, i.a1, Math.PI / 48)]
-      return { lines: [pts], label: { at: p, text: `R ${cc.r.toFixed(2)}` } }
+      return { lines: [pts], end: third, stage, live: { rad: cc.r } }
     }
     default: return null
   }
@@ -307,22 +315,67 @@ function Marker({ snap, wpp }: { snap: Snap; wpp: number }) {
   )
 }
 
+const fmt = (v: number | undefined, unit: string) => (v === undefined ? '' : (unit === 'deg' ? `${(+v.toFixed(2))}°` : `${(+v.toFixed(2))}`))
+
+/** The boxes for typed values: live numbers until you type, then what you typed. Tab moves between them. */
+function TypedInputs({ at, fields, active, live }: { at: Vec2; fields: Typed['fields']; active: number; live: Partial<Record<string, number>> }) {
+  return (
+    <Html position={v3(at)} zIndexRange={[32, 0]} style={{ pointerEvents: 'none' }}>
+      <div className="sk-typed">
+        {fields.map((f, i) => (
+          <div key={f.key} className="sk-field" data-active={i === active} data-typed={f.text !== ''}>
+            <span className="lbl">{f.label}</span>
+            <span className="val">{f.text !== '' ? f.text : fmt(live[f.key], f.unit)}{i === active && <i className="caret" />}</span>
+          </div>
+        ))}
+        {fields.length > 1 && <div className="sk-keys">Tab next · Enter place</div>}
+      </div>
+    </Html>
+  )
+}
+
 function Draft({ wpp }: { wpp: number }) {
   const c = useSketchColors()
   const draft = useSketch((s) => s.draft)
   const cursor = useSketch((s) => s.cursor)
-  const prev = useMemo(() => draftPreview(draft, cursor), [draft, cursor])
-  if (!prev) return null
+  const typed = useSketch((s) => s.typed)
+  const prev = useMemo(() => draftPreview(draft, cursor, typed), [draft, cursor, typed])
+  if (!prev || !draft) return null
+  const tool = draft.tool as DrawTool
+  const stage = draft.tool === 'arc' ? Math.max(0, draft.pts.length - 1) : 0
+  const fields = typed && typed.tool === draft.tool && typed.stage === stage ? typed : { fields: fieldsFor(tool, stage), active: 0, tool: draft.tool, stage }
   return (
     <>
       {prev.lines.map((pts, i) => (
         <Line key={i} points={pts.map((p) => v3(p))} color={c.free} lineWidth={1.8} dashed dashSize={wpp * 6} gapSize={wpp * 3} depthTest={false} transparent renderOrder={18} raycast={() => null} />
       ))}
-      {prev.label && (
-        <Html position={v3(prev.label.at)} zIndexRange={[30, 0]} style={{ pointerEvents: 'none' }}>
-          <div className="sk-tip">{prev.label.text}</div>
-        </Html>
-      )}
+      <TypedInputs at={prev.end} fields={fields.fields} active={fields.active} live={prev.live} />
+    </>
+  )
+}
+
+/** Trim: the piece under the cursor that a click would remove. */
+function TrimPreview({ wpp }: { wpp: number }) {
+  const c = useSketchColors()
+  const poly = useSketch((s) => s.trimHover)
+  if (!poly || poly.length < 2) return null
+  return <Segments pairs={toPairs(poly)} color={c.danger} width={3.2} wpp={wpp} order={19} />
+}
+
+/** Offset: the curves that a click would create, and the distance box. */
+function OffsetPreview({ wpp }: { wpp: number }) {
+  const c = useSketchColors()
+  const model = useSketch((s) => s.model)
+  const offset = useSketch((s) => s.offset)
+  const typed = useSketch((s) => s.typed)
+  const cursor = useSketch((s) => s.cursor)
+  const polys = useMemo(() => (offset ? previewPolys(model, offset.chain, offset.d) : []), [model, offset])
+  if (!offset) return null
+  const f = typed && typed.tool === 'offset' ? typed : { fields: fieldsFor('offset'), active: 0, tool: 'offset', stage: 0 }
+  return (
+    <>
+      {polys.map((pts, i) => <Segments key={i} pairs={toPairs(pts)} color={c.free} width={2} dashed wpp={wpp} order={18} />)}
+      {cursor && <TypedInputs at={cursor.pos} fields={f.fields} active={f.active} live={{ dist: Math.abs(offset.d) }} />}
     </>
   )
 }
@@ -338,8 +391,8 @@ function SelectionBox() {
 // ---------------------------------------------------------------- constraint glyphs
 
 const GLYPH: Partial<Record<Constraint['type'], string>> = {
-  horizontal: 'H', vertical: 'V', parallel: '∥', perpendicular: '⊥', equal: '=', tangent: 'T', midpoint: 'M', fix: '■',
-  pointOnLine: '○', pointOnCurve: '○', onAxis: '○',
+  horizontal: 'H', vertical: 'V', parallel: '∥', perpendicular: '⊥', equal: '=', tangent: 'T', tangentAt: 'T', midpoint: 'M', fix: '■',
+  pointOnLine: '○', pointOnCurve: '○', onAxis: '○', coincident: '◉',
 }
 
 function anchorOf(m: SketchModel, id: string): Vec2 | null {
@@ -360,7 +413,7 @@ function Glyphs() {
     const map = new Map<string, { at: Vec2; items: Constraint[] }>()
     for (const c of model.constraints) {
       if (isDim(c) || !GLYPH[c.type]) continue
-      const targets = c.type === 'pointOnLine' || c.type === 'pointOnCurve' || c.type === 'midpoint' ? [c.refs[0]] : c.refs
+      const targets = c.type === 'pointOnLine' || c.type === 'pointOnCurve' || c.type === 'midpoint' || c.type === 'coincident' ? [c.refs[0]] : c.type === 'tangentAt' ? [c.refs[2]] : c.refs
       for (const t of targets) {
         const at = anchorOf(model, t)
         if (!at) continue
@@ -424,7 +477,7 @@ function Dimensions({ wpp }: { wpp: number }) {
   const sel = useSketch((s) => s.sel)
   const bad = useSketch((s) => s.badDims)
   const list = useMemo(() => {
-    const l = model.constraints.filter(isDim)
+    const l = model.constraints.filter((k) => isDim(k) && !k.hidden)
     return placing ? [...l, placing] : l
   }, [model, placing])
   return (
@@ -513,6 +566,15 @@ function InputController() {
       const l = locate(e)
       if (l) doubleClick(l.p, l.wpp)
     }
+    // typed values (digits, Tab, Enter, Backspace) while a draft or offset is open; capture phase so the global
+    // shortcut handler never sees keys that belong to a field
+    const key = (e: KeyboardEvent) => {
+      if (!useSketch.getState().active) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (typedKey(e)) { e.preventDefault(); e.stopPropagation() }
+    }
+    window.addEventListener('keydown', key, true)
     el.addEventListener('pointerdown', down)
     el.addEventListener('pointermove', move)
     el.addEventListener('pointerup', up)
@@ -523,6 +585,7 @@ function InputController() {
       el.removeEventListener('pointermove', move)
       el.removeEventListener('pointerup', up)
       el.removeEventListener('dblclick', dbl)
+      window.removeEventListener('keydown', key, true)
       off()
     }
   }, [gl, camera, invalidate])
@@ -553,6 +616,8 @@ export function SketchOverlay() {
       <Glyphs />
       <Dimensions wpp={wpp} />
       <Draft wpp={wpp} />
+      <TrimPreview wpp={wpp} />
+      <OffsetPreview wpp={wpp} />
       <SelectionBox />
       {cursor && <Marker snap={cursor} wpp={wpp} />}
       <InputController />

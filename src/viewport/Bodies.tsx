@@ -12,6 +12,7 @@ import { composeTransform, type Body } from '@/kernel/types'
 import { buildBvh } from './bvh'
 import { usePreview } from './preview'
 import { useVpColors } from './colors'
+import { useSketch } from '@/sketch/store'
 
 function sameRef(a: SelectionRef | null, b: SelectionRef) {
   return !!a && a.kind === b.kind && a.id === b.id && a.index === b.index
@@ -82,7 +83,10 @@ function BodyView({ body, mats, colors }: { body: Body; mats: Mats; colors: Retu
   const setSelection = useUi((s) => s.setSelection)
   const move = useMove()
 
-  const sketching = useUi((s) => s.sketchMode)
+  // while sketching, body faces / edges are only pickable for the Project tool
+  const sketchMode = useUi((s) => s.sketchMode)
+  const projecting = useSketch((s) => s.active && s.tool === 'project')
+  const sketching = sketchMode && !projecting
   const painting = useHairPaint((s) => s.mode !== 'off')
   const pickFaces = filter !== 'edge' && !sketching && !painting
   const showEdges = displayMode !== 'shaded' || filter === 'edge'

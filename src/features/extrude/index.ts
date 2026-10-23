@@ -30,6 +30,7 @@ export const extrudeSchema: ParamSchema = {
         },
         { type: 'number', key: 'distance', label: 'Distance', unit: 'mm', step: 0.5, default: 10 },
         { type: 'number', key: 'distance2', label: 'Distance 2', unit: 'mm', min: 0, step: 0.5, default: 5, visibleWhen: (v) => v.direction === 'two' },
+        { type: 'number', key: 'taper', label: 'Taper angle', unit: 'deg', min: -89, max: 89, step: 0.5, default: 0 },
       ],
     },
     {
@@ -43,12 +44,12 @@ export const extrudeSchema: ParamSchema = {
   ],
 }
 
-interface ExtrudeP { profiles: string[]; direction: string; distance: number; distance2: number; operation: string; targets: string[] }
+interface ExtrudeP { profiles: string[]; direction: string; distance: number; distance2: number; taper: number; operation: string; targets: string[] }
 const asP = (v: ParamValues) => v as unknown as ExtrudeP
 
 /** Arguments for the worker's extrudeTool op. */
 function toolArgs(p: ExtrudeP, inp: Inputs, id: string, name: string) {
-  return { id, name, groups: inp.groups, faces: inp.faces, mode: p.direction, d1: p.distance, d2: p.distance2, faceDir: p.operation === 'cut' ? -1 : 1 }
+  return { id, name, groups: inp.groups, faces: inp.faces, mode: p.direction, d1: p.distance, d2: p.distance2, faceDir: p.operation === 'cut' ? -1 : 1, taper: p.taper ?? 0 }
 }
 
 registerFeature({

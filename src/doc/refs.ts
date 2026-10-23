@@ -1,5 +1,9 @@
 /**
  * Face / edge references that survive regeneration: body id + the producing feature id + a geometric signature.
+ *
+ * `index` is the B-rep topology index: the mesh's `faceIds` / `edgeIds` ARE positions in the kernel's
+ * `topoOf(shape).faces` / `.edges` (the tessellator maps each face / edge shape hash to that position, see
+ * kernel/occ.ts), so an index from a pick can be handed to a worker op as is. Signatures are what survive regeneration.
  * Stored in selection-ref params as strings: a plain body id, or JSON for face/edge refs (see encodeRef).
  */
 import { computeEdgeSigs, computeFaceSigs, type Body, type EdgeSig, type FaceSig, type Vec3 } from '@/kernel/types'

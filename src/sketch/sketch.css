@@ -73,3 +73,26 @@
   display: flex; gap: 6px; align-items: center;
 }
 .sk-bar .info { font: 500 11px var(--font-ui); color: var(--text-dim); padding: 0 6px; }
+
+/* typed values while drawing */
+.sk-typed {
+  display: flex; flex-direction: column; gap: 2px;
+  transform: translate(16px, 12px);
+  pointer-events: none;
+}
+.sk-field {
+  display: flex; align-items: center; gap: 6px; justify-content: space-between;
+  min-width: 118px; padding: 1px 6px;
+  font: 500 11px var(--font-mono);
+  color: var(--text-dim);
+  background: var(--bg-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+.sk-field .lbl { font: 500 10px var(--font-ui); color: var(--text-faint); }
+.sk-field .val { color: var(--text-dim); }
+.sk-field[data-typed='true'] .val { color: var(--text); }
+.sk-field[data-active='true'] { border-color: var(--accent); }
+.sk-field .caret { display: inline-block; width: 1px; height: 11px; margin-left: 1px; background: var(--accent); vertical-align: -2px; animation: sk-blink 1s steps(1) infinite; }
+.sk-keys { font: 500 9px var(--font-ui); color: var(--text-faint); padding: 0 2px; }
+@keyframes sk-blink { 50% { opacity: 0; } }

@@ -1,6 +1,6 @@
 /** Applying geometric constraints to a model from a set of picked entity ids. */
 import { ORIGIN, type Constraint, type SketchModel } from './types'
-import { addConstraint, entityById, lineEnds, mergePoints, pos } from './model'
+import { addCoincident, addConstraint, entityById, lineEnds, pos, sharedEnd, tangentValue } from './model'
 
 export type CKind = 'hv' | 'horizontal' | 'vertical' | 'parallel' | 'perpendicular' | 'tangent' | 'equal' | 'coincident' | 'midpoint' | 'fix'
 
@@ -61,11 +61,20 @@ export function applyConstraint(m: SketchModel, kind: CKind, idsIn: string[]): s
     case 'parallel': add('parallel', ids); return null
     case 'perpendicular': add('perpendicular', ids); return null
     case 'equal': add('equal', ids); return null
-    case 'tangent': add('tangent', ids); return null
+    case 'tangent': {
+      // curves that meet end to end are made tangent AT that point (well conditioned); otherwise by distance
+      const at = sharedEnd(m, ids[0], ids[1])
+      const t0 = kindOf(m, ids[0]), t1 = kindOf(m, ids[1])
+      if (at && (t0 === 'line' || t0 === 'arc') && (t1 === 'line' || t1 === 'arc') && !(t0 === 'line' && t1 === 'line')) {
+        if (!m.constraints.some((c) => c.type === 'tangentAt' && c.refs[0] === ids[0] && c.refs[1] === ids[1]))
+          addConstraint(m, { type: 'tangentAt', refs: [ids[0], ids[1], at], value: tangentValue(m, ids[0], ids[1], at) })
+      } else add('tangent', ids)
+      return null
+    }
     case 'midpoint': add('midpoint', ids); return null
     case 'coincident': {
       const [a, b] = ids
-      if (kindOf(m, b) === 'point') { mergePoints(m, a, b); return null }
+      if (kindOf(m, b) === 'point') { addCoincident(m, a, b); return null }
       add(kindOf(m, b) === 'line' ? 'pointOnLine' : 'pointOnCurve', [a, b])
       return null
     }

@@ -12,13 +12,13 @@ import { profileKey, type Loop, type Profile, type Seg, type SketchModel, type V
 
 const EPS = 1e-6
 
-type Curve =
+export type Curve =
   | { k: 'l'; a: Vec2; b: Vec2 }
   | { k: 'a'; c: Vec2; r: number; a0: number; span: number }
   | { k: 'c'; c: Vec2; r: number }
 
 /** Parameter of a point on a curve (line t in [0,1], arc/circle angle offset from a0 / 0). */
-function paramOn(cv: Curve, p: Vec2): number {
+export function paramOn(cv: Curve, p: Vec2): number {
   if (cv.k === 'l') {
     const dx = cv.b[0] - cv.a[0], dy = cv.b[1] - cv.a[1]
     return ((p[0] - cv.a[0]) * dx + (p[1] - cv.a[1]) * dy) / (dx * dx + dy * dy)
@@ -26,9 +26,9 @@ function paramOn(cv: Curve, p: Vec2): number {
   const a = Math.atan2(p[1] - cv.c[1], p[0] - cv.c[0])
   return cv.k === 'a' ? relAngle(a, cv.a0) : relAngle(a, 0)
 }
-const maxParam = (cv: Curve) => (cv.k === 'l' ? 1 : cv.k === 'a' ? cv.span : TAU)
+export const maxParam = (cv: Curve) => (cv.k === 'l' ? 1 : cv.k === 'a' ? cv.span : TAU)
 
-function intersections(a: Curve, b: Curve): Vec2[] {
+export function intersections(a: Curve, b: Curve): Vec2[] {
   const out: Vec2[] = []
   const onArc = (cv: Curve, p: Vec2) => cv.k !== 'a' || relAngle(Math.atan2(p[1] - cv.c[1], p[0] - cv.c[0]), cv.a0) <= cv.span + 1e-9
   const onLine = (t: number) => t >= -1e-9 && t <= 1 + 1e-9

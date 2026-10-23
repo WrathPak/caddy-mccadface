@@ -4,12 +4,28 @@ export interface MeshData {
   positions: Float32Array
   normals: Float32Array
   indices: Uint32Array
-  /** B-rep face id per triangle (0..n-1; all 0 for plain meshes) */
+  /**
+   * B-rep face index per triangle: the position of the face in the body's topology face list
+   * (`topoOf(shape).faces`, see occ.ts), looked up through the face's shape hash, so it is the same index the
+   * worker ops use. All 0 for plain meshes.
+   */
   faceIds: Uint32Array
   /** line segments for edge display: [x0,y0,z0,x1,y1,z1, ...] */
   edges: Float32Array
-  /** B-rep edge id per segment (parallel to `edges`, 6 floats per segment); absent => segment index */
+  /** B-rep edge index per segment (6 floats per segment in `edges`); the position in `topoOf(shape).edges`. Absent => segment index */
   edgeIds?: Uint32Array
+  /** number of faces / edges in the B-rep topology (some may have no triangles / segments); absent for plain meshes */
+  faceCount?: number
+  edgeCount?: number
+  /** OCC shape hash of every face / edge, indexed by topology index (diagnostics and cross-checks) */
+  faceHashes?: Uint32Array
+  edgeHashes?: Uint32Array
+}
+
+const maxOf = (a: ArrayLike<number>) => {
+  let m = -1
+  for (let i = 0; i < a.length; i++) if (a[i] > m) m = a[i]
+  return m
 }
 
 export interface Body {
@@ -75,7 +91,7 @@ export function bbox(positions: ArrayLike<number>): { min: Vec3; max: Vec3 } {
 
 /** Per-face signature (area-weighted normal, centroid, area) computed from the tessellation. */
 export function computeFaceSigs(m: MeshData): FaceSig[] {
-  const n = m.faceIds.length ? Math.max(...m.faceIds) + 1 : 0
+  const n = m.faceCount ?? maxOf(m.faceIds) + 1
   const acc = Array.from({ length: n }, () => ({ nx: 0, ny: 0, nz: 0, cx: 0, cy: 0, cz: 0, a: 0 }))
   const p = m.positions
   for (let t = 0; t < m.indices.length / 3; t++) {
@@ -101,7 +117,7 @@ export function computeFaceSigs(m: MeshData): FaceSig[] {
 /** Per-edge signature from the display segments. */
 export function computeEdgeSigs(m: MeshData): EdgeSig[] {
   const segs = m.edges.length / 6
-  const n = m.edgeIds && segs ? Math.max(...m.edgeIds) + 1 : segs
+  const n = m.edgeCount ?? (m.edgeIds && segs ? maxOf(m.edgeIds) + 1 : segs)
   const acc = Array.from({ length: n }, () => ({ mx: 0, my: 0, mz: 0, dx: 0, dy: 0, dz: 0, len: 0, c: 0 }))
   for (let s = 0; s < segs; s++) {
     const e = acc[m.edgeIds ? m.edgeIds[s] : s]
