@@ -19,7 +19,7 @@ import { SketchOverlay } from '@/sketch/SketchOverlay'
 import { SketchDisplay } from '@/sketch/SketchDisplay'
 import { PlanePicker } from '@/sketch/PlanePicker'
 import { HairPaintTool, HairRegionOverlay } from '@/features/hair/PaintTool'
-import { HairOverlayPass, HairPreviewLayer } from '@/features/hair/layer'
+import { HairDirectionOverlay, HairOverlayPass, HairPreviewLayer } from '@/features/hair/layer'
 
 /**
  * SSAO reads the depth / normal pre-pass. Translucent overlays that do not write depth (the infinite grid, origin
@@ -85,6 +85,7 @@ export function Scene() {
       <MeasureOverlay />
       <HairRegionOverlay />
       <HairPreviewLayer />
+      <HairDirectionOverlay />
       <HairPaintTool />
       <CaptureRegistrar />
       {import.meta.env.DEV && <DebugProbe />}

@@ -11,8 +11,9 @@ import type { HairArgs, HairPreviewResult } from '@/kernel/hair-ops'
 import type { Body } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import { createRunner, watchSelection } from '../previewKit'
+import { directionGlyphs } from './glyphs'
 import { loadSelection, setPaint, type PaintMode } from './paint'
-import { extractRegion, regionFromSelection, resolveRegionSet, type RegionSet } from './region'
+import { extractOthers, extractRegion, regionFromSelection, resolveRegionSet, type RegionSet } from './region'
 import { hairSchema, type HairValues, type V3 } from './schema'
 import { clearHairView, useHairView } from './store'
 import type { Axis } from './wall'
@@ -46,7 +47,7 @@ function buildArgs(v: HairValues, bodies: Body[], mode: 'preview' | 'final'): { 
   if (!region) throw new Error('Select the surface to grow hair on (Face, Brush or Fill tool)')
   const { positions, indices } = extractRegion(region)
   if (!positions.length) throw new Error('The selected surface is empty')
-  return { args: { mode, p: v, axis: axisOf(v, bodies), positions, indices }, region }
+  return { args: { mode, p: v, axis: axisOf(v, bodies), positions, indices, obstacle: extractOthers(region) }, region }
 }
 
 registerFeature({
@@ -78,10 +79,18 @@ function hairPreview({ values, setValues }: PreviewCtx): PreviewHandle {
       if (!v.region.length) { clearHairView(); return }
       useHairView.setState({ busy: true })
       const { args } = buildArgs(v, geometry(), 'preview')
+      try {
+        const g = directionGlyphs(args.positions, args.indices, v, args.axis)
+        useHairView.setState({
+          glyphs: g,
+          fixed: v.dirMode === 'fixed' ? { dir: v.fixedDir, set: (d) => { cur = { ...cur, fixedDir: d }; setValues(cur) } } : null,
+        })
+      } catch { useHairView.setState({ glyphs: null }) }
       const res = (await getKernel().call('hairGenerate', args)) as HairPreviewResult
-      if (!stale()) useHairView.setState({ result: res, error: null, busy: false })
+      if (!stale()) { useHairView.setState({ result: res, error: null, busy: false }); useUi.setState({ inspectorNotice: null }) }
     } catch (e) {
-      if (!stale()) useHairView.setState({ result: null, error: e instanceof Error ? e.message : String(e), busy: false })
+      const msg = e instanceof Error ? e.message : String(e)
+      if (!stale()) { useHairView.setState({ result: null, error: msg, busy: false }); useUi.setState({ inspectorNotice: msg }) }
     }
   }, 250)
 
@@ -113,10 +122,16 @@ function hairPreview({ values, setValues }: PreviewCtx): PreviewHandle {
   })
   runner.schedule()
   return {
+    activeGroup(id: string) { useHairView.setState({ showGlyphs: id === 'direction' }) },
     update(v) {
       if (v.dirMode === 'radial' && v.axisMode === 'edge' && !(cur.dirMode === 'radial' && cur.axisMode === 'edge')) {
         useUi.getState().setSelectionFilter('edge')
         setPaint({ mode: 'off' })
+      }
+      // choosing Fixed direction starts the arrow along the selected faces' normal (the stored default would often lie flat on them)
+      if (v.dirMode === 'fixed' && cur.dirMode !== 'fixed') {
+        const n = useHairView.getState().glyphs?.normal
+        if (n) { v = { ...v, fixedDir: [+n[0].toFixed(3), +n[1].toFixed(3), +n[2].toFixed(3)] }; setTimeout(() => setValues(v), 0) }
       }
       cur = v
       syncRegion(v)
@@ -125,6 +140,7 @@ function hairPreview({ values, setValues }: PreviewCtx): PreviewHandle {
     dispose() {
       off()
       runner.dispose()
+      useUi.setState({ inspectorNotice: null })
       clearHairView()
       setPaint({ visible: false, mode: 'off', sink: null })
       loadSelection(null, null, new Set())

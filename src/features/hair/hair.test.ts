@@ -8,6 +8,7 @@ import { resolveRegionSet } from './region'
 import { prepSurface } from './sampling'
 import { hairSchema, type HairParams } from './schema'
 import { followResult, makeCaster, selfIntersects } from './wall'
+import { tipOverlapOf } from './strands'
 
 type Mesh = { positions: Float32Array; indices: Uint32Array }
 
@@ -20,7 +21,9 @@ function defaults(over: Partial<HairParams> = {}): HairParams {
     }
   }
   walk(hairSchema.params)
-  return { ...(d as unknown as HairParams), ...over }
+  // the tests below were written against the classic settings; the shipped defaults are the print-ready comb
+  const classic = { dirMode: 'blend', printAware: false, distribution: 'poisson', lengthMode: 'fixed', taper: 30, wallThickness: 2, tipOverlap: 0.6, wallTop: 2, wallBottom: 2, length: 25, density: 20 }
+  return { ...(d as unknown as HairParams), ...classic, ...over } as HairParams
 }
 
 /** Cylinder about z (radius r, z in [0,h]); `side` = lateral surface only, `solid` = capped closed solid. All normals outward. */
@@ -144,7 +147,7 @@ describe('wall and booleans', () => {
     expect(s.merged!.volume()).toBeGreaterThan(base.volume())
     // every strand tip is buried in the wall, within the overlap distance of its surface
     const caster = makeCaster(g.wall!.mesh)
-    for (const st of g.strands) expect(caster.closest(st.tip).dist).toBeLessThanOrEqual(p.tipOverlap + 1e-3)
+    for (const st of g.strands) expect(caster.closest(st.tip).dist).toBeLessThanOrEqual(tipOverlapOf(p, p.wallThickness) + 1e-3)
   })
 
   it('applies top/bottom margins to follow walls', () => {
@@ -171,7 +174,7 @@ describe('wall and booleans', () => {
     const caster = makeCaster(g.wall!.mesh)
     for (const st of g.strands) {
       expect(st.contact).not.toBeNull()
-      expect(caster.closest(st.tip).dist).toBeLessThanOrEqual(p.tipOverlap + 1e-3)
+      expect(caster.closest(st.tip).dist).toBeLessThanOrEqual(tipOverlapOf(p, p.wallThickness) + 1e-3)
     }
   })
 

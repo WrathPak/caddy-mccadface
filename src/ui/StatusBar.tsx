@@ -40,7 +40,7 @@ export function StatusBar() {
       <span className="cell">{selection.length ? `${selection.length} selected` : 'Nothing selected'}</span>
       {(hs || hair.error || hair.busy) && (
         <span className="cell" title={hair.error ?? undefined} style={hair.error ? { color: 'var(--danger, #d9625a)' } : undefined}>
-          {hair.error ? `Hair: ${hair.error}` : hs ? `Hair: ${hs.strands.toLocaleString()} strands${hs.dropped ? ` (${hs.dropped} skipped)` : ''}${hs.capped ? ' (capped)' : ''} | ${Math.round(hs.triangles / 1000).toLocaleString()}k tris | ${hs.ms} ms${hair.busy ? ' ...' : ''}` : 'Hair: generating ...'}
+          {hair.error ? `Hair: ${hair.error}` : hs ? `Hair: ${hs.strands.toLocaleString()} strands${hs.dropped ? ` (${hs.dropped} skipped)` : ''}${hs.edgeRejected ? ` (${hs.edgeRejected} kept off edges)` : ''}${hs.bent ? ` (${hs.bent} bent)` : ''}${hs.collided ? ` (${hs.collided} removed: collision)` : ''}${hs.capped ? ' (capped)' : ''} | ${Math.round(hs.triangles / 1000).toLocaleString()}k tris | ${hs.ms} ms${hair.busy ? ' ...' : ''}` : 'Hair: generating ...'}
         </span>
       )}
       <span className="grow" />

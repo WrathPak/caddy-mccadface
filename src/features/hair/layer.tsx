@@ -7,10 +7,12 @@
  */
 import { useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { BufferAttribute, BufferGeometry, DoubleSide, MeshBasicMaterial, type Light, type Object3D } from 'three'
+import { BufferAttribute, BufferGeometry, DoubleSide, MeshBasicMaterial, Plane, Raycaster, Vector2, Vector3, type Light, type Object3D } from 'three'
 import { useUi } from '@/store/ui'
 import type { Mesh3 } from './wall'
 import { useHairView } from './store'
+import type { V3 } from './schema'
+import { add, cross, mul, norm, perp } from './vec'
 
 export const HAIR_LAYER = 1
 
@@ -96,3 +98,98 @@ export function HairOverlayPass() {
   }, 2)
   return null
 }
+
+// ---------------------------------------------------------------- direction arrows
+
+/** Line segments for arrows: a shaft and two barbs each. */
+function arrowLines(g: Float32Array, len: number): Float32Array {
+  const n = g.length / 6
+  const out = new Float32Array(n * 18)
+  const barb = len * 0.28
+  for (let i = 0; i < n; i++) {
+    const o: V3 = [g[i * 6], g[i * 6 + 1], g[i * 6 + 2]], d: V3 = [g[i * 6 + 3], g[i * 6 + 4], g[i * 6 + 5]]
+    const tip = add(o, mul(d, len))
+    const side = perp(d)
+    const up = cross(d, side)
+    const back = add(tip, mul(d, -barb))
+    const pts = [o, tip, tip, add(back, mul(side, barb * 0.55)), tip, add(back, mul(up, barb * 0.55))]
+    pts.forEach((p, k) => out.set(p, i * 18 + k * 3))
+  }
+  return out
+}
+
+/** Arrows on the selected faces showing where strands will point, plus the draggable arrow for a fixed direction. */
+export function HairDirectionOverlay() {
+  const glyphs = useHairView((s) => s.glyphs)
+  const show = useHairView((s) => s.showGlyphs)
+  const fixed = useHairView((s) => s.fixed)
+  const { invalidate, camera, gl } = useThree()
+  const len = glyphs ? clampLen(glyphs.size * 0.07) : 3
+  const geo = useMemo(() => {
+    if (!glyphs || !glyphs.data.length) return null
+    const g = new BufferGeometry()
+    g.setAttribute('position', new BufferAttribute(arrowLines(glyphs.data, len), 3))
+    return g
+  }, [glyphs, len])
+  useEffect(() => () => geo?.dispose(), [geo])
+  useEffect(() => { invalidate() }, [geo, show, fixed, invalidate])
+  const handle = glyphs && fixed ? add(glyphs.centre, mul(norm(fixed.dir), glyphs.size * 0.45)) : null
+  const shaft = useMemo(() => {
+    if (!glyphs || !handle) return null
+    const g = new BufferGeometry()
+    g.setAttribute('position', new BufferAttribute(Float32Array.from([...glyphs.centre, ...handle]), 3))
+    return g
+  }, [glyphs, handle?.[0], handle?.[1], handle?.[2]]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => shaft?.dispose(), [shaft])
+
+  const drag = (e: { stopPropagation(): void }) => {
+    e.stopPropagation()
+    if (!glyphs || !fixed) return
+    const rc = new Raycaster()
+    const centre = new Vector3(...glyphs.centre)
+    const move = (ev: PointerEvent) => {
+      const r = gl.domElement.getBoundingClientRect()
+      rc.setFromCamera(new Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1), camera)
+      const n = new Vector3()
+      camera.getWorldDirection(n)
+      const hit = new Vector3()
+      const at = new Vector3(...(handle as V3))
+      if (!rc.ray.intersectPlane(new Plane().setFromNormalAndCoplanarPoint(n, at), hit)) return
+      const d = hit.sub(centre)
+      if (d.length() < 1e-6) return
+      d.normalize()
+      const snap = (x: number) => +x.toFixed(3)
+      useHairView.getState().fixed?.set([snap(d.x), snap(d.y), snap(d.z)])
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  if (!show) return null
+  return (
+    <group name="hair-directions">
+      {geo && (
+        <lineSegments geometry={geo} renderOrder={20} raycast={() => null}>
+          <lineBasicMaterial color="#ffb347" depthTest={false} transparent />
+        </lineSegments>
+      )}
+      {handle && shaft && glyphs && (
+        <>
+          <lineSegments geometry={shaft} renderOrder={21} raycast={() => null}>
+            <lineBasicMaterial color="#ffb347" depthTest={false} transparent />
+          </lineSegments>
+          <mesh position={handle} renderOrder={22} onPointerDown={drag as never} onPointerOver={() => { gl.domElement.style.cursor = 'grab' }} onPointerOut={() => { gl.domElement.style.cursor = '' }}>
+            <sphereGeometry args={[Math.max(0.8, glyphs.size * 0.025), 16, 12]} />
+            <meshBasicMaterial color="#ffb347" depthTest={false} transparent />
+          </mesh>
+        </>
+      )}
+    </group>
+  )
+}
+
+const clampLen = (x: number) => Math.min(8, Math.max(1.5, x))

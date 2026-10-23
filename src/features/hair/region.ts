@@ -114,6 +114,25 @@ export function extractRegion(rs: RegionSet): { positions: Float32Array; indices
   return { positions, indices: Uint32Array.from({ length: tris.length * 3 }, (_, i) => i) }
 }
 
+/** The body's triangles that are NOT in the region, as an unwelded triangle soup (the obstacle strands must stay out of). */
+export function extractOthers(rs: RegionSet): { positions: Float32Array; indices: Uint32Array } {
+  const m = rs.body.mesh
+  const T = m.indices.length / 3
+  const tris: number[] = []
+  for (let t = 0; t < T; t++) {
+    const inRegion = rs.kind === 'mesh' ? rs.set.has(t) : rs.set.has(m.faceIds[t])
+    if (!inRegion) tris.push(t)
+  }
+  const positions = new Float32Array(tris.length * 9)
+  tris.forEach((t, i) => {
+    for (let k = 0; k < 3; k++) {
+      const v = m.indices[t * 3 + k] * 3
+      positions.set([m.positions[v], m.positions[v + 1], m.positions[v + 2]], i * 9 + k * 3)
+    }
+  })
+  return { positions, indices: Uint32Array.from({ length: tris.length * 3 }, (_, i) => i) }
+}
+
 /** Region from the current viewport selection (face refs, or a whole mesh body). */
 export function regionFromSelection(sel: { kind: string; id: string; index?: number }[], bodies: Body[]): string[] {
   const faces = sel.filter((r) => r.kind === 'face' && r.index !== undefined)

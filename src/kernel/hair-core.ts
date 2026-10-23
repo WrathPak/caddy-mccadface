@@ -1,8 +1,9 @@
 /** Hair pipeline core: sample -> centerlines -> wall -> attach -> sweep, then (final) manifold booleans. No worker/DOM dependencies. */
 import type { Manifold, ManifoldToplevel } from 'manifold-3d'
+import { bodyThickness, makeObstacles, resolveCollisions } from '../features/hair/collide'
 import { prepSurface } from '../features/hair/sampling'
 import type { HairParams, V3 } from '../features/hair/schema'
-import { attachStrands, planStrands, rawStrands, type Strand } from '../features/hair/strands'
+import { attachStrands, makeFit, planStrands, rawStrands, type Strand } from '../features/hair/strands'
 import { sweepStrands, type Tubes } from '../features/hair/sweep'
 import { buildWall, makeCaster, selfIntersects, wallField, type Axis, type Mesh3, type WallResult } from '../features/hair/wall'
 import type { TopoMesh } from './types'
@@ -15,6 +16,8 @@ export interface HairInput {
   indices: Uint32Array
   /** tube sides: 6 for previews, 8 for the final */
   sides?: number
+  /** the rest of the body (unselected faces); when given, strands are kept out of the body and the print bed is found from it */
+  obstacle?: Mesh3
 }
 
 export interface HairGen {
@@ -24,18 +27,57 @@ export interface HairGen {
   dropped: number
   redirected: number
   capped: boolean
+  /** roots skipped because the strand footprint would overhang the edge of the selection */
+  edgeRejected: number
+  /** strands bent away from the body / removed because they could not be freed */
+  bent: number
+  collided: number
+  /** height of the print bed (lowest point of body and wall): layers are counted from here */
+  bedZ: number
 }
 
+const minZ = (a: ArrayLike<number>) => { let m = Infinity; for (let i = 2; i < a.length; i += 3) m = Math.min(m, a[i]); return m }
+const maxZ = (a: ArrayLike<number>) => { let m = -Infinity; for (let i = 2; i < a.length; i += 3) m = Math.max(m, a[i]); return m }
+
 export function generateHair(a: HairInput): HairGen {
+  const P0: HairParams = { ...a.p, dirMode: a.p.dirMode === 'normal' ? 'blend' : a.p.dirMode }
   const s = prepSurface(a.positions, a.indices)
-  const plan = planStrands(s, a.p, a.axis)
-  const raws = rawStrands(plan, a.p)
-  if (!raws.length) throw new Error('No strands fit this surface with the current direction settings (print-aware needs a surface that is not facing straight up or down)')
-  const wall = a.p.wall ? buildWall(s, a.p, raws, a.axis) : null
-  const { strands, dropped, redirected } = attachStrands(raws, plan, a.p, wall ? makeCaster(wall.mesh) : null, a.p.wallThickness)
-  if (!strands.length) throw new Error('No strands could be built; adjust length, direction or wall settings')
-  const tubes = sweepStrands(strands, a.p, a.sides ?? 6)
-  return { strands, tubes, wall, dropped, redirected, capped: plan.capped }
+  const obs = a.obstacle ? makeObstacles(s, a.obstacle) : null
+  const zr0 = minZ(s.pos), zr1 = maxZ(s.pos)
+  const bodyMin = Math.min(zr0, a.obstacle ? minZ(a.obstacle.positions) : Infinity)
+  let bedZ = Math.min(bodyMin, P0.wall ? zr0 - P0.wallBottom : Infinity)
+  let P = P0, plan, raws, wall: WallResult | null = null
+  // The slicer drops the model onto the bed: layers are counted from its lowest point, which can be the wall's flat bottom.
+  for (let pass = 0; pass < 4; pass++) {
+    P = { ...P0, bedZ }
+    plan = planStrands(s, P, a.axis)
+    const fit = makeFit(s, P, obs ? (p: V3, n: V3) => bodyThickness(obs, p, n) : undefined)
+    raws = rawStrands(plan, P, fit)
+    if (!raws.length) {
+      throw new Error(plan.edgeRejected
+        ? 'No strand fits inside the selected surface: each one would hang over an edge. Select a larger area, make the strands narrower, or reduce the edge margin'
+        : 'No strands fit this surface with the current direction settings. Print-aware keeps strands horizontal, so it needs side faces (not faces pointing up or down): turn it off under Printing, pick side faces, or change the direction')
+    }
+    wall = null
+    if (P.wall) {
+      let hi = zr1
+      for (const r of raws) for (const q of r.poly) hi = Math.max(hi, q[2])
+      wall = buildWall(s, P, raws, a.axis, { lo: zr0 - P.wallBottom, hi: hi + P.wallTop })
+    }
+    const actual = Math.min(bodyMin, wall ? minZ(wall.mesh.positions) : Infinity)
+    if (Math.abs(actual - bedZ) < 1e-4) break
+    bedZ = actual
+  }
+  if (!plan || !raws) throw new Error('Hair could not be planned')
+  let { strands, dropped, redirected } = attachStrands(raws, plan, P, wall ? makeCaster(wall.mesh) : null, P.wallThickness)
+  let bent = 0, collided = 0
+  if (obs) {
+    const r = resolveCollisions(strands, P, obs)
+    strands = r.strands; bent = r.stats.bent; collided = r.stats.removed
+  }
+  if (!strands.length) throw new Error(collided ? 'Every strand collided with the body; adjust the direction or length' : 'No strands could be built; adjust length, direction or wall settings')
+  const tubes = sweepStrands(strands, P, a.sides ?? 6)
+  return { strands, tubes, wall, dropped, redirected, capped: plan.capped, edgeRejected: plan.edgeRejected, bent, collided, bedZ }
 }
 
 export interface HairSolids {

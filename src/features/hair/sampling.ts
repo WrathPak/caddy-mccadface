@@ -24,7 +24,17 @@ export interface Surf {
   total: number
   /** open boundary as directed edges (in triangle winding order) */
   boundary: [number, number][]
+  /** smooth patch (faces joined by creases below CREASE_DEG are one patch) per triangle */
+  patch: Int32Array
+  patches: number
+  /** per triangle corner: unit normal smoothed only within the triangle's own patch (9 floats per triangle) */
+  cn: Float32Array
+  /** edges between two different patches: [vertexA, vertexB, triangleA, triangleB] */
+  seams: [number, number, number, number][]
 }
+
+/** Faces meeting at a sharper angle than this are separate patches (hard seams); flatter joins count as one smooth surface. */
+export const CREASE_DEG = 40
 
 /** Welded, validated surface with vertex normals. Throws a readable error on non-manifold / inconsistently wound input. */
 export function prepSurface(positions: Float32Array, indices: Uint32Array): Surf {
@@ -36,14 +46,15 @@ export function prepSurface(positions: Float32Array, indices: Uint32Array): Surf
   const vn = new Float32Array(pos.length)
   const tn = new Float32Array(T * 3)
   const area = new Float64Array(T)
+  const raw = new Float64Array(T * 3)
   let total = 0
-  const dir = new Set<number>()
+  const dir = new Map<number, number>()
   for (let t = 0; t < T; t++) {
     const ia = idx[t * 3], ib = idx[t * 3 + 1], ic = idx[t * 3 + 2]
     for (const [p, q] of [[ia, ib], [ib, ic], [ic, ia]]) {
       const key = p * nv + q
       if (dir.has(key)) throw new Error('The selected surface is non-manifold or has inconsistently oriented triangles (an edge is shared by more than two triangles or two triangles disagree on winding); repair the mesh or pick a cleaner region')
-      dir.add(key)
+      dir.set(key, t)
     }
     const a = ia * 3, b = ib * 3, c = ic * 3
     const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2]
@@ -52,16 +63,54 @@ export function prepSurface(positions: Float32Array, indices: Uint32Array): Surf
     const l = Math.hypot(x, y, z)
     area[t] = l / 2
     total += l / 2
+    raw[t * 3] = x; raw[t * 3 + 1] = y; raw[t * 3 + 2] = z
     tn[t * 3] = x / (l || 1); tn[t * 3 + 1] = y / (l || 1); tn[t * 3 + 2] = z / (l || 1)
     for (const v of [a, b, c]) { vn[v] += x; vn[v + 1] += y; vn[v + 2] += z }
   }
   normalizeAll(vn)
   const boundary: [number, number][] = []
-  for (const key of dir) {
-    const a = Math.floor(key / nv), b = key % nv
-    if (!dir.has(b * nv + a)) boundary.push([a, b])
+  const seams: [number, number, number, number][] = []
+  const cosCrease = Math.cos((CREASE_DEG * Math.PI) / 180)
+  const flat = (a: number, b: number) => tn[a * 3] * tn[b * 3] + tn[a * 3 + 1] * tn[b * 3 + 1] + tn[a * 3 + 2] * tn[b * 3 + 2] >= cosCrease
+  // flood-fill smooth patches across edges flatter than the crease angle
+  const patch = new Int32Array(T).fill(-1)
+  let patches = 0
+  const stack: number[] = []
+  for (let t0 = 0; t0 < T; t0++) {
+    if (patch[t0] >= 0) continue
+    patch[t0] = patches
+    stack.push(t0)
+    while (stack.length) {
+      const t = stack.pop()!
+      for (let k = 0; k < 3; k++) {
+        const p = idx[t * 3 + k], q = idx[t * 3 + ((k + 1) % 3)]
+        const o = dir.get(q * nv + p)
+        if (o === undefined || patch[o] >= 0 || !flat(t, o)) continue
+        patch[o] = patches
+        stack.push(o)
+      }
+    }
+    patches++
   }
-  return { pos, idx, vn, tn, area, total, boundary }
+  for (const [key, t] of dir) {
+    const a = Math.floor(key / nv), b = key % nv
+    const o = dir.get(b * nv + a)
+    if (o === undefined) boundary.push([a, b])
+    else if (patch[o] !== patch[t] && t < o) seams.push([a, b, t, o])
+  }
+  const acc = new Map<number, [number, number, number]>()
+  for (let t = 0; t < T; t++) for (let k = 0; k < 3; k++) {
+    const key = patch[t] * nv + idx[t * 3 + k]
+    const e = acc.get(key)
+    if (e) { e[0] += raw[t * 3]; e[1] += raw[t * 3 + 1]; e[2] += raw[t * 3 + 2] } else acc.set(key, [raw[t * 3], raw[t * 3 + 1], raw[t * 3 + 2]])
+  }
+  const cn = new Float32Array(T * 9)
+  for (let t = 0; t < T; t++) for (let k = 0; k < 3; k++) {
+    const e = acc.get(patch[t] * nv + idx[t * 3 + k])!
+    const l = Math.hypot(e[0], e[1], e[2]) || 1
+    cn[t * 9 + k * 3] = e[0] / l; cn[t * 9 + k * 3 + 1] = e[1] / l; cn[t * 9 + k * 3 + 2] = e[2] / l
+  }
+  return { pos, idx, vn, tn, area, total, boundary, patch, patches, cn, seams }
 }
 
 export function normalizeAll(a: Float32Array) {
@@ -71,7 +120,7 @@ export function normalizeAll(a: Float32Array) {
   }
 }
 
-export interface Roots { p: Float32Array; n: Float32Array; count: number; capped: boolean }
+export interface Roots { p: Float32Array; n: Float32Array; /** triangle each root lies on */ tri: Uint32Array; count: number; capped: boolean }
 
 export const MAX_STRANDS = 20000
 
@@ -88,8 +137,21 @@ function bary(s: Surf, t: number, p: V3): V3 {
   return [1 - v - w, v, w]
 }
 
+/** Normal at p smoothed only inside the triangle's own patch: flat faces stay flat, curved patches stay smooth, creases stay hard. */
+export function patchNormalAt(s: Surf, t: number, p: V3): V3 {
+  const [u, v, w] = bary(s, t, p)
+  const c = s.cn
+  const n: V3 = [
+    c[t * 9] * u + c[t * 9 + 3] * v + c[t * 9 + 6] * w,
+    c[t * 9 + 1] * u + c[t * 9 + 4] * v + c[t * 9 + 7] * w,
+    c[t * 9 + 2] * u + c[t * 9 + 5] * v + c[t * 9 + 8] * w,
+  ]
+  const l = Math.hypot(n[0], n[1], n[2])
+  return l < 1e-9 ? [s.tn[t * 3], s.tn[t * 3 + 1], s.tn[t * 3 + 2]] : [n[0] / l, n[1] / l, n[2] / l]
+}
+
 /** Interpolated smooth normal at point p of triangle t. */
-function normalAt(s: Surf, t: number, p: V3): V3 {
+export function normalAt(s: Surf, t: number, p: V3): V3 {
   const [u, v, w] = bary(s, t, p)
   const a = s.idx[t * 3] * 3, b = s.idx[t * 3 + 1] * 3, c = s.idx[t * 3 + 2] * 3
   const n: V3 = [
@@ -106,9 +168,16 @@ function triPoint(s: Surf, t: number, u: number, v: number): V3 {
   return [0, 1, 2].map((k) => s.pos[a + k] + (s.pos[b + k] - s.pos[a + k]) * u + (s.pos[c + k] - s.pos[a + k]) * v) as V3
 }
 
-/** Layer thickness actually used for strands. */
+/** Narrowest strand that slices reliably: well over one extrusion line (slicers drop thinner walls; 0.45 mm already fails for a 0.4 mm nozzle). */
+export const MIN_WIDTH_FACTOR = 1.4
+export const minWidth = (p: HairParams) => p.nozzle * MIN_WIDTH_FACTOR
+/** Strand width actually used (never below the printable minimum). */
+export const effWidth = (p: HairParams) => Math.max(p.width, minWidth(p))
+/** Layer thickness actually used for strands: whole layers when snapping (always in print-aware mode). */
 export const snappedThickness = (p: HairParams) =>
-  p.snapThickness ? Math.max(p.layerHeight, Math.round(p.thickness / p.layerHeight) * p.layerHeight) : p.thickness
+  p.snapThickness || p.printAware ? Math.max(p.layerHeight, Math.round(p.thickness / p.layerHeight) * p.layerHeight) : p.thickness
+/** Z of the first strand band's underside: the bed (lowest point of the model) plus the first layer. Layers are counted from here. */
+export const layerBase = (p: HairParams) => (p.bedZ ?? 0) + p.firstLayer
 
 /**
  * Layer-aligned rows: contour lines of the surface at z = k * rowGap + thickness/2 (so each strand's underside sits on a layer boundary),
@@ -120,12 +189,13 @@ function rowRoots(s: Surf, P: HairParams, dens: number, rand: () => number, pts:
   const half = snappedThickness(P) / 2
   const spacing = 1 / Math.sqrt(dens)
   const rowGap = Math.max(1, Math.round(spacing / lh)) * lh
-  const zOf = (k: number) => k * rowGap + half
+  const base = layerBase(P)
+  const zOf = (k: number) => base + k * rowGap + half
   const rows = new Map<number, number[]>()
   for (let t = 0; t < s.idx.length / 3; t++) {
     const z = [0, 1, 2].map((k) => s.pos[s.idx[t * 3 + k] * 3 + 2])
     const lo = Math.min(...z), hi = Math.max(...z)
-    for (let k = Math.floor((lo - half) / rowGap); zOf(k) <= hi; k++) {
+    for (let k = Math.floor((lo - half - base) / rowGap); zOf(k) <= hi; k++) {
       if (zOf(k) > lo) { const l = rows.get(k); if (l) l.push(t); else rows.set(k, [t]) }
     }
   }
@@ -188,7 +258,8 @@ function snapToLayer(s: Surf, P: HairParams, p: V3, t: number): V3 {
   const g: V3 = [-nz * nrm[0], -nz * nrm[1], 1 - nz * nz] // z projected onto the triangle plane
   const gl2 = g[0] * g[0] + g[1] * g[1] + g[2] * g[2]
   if (gl2 < 0.0625) return p // plane within ~14 deg of horizontal: height cannot be controlled by sliding along it
-  const target = Math.round((p[2] - half) / lh) * lh + half
+  const base = layerBase(P)
+  const target = base + Math.round((p[2] - half - base) / lh) * lh + half
   const k = (target - p[2]) / gl2
   return [p[0] + g[0] * k, p[1] + g[1] * k, target]
 }
@@ -257,15 +328,15 @@ export function sampleRoots(s: Surf, P: HairParams): Roots {
 
   // edge margin: distance to the region's open boundary
   const keep = P.edgeMargin > 0 ? farFromBoundary(s, pts, P.edgeMargin) : null
-  const outP: number[] = [], outN: number[] = []
+  const outP: number[] = [], outN: number[] = [], outT: number[] = []
   let count = 0
   pts.forEach((p, i) => {
     if (keep && !keep[i]) return
     const n = normalAt(s, tris[i], p)
-    outP.push(p[0], p[1], p[2]); outN.push(n[0], n[1], n[2])
+    outP.push(p[0], p[1], p[2]); outN.push(n[0], n[1], n[2]); outT.push(tris[i])
     count++
   })
-  return { p: new Float32Array(outP), n: new Float32Array(outN), count, capped }
+  return { p: new Float32Array(outP), n: new Float32Array(outN), tri: Uint32Array.from(outT), count, capped }
 }
 
 function farFromBoundary(s: Surf, pts: V3[], margin: number): Uint8Array {
@@ -298,4 +369,70 @@ function farFromBoundary(s: Surf, pts: V3[], margin: number): Uint8Array {
     }
   })
   return ok
+}
+
+/** Uniform-grid index over line segments for "nearest edge within r" queries. */
+export class SegIndex {
+  private grid = new Map<string, number[]>()
+  private cell: number
+  constructor(private pos: Float32Array, private segs: ArrayLike<readonly [number, number]>, private maxR: number) {
+    this.cell = Math.max(maxR, 0.5)
+    const c = this.cell
+    for (let i = 0; i < segs.length; i++) {
+      const [a, b] = segs[i]
+      const lo = [0, 1, 2].map((k) => Math.floor((Math.min(pos[a * 3 + k], pos[b * 3 + k]) - maxR) / c))
+      const hi = [0, 1, 2].map((k) => Math.floor((Math.max(pos[a * 3 + k], pos[b * 3 + k]) + maxR) / c))
+      for (let x = lo[0]; x <= hi[0]; x++) for (let y = lo[1]; y <= hi[1]; y++) for (let z = lo[2]; z <= hi[2]; z++) {
+        const key = x + ',' + y + ',' + z
+        const l = this.grid.get(key)
+        if (l) l.push(i); else this.grid.set(key, [i])
+      }
+    }
+  }
+  /** Calls fn(segment index, distance, parameter along the segment) for every candidate within maxR of p (distance may exceed maxR). */
+  each(p: V3, fn: (i: number, d: number, f: number) => void) {
+    const c = this.cell
+    const l = this.grid.get(Math.floor(p[0] / c) + ',' + Math.floor(p[1] / c) + ',' + Math.floor(p[2] / c))
+    if (!l) return
+    const { pos } = this
+    for (const i of l) {
+      const [a, b] = this.segs[i]
+      const ax = pos[a * 3], ay = pos[a * 3 + 1], az = pos[a * 3 + 2]
+      const dx = pos[b * 3] - ax, dy = pos[b * 3 + 1] - ay, dz = pos[b * 3 + 2] - az
+      const L2 = dx * dx + dy * dy + dz * dz || 1
+      const f = Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy + (p[2] - az) * dz) / L2))
+      fn(i, Math.hypot(p[0] - ax - dx * f, p[1] - ay - dy * f, p[2] - az - dz * f), f)
+    }
+  }
+  /** Distance to the nearest segment, or Infinity when none lies within maxR. */
+  nearest(p: V3): number {
+    let best = Infinity
+    this.each(p, (_i, d) => { if (d < best) best = d })
+    return best <= this.maxR ? best : Infinity
+  }
+}
+
+/**
+ * Surface normal for a root in Blend mode: the patch normal, tilted towards each neighbouring patch across a nearby seam.
+ * At the seam the normal is halfway between the two faces; it relaxes to the face normal at `dist` from the seam
+ * (dist 0: no blending, a hard transition).
+ */
+export function blendedNormal(s: Surf, seams: SegIndex, t: number, p: V3, base: V3, dist: number): V3 {
+  if (dist <= 1e-9) return base
+  const pull = new Map<number, { d: number; n: V3 }>()
+  seams.each(p, (i, d) => {
+    const [, , ta, tb] = s.seams[i]
+    const other = s.patch[ta] === s.patch[t] ? tb : s.patch[tb] === s.patch[t] ? ta : -1
+    if (other < 0 || d >= dist) return
+    const q = s.patch[other]
+    const e = pull.get(q)
+    if (!e || d < e.d) pull.set(q, { d, n: [s.tn[other * 3], s.tn[other * 3 + 1], s.tn[other * 3 + 2]] })
+  })
+  let n: V3 = base
+  for (const { d, n: nb } of pull.values()) {
+    const w = 0.5 * (1 - d / dist)
+    n = [n[0] + (nb[0] - base[0]) * w, n[1] + (nb[1] - base[1]) * w, n[2] + (nb[2] - base[2]) * w]
+  }
+  const l = Math.hypot(n[0], n[1], n[2])
+  return l < 1e-9 ? base : [n[0] / l, n[1] / l, n[2] / l]
 }

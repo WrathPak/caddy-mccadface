@@ -2,9 +2,9 @@
 import { BufferAttribute, BufferGeometry, DoubleSide, Matrix4, Ray, Vector3 } from 'three'
 import { MeshBVH, type ExtendedTriangle } from 'three-mesh-bvh'
 import type { HairParams, V3 } from './schema'
-import type { Surf } from './sampling'
+import { prepSurface, type Surf } from './sampling'
 import type { Raw } from './strands'
-import { add, basis, cross, dot, mul, norm, sub } from './vec'
+import { add, basis, cross, dot, len, mul, norm, sub } from './vec'
 
 export interface Mesh3 { positions: Float32Array; indices: Uint32Array }
 export interface Axis { o: V3; d: V3 }
@@ -81,40 +81,6 @@ function boundaryOf(idx: Uint32Array, nv: number): [number, number][] {
     if (!dir.has(b * nv + a)) out.push([a, b])
   }
   return out
-}
-
-/** Grow the region past its open boundary: top/bottom margins along the surface, scaled by how much the edge faces up/down. */
-function extendRegion(s: Surf, top: number, bottom: number): Geo {
-  const nv = s.pos.length / 3
-  const o = new Float32Array(nv * 3)
-  for (const [a, b] of s.boundary) {
-    const e = norm(sub([s.pos[b * 3], s.pos[b * 3 + 1], s.pos[b * 3 + 2]], [s.pos[a * 3], s.pos[a * 3 + 1], s.pos[a * 3 + 2]]))
-    const n = norm([s.vn[a * 3] + s.vn[b * 3], s.vn[a * 3 + 1] + s.vn[b * 3 + 1], s.vn[a * 3 + 2] + s.vn[b * 3 + 2]])
-    const w = norm(cross(e, n)) // outward, in the surface plane
-    for (const v of [a, b]) for (let k = 0; k < 3; k++) o[v * 3 + k] += w[k]
-  }
-  const vtx = new Set<number>()
-  for (const [a, b] of s.boundary) { vtx.add(a); vtx.add(b) }
-  const extra: number[] = [], map = new Map<number, number>()
-  const pos = Array.from(s.pos), vn = Array.from(s.vn)
-  for (const v of vtx) {
-    const w = norm([o[v * 3], o[v * 3 + 1], o[v * 3 + 2]])
-    const m = w[2] > 0 ? top * w[2] : bottom * -w[2]
-    if (m < 1e-6) continue
-    const id = pos.length / 3
-    map.set(v, id)
-    pos.push(s.pos[v * 3] + w[0] * m, s.pos[v * 3 + 1] + w[1] * m, s.pos[v * 3 + 2] + w[2] * m)
-    vn.push(s.vn[v * 3], s.vn[v * 3 + 1], s.vn[v * 3 + 2])
-  }
-  const idx = Array.from(s.idx)
-  for (const [u, v] of s.boundary) {
-    const nu = map.get(u), nvv = map.get(v)
-    // the strip contains the reverse edge v->u so winding stays consistent with the region
-    if (nu !== undefined && nvv !== undefined) extra.push(v, u, nu, v, nu, nvv)
-    else if (nu !== undefined) extra.push(v, u, nu)
-    else if (nvv !== undefined) extra.push(v, u, nvv)
-  }
-  return { pos: Float32Array.from(pos), idx: Uint32Array.from([...idx, ...extra]), vn: Float32Array.from(vn) }
 }
 
 /** Vertex adjacency (CSR, neighbours unique) with edge lengths. */
@@ -219,9 +185,9 @@ function smoothNormals(g: Geo, adj: ReturnType<typeof adjacency>, rho0: number):
 }
 
 /** Per-vertex offset: D, reduced where concave curvature would fold an edge of the offset shell (inner or outer face). */
-function clampedOffsets(g: Geo, adj: ReturnType<typeof adjacency>, sn: Float32Array, D: number, T: number): Float32Array {
+function clampedOffsets(g: Geo, adj: ReturnType<typeof adjacency>, sn: Float32Array, D: number, T: number, Dv?: Float32Array): Float32Array {
   const nv = g.pos.length / 3
-  const lim = new Float32Array(nv).fill(D)
+  const lim = Dv ? Dv.slice() : new Float32Array(nv).fill(D)
   const floor = Math.min(D, 0.3)
   for (let a = 0; a < nv; a++) {
     for (let i = adj.start[a]; i < adj.start[a + 1]; i++) {
@@ -265,21 +231,259 @@ export function followResult(positions: Float32Array, tris: Uint32Array): WallRe
   return { mesh: { positions, indices: new Uint32Array(idx) }, follow: { positions, tris } }
 }
 
-function followWall(s: Surf, P: HairParams): WallResult {
+// ------------------------------------------------------------------ face-following wall
+
+/** Flat top and bottom of the wall (world Z): spans the strands plus the margins. */
+export interface WallZ { lo: number; hi: number }
+
+/** Offset vector of length-d planes: the point m with n_i . m = d for every distinct face normal (a mitered corner). */
+function miterVec(normals: V3[], d: number): V3 {
+  const u: V3[] = []
+  for (const n of normals) if (!u.some((q) => dot(q, n) > 0.9995)) u.push(n)
+  if (u.length === 1) return mul(u[0], d)
+  const cap = (m: V3): V3 => { const l = len(m); return l > 3 * d ? mul(m, (3 * d) / l) : m }
+  if (u.length === 2) {
+    const k = 1 + dot(u[0], u[1])
+    if (k < 0.2) return mul(norm(add(u[0], u[1])), d) // very sharp: bevel instead of a long spike
+    return cap(mul(add(u[0], u[1]), d / k))
+  }
+  // three or more: least squares on the first three well-separated normals
+  const t = u.slice(0, 3)
+  const G = t.map((a) => t.map((b) => dot(a, b)))
+  const det = G[0][0] * (G[1][1] * G[2][2] - G[1][2] * G[2][1]) - G[0][1] * (G[1][0] * G[2][2] - G[1][2] * G[2][0]) + G[0][2] * (G[1][0] * G[2][1] - G[1][1] * G[2][0])
+  if (Math.abs(det) < 1e-3) return mul(norm(u.reduce((a, b) => add(a, b), [0, 0, 0] as V3)), d)
+  // Cramer's rule for G c = d * 1
+  const col = (k: number) => {
+    const M = G.map((r) => r.slice())
+    for (let i = 0; i < 3; i++) M[i][k] = 1
+    return (M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0])) / det
+  }
+  return cap(mul(add(add(mul(t[0], col(0)), mul(t[1], col(1))), mul(t[2], col(2))), d))
+}
+
+const slerp = (a: V3, b: V3, t: number): V3 => {
+  const c = Math.max(-1, Math.min(1, dot(a, b)))
+  const th = Math.acos(c)
+  if (th < 1e-4) return a
+  const s = Math.sin(th)
+  return add(mul(a, Math.sin((1 - t) * th) / s), mul(b, Math.sin(t * th) / s))
+}
+
+/**
+ * Wall that copies the selected faces, offset by the strand length. Every smooth face (patch) is offset along its own normals,
+ * so flat faces give flat slabs and curved faces stay smooth. Where two faces meet, the sheets are joined by a mitered corner or
+ * a circular arc (the rounded join also serves Blend mode). The top and bottom are cut flat at the shared wall heights.
+ * `dist` optionally overrides the offset per surface vertex (used by the through-tips fit).
+ */
+function followSheet(s: Surf, P: HairParams, z: WallZ, dist?: (v: number) => number): WallResult {
   const D = P.length, T = P.wallThickness
-  const g = P.wallTop > 0 || P.wallBottom > 0 ? extendRegion(s, P.wallTop, P.wallBottom) : { pos: s.pos, idx: s.idx, vn: s.vn }
-  const nv = g.pos.length / 3
+  const nv = s.pos.length / 3
+  // 1. split every vertex per patch so that smoothing and clamping never cross a hard edge
+  const slot = new Map<number, number>()
+  const bpos: number[] = [], bn: number[] = []
+  const tris = new Uint32Array(s.idx.length)
+  for (let t = 0; t < s.idx.length / 3; t++) for (let k = 0; k < 3; k++) {
+    const v = s.idx[t * 3 + k], key = s.patch[t] * nv + v
+    let id = slot.get(key)
+    if (id === undefined) {
+      id = bpos.length / 3
+      slot.set(key, id)
+      bpos.push(s.pos[v * 3], s.pos[v * 3 + 1], s.pos[v * 3 + 2])
+      bn.push(s.cn[t * 9 + k * 3], s.cn[t * 9 + k * 3 + 1], s.cn[t * 9 + k * 3 + 2])
+    }
+    tris[t * 3 + k] = id
+  }
+  const ns = bpos.length / 3
+  const g: Geo = { pos: Float32Array.from(bpos), idx: tris, vn: Float32Array.from(bn) }
+  const baseOf = new Uint32Array(ns)
+  for (const [key, id] of slot) baseOf[id] = key % nv
   const adj = adjacency(g)
   const sn = smoothNormals(g, adj, Math.max(0.5, 0.4 * D))
-  const off = clampedOffsets(g, adj, sn, D, T)
-  const positions = new Float32Array(nv * 6)
-  for (let v = 0; v < nv; v++) {
-    for (let k = 0; k < 3; k++) {
-      positions[v * 3 + k] = g.pos[v * 3 + k] + sn[v * 3 + k] * off[v]
-      positions[(nv + v) * 3 + k] = g.pos[v * 3 + k] + sn[v * 3 + k] * (off[v] + T)
-    }
+  const Dv = dist ? Float32Array.from({ length: ns }, (_, i) => dist(baseOf[i])) : undefined
+  const off = clampedOffsets(g, adj, sn, D, T, Dv)
+  const nrm = (i: number): V3 => [sn[i * 3], sn[i * 3 + 1], sn[i * 3 + 2]]
+  const bp = (i: number): V3 => [g.pos[i * 3], g.pos[i * 3 + 1], g.pos[i * 3 + 2]]
+
+  // 2. classify the seams between faces
+  const miter = P.dirMode === 'perFace' && P.wallCorner === 'miter'
+  const par = Array.from({ length: ns }, (_, i) => i)
+  const find = (x: number): number => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x] } return x }
+  const arcs: { aa: number; ab: number; ba: number; bb: number }[] = []
+  for (const [a, b, ta, tb] of s.seams) {
+    const aa = slot.get(s.patch[ta] * nv + a)!, ab = slot.get(s.patch[ta] * nv + b)!
+    const ba = slot.get(s.patch[tb] * nv + a)!, bb = slot.get(s.patch[tb] * nv + b)!
+    const e = norm(sub([s.pos[b * 3], s.pos[b * 3 + 1], s.pos[b * 3 + 2]], [s.pos[a * 3], s.pos[a * 3 + 1], s.pos[a * 3 + 2]]))
+    const out = cross(e, [s.tn[ta * 3], s.tn[ta * 3 + 1], s.tn[ta * 3 + 2]])
+    const convex = dot([s.tn[tb * 3], s.tn[tb * 3 + 1], s.tn[tb * 3 + 2]], out) > 1e-4
+    if (miter || !convex) {
+      par[find(aa)] = find(ba); par[find(ab)] = find(bb)
+    } else arcs.push({ aa, ab, ba, bb })
   }
-  return followResult(positions, g.idx)
+
+  // 3. one sheet vertex per class, positioned by the (mitered) offset planes
+  const cls = new Map<number, number[]>()
+  for (let i = 0; i < ns; i++) { const r = find(i); const l = cls.get(r); if (l) l.push(i); else cls.set(r, [i]) }
+  const sheet = new Uint32Array(ns)
+  const inner: number[] = [], outer: number[] = []
+  const addVert = (pi: V3, po: V3) => { inner.push(pi[0], pi[1], pi[2]); outer.push(po[0], po[1], po[2]); return inner.length / 3 - 1 }
+  for (const members of cls.values()) {
+    const b = bp(members[0])
+    const d = Math.min(...members.map((m) => off[m]))
+    const normals = members.map(nrm)
+    const id = addVert(add(b, miterVec(normals, d)), add(b, miterVec(normals, d + T)))
+    for (const m of members) sheet[m] = id
+  }
+  const idx: number[] = []
+  for (let t = 0; t < tris.length; t += 3) idx.push(sheet[tris[t]], sheet[tris[t + 1]], sheet[tris[t + 2]])
+
+  // 4. rounded joins: a strip of circular-arc rings across each convex seam
+  for (const { aa, ab, ba, bb } of arcs) {
+    const cosA = Math.max(-1, Math.min(1, dot(nrm(aa), nrm(ba))))
+    const K = Math.max(1, Math.ceil(Math.acos(cosA) / (Math.PI / 12)))
+    const ringOf = (x: number, y: number): number[] => {
+      const r = [sheet[x]]
+      const b = bp(x)
+      const dx = off[x], dy = off[y]
+      for (let k = 1; k < K; k++) {
+        const nk = slerp(nrm(x), nrm(y), k / K)
+        const d = dx + (dy - dx) * (k / K)
+        r.push(addVert(add(b, mul(nk, d)), add(b, mul(nk, d + T))))
+      }
+      r.push(sheet[y])
+      return r
+    }
+    const ra = ringOf(aa, ba), rb = ringOf(ab, bb)
+    // the region triangle holds a->b, so the strip walks b->a first (reverse edge) to keep the winding consistent
+    for (let k = 0; k < K; k++) idx.push(rb[k], ra[k], ra[k + 1], rb[k], ra[k + 1], rb[k + 1])
+  }
+
+  // 5. flat top and bottom: boundary edges that face up (or down) are extruded vertically to the shared heights
+  const tri = Uint32Array.from(idx)
+  const nsh = inner.length / 3
+  const ext = new Map<number, number>()
+  const extra: number[] = []
+  const extrude = (v: number, zt: number) => {
+    let id = ext.get(v)
+    if (id === undefined) {
+      id = inner.length / 3
+      ext.set(v, id)
+      inner.push(inner[v * 3], inner[v * 3 + 1], zt)
+      outer.push(outer[v * 3], outer[v * 3 + 1], zt)
+    }
+    return id
+  }
+  const owner = new Map<number, V3>()
+  for (let t = 0; t < tri.length; t += 3) {
+    const A = vec(inner, tri[t]), B = vec(inner, tri[t + 1]), C = vec(inner, tri[t + 2])
+    const nn = norm(cross(sub(B, A), sub(C, A)))
+    for (let k = 0; k < 3; k++) owner.set(tri[t + k] * nsh + tri[t + ((k + 1) % 3)], nn)
+  }
+  for (const [u, v] of boundaryOf(tri, nsh)) {
+    // outward direction of the edge inside its triangle's plane
+    const tn = owner.get(u * nsh + v)!
+    const e = norm(sub(vec(inner, v), vec(inner, u)))
+    const w = norm(cross(e, tn))
+    const top = w[2] > 0.5 && P.wallTop > 0, bot = w[2] < -0.5 && P.wallBottom > 0
+    if (!top && !bot) continue
+    const zt = top ? z.hi : z.lo
+    const okU = top ? inner[u * 3 + 2] < zt - 1e-6 : inner[u * 3 + 2] > zt + 1e-6
+    const okV = top ? inner[v * 3 + 2] < zt - 1e-6 : inner[v * 3 + 2] > zt + 1e-6
+    if (!okU && !okV) continue
+    const nu = okU ? extrude(u, zt) : u, nvv = okV ? extrude(v, zt) : v
+    if (nu !== u && nvv !== v) extra.push(v, u, nu, v, nu, nvv)
+    else if (nu !== u) extra.push(v, u, nu)
+    else extra.push(v, u, nvv)
+  }
+  const all = Uint32Array.from([...idx, ...extra])
+  const n2 = inner.length / 3
+  const positions = new Float32Array(n2 * 6)
+  positions.set(inner, 0)
+  positions.set(outer, n2 * 3)
+  return followResult(positions, all)
+}
+
+const vec = (a: number[], i: number): V3 => [a[i * 3], a[i * 3 + 1], a[i * 3 + 2]]
+
+function followWall(s: Surf, P: HairParams, z: WallZ): WallResult {
+  return followSheet(s, P, z)
+}
+
+/** Midpoint-subdivide a triangle soup until no edge is longer than maxEdge (or the triangle budget is reached). */
+function refine(s: Surf, maxEdge: number, budget = 40000): Surf {
+  let pos = Array.from(s.pos), idx = Array.from(s.idx)
+  for (let it = 0; it < 6; it++) {
+    let longest = 0
+    for (let t = 0; t < idx.length; t += 3) for (let k = 0; k < 3; k++) {
+      const a = idx[t + k] * 3, b = idx[t + ((k + 1) % 3)] * 3
+      longest = Math.max(longest, Math.hypot(pos[a] - pos[b], pos[a + 1] - pos[b + 1], pos[a + 2] - pos[b + 2]))
+    }
+    if (longest <= maxEdge || (idx.length / 3) * 4 > budget) break
+    const mid = new Map<number, number>()
+    const m = (a: number, b: number) => {
+      const key = Math.min(a, b) * 1e7 + Math.max(a, b)
+      let id = mid.get(key)
+      if (id === undefined) {
+        id = pos.length / 3
+        mid.set(key, id)
+        pos.push((pos[a * 3] + pos[b * 3]) / 2, (pos[a * 3 + 1] + pos[b * 3 + 1]) / 2, (pos[a * 3 + 2] + pos[b * 3 + 2]) / 2)
+      }
+      return id
+    }
+    const next: number[] = []
+    for (let t = 0; t < idx.length; t += 3) {
+      const [a, b, c] = [idx[t], idx[t + 1], idx[t + 2]]
+      const ab = m(a, b), bc = m(b, c), ca = m(c, a)
+      next.push(a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca)
+    }
+    idx = next
+  }
+  return prepSurface(Float32Array.from(pos), Uint32Array.from(idx))
+}
+
+/**
+ * Wall through the strand tips: the followed faces, but each point is set out to the (smoothed) distance of the tips around it,
+ * so the wall is a smooth surface fitted to the tips instead of a copy of the faces.
+ */
+function tipsWall(s0: Surf, P: HairParams, raws: Raw[], z: WallZ): WallResult {
+  if (!raws.length) throw new Error('No strands to fit a wall through')
+  const s = refine(s0, Math.max(2.5, P.length / 6))
+  const nv = s.pos.length / 3
+  // distance of each tip from its root along the face normal
+  const rr = raws.map((r) => {
+    const tip = r.poly[r.poly.length - 1]
+    const root = add(r.start, mul(r.dir, r.sink))
+    return { root, d: Math.max(0.5, dot(sub(tip, root), r.n)) }
+  })
+  const rho = Math.max(4, 3 * Math.sqrt((s0.total / Math.max(1, raws.length)) || 1))
+  const grid = new Map<string, number[]>()
+  const key = (p: V3) => `${Math.floor(p[0] / rho)},${Math.floor(p[1] / rho)},${Math.floor(p[2] / rho)}`
+  rr.forEach((r, i) => { const k = key(r.root); const l = grid.get(k); if (l) l.push(i); else grid.set(k, [i]) })
+  const mean = rr.reduce((a, r) => a + r.d, 0) / rr.length
+  const raw = new Float32Array(nv)
+  for (let v = 0; v < nv; v++) {
+    const p: V3 = [s.pos[v * 3], s.pos[v * 3 + 1], s.pos[v * 3 + 2]]
+    let sw = 0, sd = 0
+    const cx = Math.floor(p[0] / rho), cy = Math.floor(p[1] / rho), cz = Math.floor(p[2] / rho)
+    for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let w = -1; w <= 1; w++) {
+      for (const i of grid.get(`${cx + x},${cy + y},${cz + w}`) ?? []) {
+        const q = rr[i].root
+        const d2 = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 + (q[2] - p[2]) ** 2
+        const wt = 1 / (d2 + 0.25)
+        sw += wt; sd += wt * rr[i].d
+      }
+    }
+    raw[v] = sw > 0 ? sd / sw : mean
+  }
+  // a few passes of neighbour averaging make the fitted surface smooth
+  const nb: number[][] = Array.from({ length: nv }, () => [])
+  for (let t = 0; t < s.idx.length; t += 3) for (let k = 0; k < 3; k++) { const a = s.idx[t + k], b = s.idx[t + ((k + 1) % 3)]; nb[a].push(b); nb[b].push(a) }
+  let cur = raw
+  for (let it = 0; it < 4; it++) {
+    const nx = cur.slice()
+    for (let v = 0; v < nv; v++) if (nb[v].length) nx[v] = 0.5 * cur[v] + 0.5 * (nb[v].reduce((a, q) => a + cur[q], 0) / nb[v].length)
+    cur = nx
+  }
+  return followSheet(s, P, z, (v) => cur[v])
 }
 
 // ------------------------------------------------------------------ box / cylinder walls
@@ -331,9 +535,10 @@ function cylinderShell(o: V3, a: V3, r0: number, r1: number, z0: number, z1: num
 const len3 = (a: V3) => Math.hypot(a[0], a[1], a[2])
 
 /** Builds the wall from the surface (follow) or from the envelope of the natural strands (planar / cylindrical). */
-export function buildWall(s: Surf, P: HairParams, raws: Raw[], axis: Axis): WallResult {
+export function buildWall(s: Surf, P: HairParams, raws: Raw[], axis: Axis, z: WallZ): WallResult {
   const T = P.wallThickness
-  if (P.wallMode === 'follow') return followWall(s, P)
+  if (P.wallMode === 'follow') return followWall(s, P, z)
+  if (P.wallMode === 'tips') return tipsWall(s, P, raws, z)
   if (!raws.length) throw new Error('No strands to build a wall for')
   const tipOf = (r: Raw) => r.poly[r.poly.length - 1]
   const tanOf = (r: Raw): V3 => norm(sub(r.poly[r.poly.length - 1], r.poly[r.poly.length - 2]))
@@ -364,7 +569,8 @@ export function buildWall(s: Surf, P: HairParams, raws: Raw[], axis: Axis): Wall
       if (c > 0.05) grow(add(tip, mul(t, (off - dot(tip, N)) / c))) // where the strand actually lands
     }
     const pad = Math.max(2, 0.06 * (u1 - u0))
-    return { mesh: box([0, 0, 0], [U, V, N], [u0 - pad, v0 - P.wallBottom, off], [u1 + pad, v1 + P.wallTop, off + T]) }
+    const horiz = Math.abs(N[2]) < 1e-3 // vertical wall: V is exactly world Z, so the flat top and bottom land on the shared heights
+    return { mesh: box([0, 0, 0], [U, V, N], [u0 - pad, horiz ? Math.min(v0 - P.wallBottom, z.lo) : v0 - P.wallBottom, off], [u1 + pad, horiz ? Math.max(v1 + P.wallTop, z.hi) : v1 + P.wallTop, off + T]) }
   }
 
   // cylindrical
@@ -384,7 +590,8 @@ export function buildWall(s: Surf, P: HairParams, raws: Raw[], axis: Axis): Wall
   for (const r of raws) for (const q of [tipOf(r), r.start]) {
     z0 = Math.min(z0, dot(sub(q, o), a)); z1 = Math.max(z1, dot(sub(q, o), a))
   }
-  return { mesh: cylinderShell(o, a, R, R + T, z0 - P.wallBottom, z1 + P.wallTop) }
+  const vert = a[2] > 0.999 // axis along Z: the flat ends are the shared heights
+  return { mesh: cylinderShell(o, a, R, R + T, vert ? Math.min(z0 - P.wallBottom, z.lo - o[2]) : z0 - P.wallBottom, vert ? Math.max(z1 + P.wallTop, z.hi - o[2]) : z1 + P.wallTop) }
 }
 
 // ------------------------------------------------------------------ robust wall volume (signed distance field)

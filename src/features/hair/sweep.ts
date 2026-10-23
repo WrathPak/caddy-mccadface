@@ -1,5 +1,5 @@
 /** Sweeps a cross-section along strand centerlines with rotation-minimising frames into closed tubes. */
-import { snappedThickness } from './sampling'
+import { effWidth, snappedThickness } from './sampling'
 import type { HairParams, V3 } from './schema'
 import type { Strand } from './strands'
 import { add, cross, dot, mul, norm, perp, sub } from './vec'
@@ -13,8 +13,8 @@ export interface Tubes {
 }
 
 /** Section outline as (thickness-axis, width-axis) coefficients at scale 1. */
-function outline(P: HairParams, sides: number): [number, number][] {
-  const a = snappedThickness(P) / 2, b = P.width / 2
+export function outline(P: HairParams, sides: number): [number, number][] {
+  const a = snappedThickness(P) / 2, b = effWidth(P) / 2
   if (P.section === 'rect') return [[a, b], [-a, b], [-a, -b], [a, -b]]
   if (P.section === 'diamond') return [[a, 0], [0, b], [-a, 0], [0, -b]]
   return Array.from({ length: sides }, (_, k) => [a * Math.cos((2 * Math.PI * k) / sides), b * Math.sin((2 * Math.PI * k) / sides)] as [number, number])
