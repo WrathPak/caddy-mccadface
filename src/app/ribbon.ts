@@ -30,7 +30,7 @@ export const RIBBON_TABS: RibbonTab[] = [
         label: 'Modify',
         items: [{ cmd: 'solid.fillet' }, { cmd: 'solid.chamfer' }, { cmd: 'solid.shell' }, { cmd: 'solid.move' }, { cmd: 'solid.combine', menu: ['solid.join', 'solid.cut', 'solid.intersect'] }],
       },
-      { label: 'Construct', items: [{ cmd: 'construct.plane' }, { cmd: 'construct.axis' }] },
+      { label: 'Construct', items: [{ cmd: 'construct.plane' }] },
       { label: 'Inspect', items: [{ cmd: 'inspect.measure' }, { cmd: 'inspect.section' }] },
       { label: 'Document', items: [{ cmd: 'doc.parameters' }] },
     ],
@@ -42,7 +42,7 @@ export const RIBBON_TABS: RibbonTab[] = [
     groups: [
       { label: 'Import', items: [{ cmd: 'mesh.import' }] },
       { label: 'Modify', items: [{ cmd: 'mesh.remesh' }, { cmd: 'mesh.smooth' }, { cmd: 'mesh.reduce' }, { cmd: 'mesh.planeCut' }] },
-      { label: 'Prepare', items: [{ cmd: 'mesh.repair' }, { cmd: 'mesh.makeSolid' }] },
+      { label: 'Prepare', items: [{ cmd: 'mesh.repair' }, { cmd: 'mesh.convert' }] },
       { label: 'Inspect', items: [{ cmd: 'inspect.measure' }, { cmd: 'inspect.section' }] },
     ],
   },

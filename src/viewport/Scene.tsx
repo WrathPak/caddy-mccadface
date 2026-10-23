@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { useThree } from '@react-three/fiber'
-import { OrthographicCamera, PerspectiveCamera, Line } from '@react-three/drei'
+import { OrthographicCamera, PerspectiveCamera } from '@react-three/drei'
 import { EffectComposer, SSAO } from '@react-three/postprocessing'
 import { BlendFunction } from 'postprocessing'
-import { DoubleSide, type Object3D } from 'three'
+import type { Object3D } from 'three'
 import { useUi } from '@/store/ui'
 import { DebugProbe } from '@/app/debug'
 import { Bodies } from './Bodies'
 import { CaptureRegistrar, MoveGizmo } from './MoveGizmo'
 import { InfiniteGrid } from './InfiniteGrid'
+import { ConstructionPlanes, Origin } from './Origin'
 import { NavControls, FOV } from './NavControls'
 import { ViewCubeSync } from './ViewCube'
 import { useVpColors } from './colors'
@@ -17,31 +18,7 @@ import { SketchOverlay } from '@/sketch/SketchOverlay'
 import { SketchDisplay } from '@/sketch/SketchDisplay'
 import { PlanePicker } from '@/sketch/PlanePicker'
 import { HairPaintTool, HairRegionOverlay } from '@/features/hair/PaintTool'
-import { HairPreviewLayer } from '@/features/hair/layer'
-
-const S = 32 // origin plane half-size
-
-function Origin() {
-  const c = useVpColors()
-  const planes: { rot: [number, number, number]; color: string }[] = [
-    { rot: [0, 0, 0], color: c.axisZ }, // XY
-    { rot: [Math.PI / 2, 0, 0], color: c.axisY }, // XZ
-    { rot: [0, Math.PI / 2, 0], color: c.axisX }, // YZ
-  ]
-  return (
-    <group renderOrder={-2}>
-      {planes.map((p, i) => (
-        <mesh key={i} rotation={p.rot} raycast={() => null}>
-          <planeGeometry args={[S * 2, S * 2]} />
-          <meshBasicMaterial color={p.color} transparent opacity={0.04} side={DoubleSide} depthWrite={false} />
-        </mesh>
-      ))}
-      <Line points={[[0, 0, 0], [S * 1.4, 0, 0]]} color={c.axisX} lineWidth={1.5} raycast={() => null} />
-      <Line points={[[0, 0, 0], [0, S * 1.4, 0]]} color={c.axisY} lineWidth={1.5} raycast={() => null} />
-      <Line points={[[0, 0, 0], [0, 0, S * 1.4]]} color={c.axisZ} lineWidth={1.5} raycast={() => null} />
-    </group>
-  )
-}
+import { HairOverlayPass, HairPreviewLayer } from '@/features/hair/layer'
 
 /**
  * SSAO reads the depth / normal pre-pass. Translucent overlays that do not write depth (the infinite grid, origin
@@ -61,7 +38,7 @@ function useAoOverlayMask(composer: { current: unknown }, enabled: boolean) {
       scene.traverse((o) => {
         const m = (o as { material?: { transparent?: boolean; depthWrite?: boolean } | { transparent?: boolean; depthWrite?: boolean }[] }).material
         const mat = Array.isArray(m) ? m[0] : m
-        if (o.visible && mat && mat.transparent && mat.depthWrite === false) { o.visible = false; hidden.push(o) }
+        if (o.visible && ((mat && mat.transparent && mat.depthWrite === false) || o.userData.noAo)) { o.visible = false; hidden.push(o) }
       })
       try { orig.apply(this, a) } finally { for (const o of hidden) o.visible = true }
     }
@@ -76,6 +53,7 @@ export function Scene() {
   const showOrigin = useUi((s) => s.showOrigin)
   const showGrid = useUi((s) => s.showGrid)
   const sketching = useUi((s) => s.sketchMode)
+  const sectioned = useUi((s) => s.section.on)
   const colors = useVpColors()
   useAoOverlayMask(composer, ssao)
 
@@ -94,6 +72,7 @@ export function Scene() {
       <directionalLight position={[-120, 80, 40]} intensity={0.5} />
       {showGrid && !sketching && <InfiniteGrid />}
       {showOrigin && !sketching && <Origin />}
+      {showOrigin && !sketching && <ConstructionPlanes />}
       <Bodies />
       <MoveGizmo />
       <SketchDisplay />
@@ -107,7 +86,8 @@ export function Scene() {
       <HairPaintTool />
       <CaptureRegistrar />
       {import.meta.env.DEV && <DebugProbe />}
-      {ssao && (
+      {ssao && !sectioned && <HairOverlayPass />}
+      {ssao && !sectioned && (
         <EffectComposer ref={composer as never} enableNormalPass multisampling={0}>
           <SSAO blendFunction={BlendFunction.MULTIPLY} samples={16} rings={4} radius={0.06} intensity={8} luminanceInfluence={0.5} bias={0.1} />
         </EffectComposer>

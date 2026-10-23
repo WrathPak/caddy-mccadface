@@ -26,6 +26,15 @@ function Row({ id, name, depth, kind, icon, open, onToggle, coll, eye = true }: 
   const rename = useDoc((s) => s.renameEntity)
   const del = useDoc((s) => s.deleteEntity)
   const [editing, setEditing] = useState(false)
+  const isolate = () => {
+    const d = useDoc.getState()
+    useUi.getState().isolate(id, [...d.bodies, ...d.meshes, ...d.sketches].map((e) => e.id))
+  }
+  const isolated = useUi((s) => {
+    const d = useDoc.getState()
+    const others = [...d.bodies, ...d.meshes, ...d.sketches].map((e) => e.id).filter((x) => x !== id)
+    return !s.hiddenIds[id] && others.length > 0 && others.every((x) => s.hiddenIds[x])
+  })
   const isGroup = onToggle !== undefined
 
   const row = (
@@ -65,7 +74,7 @@ function Row({ id, name, depth, kind, icon, open, onToggle, coll, eye = true }: 
       <CM.Portal>
         <CM.Content className="menu">
           <CM.Item className="menu-item" onSelect={() => setEditing(true)}>Rename<span className="kbd">F2</span></CM.Item>
-          <CM.Item className="menu-item" onSelect={() => console.info('[stub] isolate', id)}>Isolate</CM.Item>
+          <CM.Item className="menu-item" onSelect={isolate}>{isolated ? 'Show all' : 'Isolate'}</CM.Item>
           <CM.Item className="menu-item" onSelect={() => toggleHidden(id)}>{hidden ? 'Show' : 'Hide'}</CM.Item>
           <CM.Separator className="menu-sep" />
           <CM.Item className="menu-item" onSelect={() => del(coll, id)}>Delete<span className="kbd">Del</span></CM.Item>
@@ -100,6 +109,7 @@ export function BrowserTree() {
           <Group label="Origin" depth={1} icon={<Planet size={13} />}>
             <Group label="Planes" depth={2} icon={<Folder size={13} />} defaultOpen={false}>
               {['XY', 'XZ', 'YZ'].map((p) => <Row key={p} id={'plane' + p} name={p + ' plane'} depth={3} kind="plane" icon={<Parallelogram size={13} />} />)}
+              {doc.features.filter((f) => f.type === 'offsetPlane').map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="plane" coll="sketches" icon={<Parallelogram size={13} />} />)}
             </Group>
             <Group label="Axes" depth={2} icon={<Folder size={13} />} defaultOpen={false}>
               {['X', 'Y', 'Z'].map((a) => <Row key={a} id={'axis' + a} name={a + ' axis'} depth={3} kind="axis" icon={<LineSegment size={13} />} />)}

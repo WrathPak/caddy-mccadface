@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import {
-  BufferAttribute, BufferGeometry, DoubleSide, LineSegments, Material, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Vector3,
+  BufferAttribute, BufferGeometry, DoubleSide, LineSegments, Material, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Plane,
 } from 'three'
 import { useUi, type SelectionRef } from '@/store/ui'
 import { useDoc } from '@/doc/store'
@@ -13,6 +13,7 @@ import { buildBvh } from './bvh'
 import { usePreview } from './preview'
 import { useVpColors } from './colors'
 import { useSketch } from '@/sketch/store'
+import { sectionPlane } from './section'
 
 /** Passed explicitly in both states: R3F does not restore the prototype raycast when a prop goes back to undefined. */
 const noRaycast = () => null
@@ -51,6 +52,8 @@ export function Bodies() {
   const previewHidden = usePreview((s) => s.hidden)
   const hidden = useMemo(() => (previewHidden.length ? { ...hiddenUi, ...Object.fromEntries(previewHidden.map((i) => [i, true as const])) } : hiddenUi), [hiddenUi, previewHidden])
   const setStats = useUi((s) => s.setStats)
+  const section = useUi((s) => s.section)
+  const clip = useMemo(() => (section.on ? [sectionPlane(section)] : []), [section])
 
   useEffect(() => {
     const tris = geometry.filter((b) => !hidden[b.id]).reduce((n, b) => n + b.mesh.indices.length / 3, 0)
@@ -63,10 +66,11 @@ export function Bodies() {
       polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
       transparent: displayMode === 'xray', opacity: displayMode === 'xray' ? 0.32 : 1, depthWrite: displayMode !== 'xray',
       wireframe: displayMode === 'wireframe',
+      clippingPlanes: clip,
     })
-    const hi = new MeshBasicMaterial({ color: colors.accent, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: DoubleSide })
+    const hi = new MeshBasicMaterial({ color: colors.accent, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: DoubleSide, clippingPlanes: clip })
     return { base, hi }
-  }, [displayMode, colors])
+  }, [displayMode, colors, clip])
 
   return (
     <group name="bodies">
@@ -118,12 +122,12 @@ function BodyView({ body, mats, colors }: { body: Body; mats: Mats; colors: Retu
       />
       {wholeBody && <mesh geometry={geo} material={mats.hi} raycast={() => null} renderOrder={2} />}
       {overlayGeo && <mesh geometry={overlayGeo} material={mats.hi} raycast={() => null} renderOrder={2} />}
-      {showEdges && <EdgeLines body={body} color={colors.edge} accent={colors.accent} pickable={filter === 'edge' && !sketching} />}
+      {showEdges && <EdgeLines body={body} color={colors.edge} accent={colors.accent} pickable={filter === 'edge' && !sketching} clip={mats.base.clippingPlanes ?? []} />}
     </group>
   )
 }
 
-function EdgeLines({ body, color, accent, pickable }: { body: Body; color: string; accent: string; pickable: boolean }) {
+function EdgeLines({ body, color, accent, pickable, clip }: { body: Body; color: string; accent: string; pickable: boolean; clip: Plane[] }) {
   const geo = useMemo(() => {
     const g = new BufferGeometry()
     g.setAttribute('position', new BufferAttribute(body.mesh.edges, 3))
@@ -158,7 +162,7 @@ function EdgeLines({ body, color, accent, pickable }: { body: Body; color: strin
         onPointerOut={() => setHover(null)}
         onClick={pickable ? (e) => { e.stopPropagation(); setSelection([{ kind: 'edge', id: body.id, index: edgeOf(e) }], e.shiftKey || e.ctrlKey) } : undefined}
       >
-        <lineBasicMaterial color={color} />
+        <lineBasicMaterial color={color} clippingPlanes={clip} />
       </lineSegments>
       {lit.map((pts, i) => (
         <Line key={i} points={pts} color={accent} lineWidth={2.5} raycast={() => null} />

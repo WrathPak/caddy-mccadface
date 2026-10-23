@@ -7,6 +7,7 @@ const FILTERS: SelectionFilter[] = ['body', 'face', 'edge']
 export function StatusBar() {
   const { units, setUnits, snap, toggleSnap, selectionFilter, setSelectionFilter, triangles, kernelBusy, selection } = useUi()
   const hair = useHairView()
+  const section = useUi((s) => s.section)
   const hs = hair.result?.stats
   return (
     <div className="status">
@@ -31,6 +32,11 @@ export function StatusBar() {
           </D.Content>
         </D.Portal>
       </D.Root>
+      {section.on && (
+        <button type="button" className="cell" title="Remove the section" data-testid="section-chip" onClick={() => useUi.getState().setSection({ on: false })}>
+          Section: <span className="num" style={{ color: 'var(--accent)' }}>{section.axis} = {+section.offset.toFixed(3)} mm</span> ×
+        </button>
+      )}
       <span className="cell">{selection.length ? `${selection.length} selected` : 'Nothing selected'}</span>
       {(hs || hair.error || hair.busy) && (
         <span className="cell" title={hair.error ?? undefined} style={hair.error ? { color: 'var(--danger, #d9625a)' } : undefined}>

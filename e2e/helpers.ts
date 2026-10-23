@@ -190,3 +190,46 @@ export async function canvasPoint(page: Page, fx: number, fy: number) {
   const b = (await page.locator('.vp canvas').first().boundingBox())!
   return { x: b.x + b.width * fx, y: b.y + b.height * fy }
 }
+
+// ---------------------------------------------------------------- programmatic sketches
+
+export type Plane3 = { origin: [number, number, number]; xDir: [number, number, number]; normal: [number, number, number] }
+export const XY: Plane3 = { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] }
+/** XZ origin plane: local x = world X, local y = world Z. */
+export const XZ: Plane3 = { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, -1, 0] }
+export type Curve =
+  | { k: 'rect'; x0: number; y0: number; x1: number; y1: number }
+  | { k: 'line'; a: [number, number]; b: [number, number] }
+  | { k: 'arc'; c: [number, number]; s: [number, number]; e: [number, number] }
+  | { k: 'circle'; c: [number, number]; r: number }
+
+/** JSON for a Sketch feature's `sketch` param (plane + unconstrained curves). */
+export function sketchParam(plane: Plane3, curves: Curve[]): string {
+  const ents: Record<string, unknown>[] = []
+  let n = 1
+  const pts = new Map<string, string>()
+  const pt = (p: [number, number]) => {
+    const key = p.join(',')
+    let id = pts.get(key)
+    if (!id) { id = 'p' + n++; pts.set(key, id); ents.push({ id, type: 'point', x: p[0], y: p[1] }) }
+    return id
+  }
+  const line = (a: [number, number], b: [number, number]) => ents.push({ id: 'l' + n++, type: 'line', p1: pt(a), p2: pt(b) })
+  for (const c of curves) {
+    if (c.k === 'rect') {
+      const corners: [number, number][] = [[c.x0, c.y0], [c.x1, c.y0], [c.x1, c.y1], [c.x0, c.y1]]
+      corners.forEach((p, i) => line(p, corners[(i + 1) % 4]))
+    } else if (c.k === 'line') line(c.a, c.b)
+    else if (c.k === 'arc') ents.push({ id: 'l' + n++, type: 'arc', c: pt(c.c), s: pt(c.s), e: pt(c.e) })
+    else ents.push({ id: 'l' + n++, type: 'circle', c: pt(c.c), r: c.r })
+  }
+  return JSON.stringify({ plane, face: null, model: { entities: ents, constraints: [], next: n } })
+}
+
+
+/** Add a finished sketch feature without the UI (deterministic geometry for the solid tools). */
+export async function addSketch(app: App, plane: Plane3, curves: Curve[]) {
+  const id = await app.ev((c, s) => c.doc.getState().addFeature('sketch', { sketch: s }), sketchParam(plane, curves))
+  await app.idle()
+  return id as string
+}

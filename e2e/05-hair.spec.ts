@@ -28,6 +28,23 @@ test('hair: select faces -> preview -> tweak density/length -> OK gives one merg
   await expect.poll(() => app.ev((c) => c.hair.getState().result?.stats?.strands ?? 0), { timeout: 45_000 }).toBeGreaterThan(0)
   const strands1 = await app.ev((c) => c.hair.getState().result.stats.strands as number)
   await expect(page.locator('.status')).toContainText('strands')
+  // the preview draws clean opaque strands and, with "Enable wall" on, the translucent muted-red sacrificial wall
+  await expect.poll(() => app.ev((c) => !!c.three.scene.getObjectByName('hair-wall'))).toBe(true)
+  const meshes = await app.ev((c) => {
+    const get = (n: string) => {
+      const m = c.three.scene.getObjectByName(n)
+      return m && { verts: m.geometry.attributes.position.count, hasNormals: !!m.geometry.attributes.normal, transparent: m.material.transparent, opacity: m.material.opacity, color: m.material.color.getHexString(), visible: m.visible, noAo: !!m.userData.noAo }
+    }
+    return { strands: get('hair-strands'), wall: get('hair-wall'), wallInResult: !!c.hair.getState().result.wall }
+  })
+  expect(meshes.wallInResult).toBe(true)
+  expect(meshes.wall).toMatchObject({ transparent: true, visible: true, color: 'b0463e' })
+  expect(meshes.wall.verts).toBeGreaterThanOrEqual(8)
+  expect(meshes.wall.opacity).toBeGreaterThan(0.2)
+  expect(meshes.wall.opacity).toBeLessThan(0.7)
+  expect(meshes.strands).toMatchObject({ transparent: false, opacity: 1, hasNormals: true, noAo: true })
+  await app.ev((c) => c.runCommand('view.frame')) // frame the strands and the wall together
+  await app.cameraStable()
   await app.shot('hair-preview')
 
   // change density and length: the preview regenerates

@@ -5,6 +5,7 @@ import { useDoc } from '@/doc/store'
 import { useUi, type SelectionRef } from '@/store/ui'
 import type { Body } from '@/kernel/types'
 import { originPlane, planeFromNormal, type OriginPlaneName } from './plane'
+import { usePlanes } from './planes'
 import { beginSketch, flash } from './store'
 
 /** True when every triangle of face `index` has (nearly) the same normal. */
@@ -35,7 +36,13 @@ function planeNameOf(id: string): OriginPlaneName | null {
 export function beginFromSelection(sel: SelectionRef): boolean {
   if (sel.kind === 'plane') {
     const name = planeNameOf(sel.id)
-    if (!name) return false
+    if (!name) {
+      // an Offset Plane (construction plane) feature
+      const cp = usePlanes.getState().data[sel.id]
+      if (!cp) return false
+      void beginSketch({ plane: cp })
+      return true
+    }
     void beginSketch({ plane: originPlane(name) })
     return true
   }

@@ -1,7 +1,7 @@
 /** Dev-only `window.__caddy` handle: stores and actions for the Playwright e2e specs (never shipped in production builds). */
 import { useThree } from '@react-three/fiber'
 import { useEffect } from 'react'
-import type { Camera, Raycaster, Scene } from 'three'
+import type { Camera, Raycaster, Scene, WebGLRenderer } from 'three'
 import { runCommand } from './commands'
 import { regenerate } from '@/doc/engine'
 import { useDoc } from '@/doc/store'
@@ -12,16 +12,17 @@ import { useHairPaint } from '@/features/hair/paint'
 import { importFiles, saveDocument } from '@/io/actions'
 import { parseProject, serializeProject } from '@/io/project'
 import { usePreview } from '@/viewport/preview'
+import { usePlanes } from '@/sketch/planes'
 import { viewportBus } from '@/viewport/bus'
 
 export function installDebugHandle() {
   ;(window as unknown as { __caddy: unknown }).__caddy = {
-    doc: useDoc, ui: useUi, sketch: useSketch, hair: useHairView, preview: usePreview, paint: useHairPaint, bus: viewportBus,
+    doc: useDoc, ui: useUi, sketch: useSketch, hair: useHairView, preview: usePreview, planes: usePlanes, paint: useHairPaint, bus: viewportBus,
     runCommand, regenerate, importFiles, saveDocument, serializeProject, parseProject,
   }
 }
 
-interface Handle { three?: { camera: Camera; scene: Scene; raycaster: Raycaster; width: number; height: number } }
+interface Handle { three?: { camera: Camera; scene: Scene; raycaster: Raycaster; gl: WebGLRenderer; width: number; height: number } }
 
 /** Rendered inside the R3F canvas (dev only): exposes the live camera so specs can project 3D points to screen pixels. */
 export function DebugProbe() {
@@ -29,8 +30,9 @@ export function DebugProbe() {
   const size = useThree((s) => s.size)
   const scene = useThree((s) => s.scene)
   const raycaster = useThree((s) => s.raycaster)
+  const gl = useThree((s) => s.gl)
   useEffect(() => {
-    ;(window as unknown as { __caddy: Handle }).__caddy.three = { camera, scene, raycaster, width: size.width, height: size.height }
+    ;(window as unknown as { __caddy: Handle }).__caddy.three = { camera, scene, raycaster, gl, width: size.width, height: size.height }
   })
   return null
 }

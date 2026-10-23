@@ -6,6 +6,9 @@ import { FloppyDiskBack, Function as FunctionIcon } from '@phosphor-icons/react'
 import { getCommand, registerCommand, runCommand, type Command } from './commands'
 import '@/doc/engine'
 import '@/features/basic'
+import '@/features/solids'
+import '@/features/meshTools'
+import '@/features/offsetPlane'
 import '@/features/sketch'
 import { installSketchCommands } from '@/sketch/commands'
 import { useSketch } from '@/sketch/store'
@@ -13,6 +16,11 @@ import { startRevolve } from '@/features/revolve'
 import { startExtrude } from '@/features/extrude'
 import { startEdgeMod } from '@/features/fillet'
 import { startMove } from '@/features/move'
+import { startCombine, startLoft, startShell, startSweep } from '@/features/solids'
+import { startMeshTool, MESH_COMMANDS } from '@/features/meshTools'
+import { startOffsetPlane } from '@/features/offsetPlane'
+import { startMeasure } from '@/features/measure'
+import { startSection } from '@/features/section'
 import { startHair, toggleHairPreview } from '@/features/hair'
 import { createFeature } from '@/doc/editor'
 import { useDoc } from '@/doc/store'
@@ -37,7 +45,19 @@ override('edit.redo', () => useDoc.getState().redo())
 /** Solid tools are unavailable while a sketch is open (finish it first). */
 const solid = (fn: () => void) => () => { if (!useSketch.getState().active) fn() }
 override('solid.box', solid(() => createFeature('box', {}, 'solid.box')))
+override('solid.cylinder', solid(() => createFeature('cylinder', {}, 'solid.cylinder')))
+override('solid.sweep', solid(startSweep))
+override('solid.loft', solid(startLoft))
+override('solid.shell', solid(startShell))
+override('solid.combine', solid(() => startCombine('join')))
+override('solid.join', solid(() => startCombine('join')))
+override('solid.cut', solid(() => startCombine('cut')))
+override('solid.intersect', solid(() => startCombine('intersect')))
 override('solid.move', solid(startMove))
+override('construct.plane', solid(startOffsetPlane))
+override('inspect.measure', solid(startMeasure))
+override('inspect.section', startSection)
+for (const m of MESH_COMMANDS) override(m.id, solid(() => startMeshTool(m.type)))
 override('solid.extrude', solid(startExtrude))
 override('solid.revolve', solid(startRevolve))
 override('solid.fillet', solid(() => startEdgeMod('fillet')))

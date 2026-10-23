@@ -179,6 +179,21 @@ test('every registered command runs without throwing (empty doc, then with a bod
     return mod.allCommands().map((c: { id: string }) => c.id)
   })
   expect(all.length).toBeGreaterThan(60)
+  // no placeholder commands: nothing is marked as a stub, and every button the ribbon shows is backed by a real command
+  const audit = await page.evaluate(async () => {
+    const cmds = await import('/src/app/commands.ts')
+    const ribbon = await import('/src/app/ribbon.ts')
+    const ids = new Set<string>()
+    for (const t of ribbon.RIBBON_TABS) for (const g of t.groups) for (const it of g.items) {
+      if (it.cmd) ids.add(it.cmd)
+      for (const m of it.menu ?? []) ids.add(m)
+      for (const m of it.stack ?? []) ids.add(m)
+    }
+    return { stubs: cmds.allCommands().filter((c: { stub?: boolean }) => c.stub).map((c: { id: string }) => c.id), missing: [...ids].filter((id) => !cmds.getCommand(id)), ribbon: ids.size }
+  })
+  expect(audit.stubs, 'commands still marked as stubs').toEqual([])
+  expect(audit.missing, 'ribbon entries without a command').toEqual([])
+  expect(audit.ribbon).toBeGreaterThan(40)
   const runAll = async (tag: string) => {
     for (const id of all) {
       if (skip.has(id)) continue
