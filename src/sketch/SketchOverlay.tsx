@@ -179,19 +179,19 @@ function Geometry({ wpp }: { wpp: number }) {
   const picks = useSketch((s) => s.picks)
 
   const groups = useMemo(() => {
-    const g: Record<'free' | 'fixed' | 'sel' | 'hover' | 'cons' | 'ref', Vec2[]> = { free: [], fixed: [], sel: [], hover: [], cons: [], ref: [] }
+    const g: Record<'free' | 'fixed' | 'sel' | 'hover' | 'cons' | 'ref' | 'broken', Vec2[]> = { free: [], fixed: [], sel: [], hover: [], cons: [], ref: [], broken: [] }
     for (const pl of entityPolylines(model)) {
-      const cls = sel.includes(pl.id) || picks.includes(pl.id) ? 'sel' : hover === pl.id ? 'hover' : pl.ref ? 'ref' : pl.construction ? 'cons' : info.fixed.has(pl.id) ? 'fixed' : 'free'
+      const cls = sel.includes(pl.id) || picks.includes(pl.id) ? 'sel' : hover === pl.id ? 'hover' : pl.broken ? 'broken' : pl.ref ? 'ref' : pl.construction ? 'cons' : info.fixed.has(pl.id) ? 'fixed' : 'free'
       g[cls].push(...toPairs(pl.pts))
     }
     return g
   }, [model, info, sel, hover, picks])
 
   const dots = useMemo(() => {
-    const d: Record<'free' | 'fixed' | 'sel' | 'hover' | 'ref', Vec2[]> = { free: [], fixed: [], sel: [], hover: [], ref: [] }
+    const d: Record<'free' | 'fixed' | 'sel' | 'hover' | 'ref' | 'broken', Vec2[]> = { free: [], fixed: [], sel: [], hover: [], ref: [], broken: [] }
     for (const e of model.entities) {
       if (e.type !== 'point') continue
-      const cls = sel.includes(e.id) || picks.includes(e.id) ? 'sel' : hover === e.id ? 'hover' : e.ref ? 'ref' : info.fixed.has(e.id) ? 'fixed' : 'free'
+      const cls = sel.includes(e.id) || picks.includes(e.id) ? 'sel' : hover === e.id ? 'hover' : e.broken ? 'broken' : e.ref ? 'ref' : info.fixed.has(e.id) ? 'fixed' : 'free'
       d[cls].push([e.x, e.y])
     }
     return d
@@ -201,6 +201,7 @@ function Geometry({ wpp }: { wpp: number }) {
     <>
       <Segments pairs={groups.cons} color={c.cons} width={1.4} dashed wpp={wpp} />
       <Segments pairs={groups.ref} color={c.ref} width={1.6} wpp={wpp} />
+      <Segments pairs={groups.broken} color={c.danger} width={2.2} wpp={wpp} order={12} />
       <Segments pairs={groups.free} color={c.free} width={1.8} wpp={wpp} />
       <Segments pairs={groups.fixed} color={c.fixed} width={1.8} wpp={wpp} />
       <Segments pairs={groups.hover} color={c.hover} width={2.8} wpp={wpp} order={13} />
@@ -208,6 +209,7 @@ function Geometry({ wpp }: { wpp: number }) {
       <Dots pts={dots.free} color={c.free} size={6} />
       <Dots pts={dots.fixed} color={c.fixed} size={6} />
       <Dots pts={dots.ref} color={c.ref} size={5} />
+      <Dots pts={dots.broken} color={c.danger} size={6} order={12} />
       <Dots pts={dots.hover} color={c.hover} size={9} order={15} />
       <Dots pts={dots.sel} color={c.sel} size={9} order={16} />
       <Dots pts={[[0, 0]]} color={info.fixed.size ? c.fixed : c.dim} size={7} order={11} />

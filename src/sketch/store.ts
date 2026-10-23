@@ -20,7 +20,8 @@ import { snap as snapAt, gridStep, type Snap } from './snap'
 import { analyze, ensureSolver, solveModel, solvePruned, type DragSpec, type SolveInfo } from './solver'
 import { circumcircle, cross, dist, norm, sub } from './geom'
 import { applyOffset, collectChain, sideOf, type Chain } from './offsetTool'
-import { addProjected } from './project'
+import { encodeRef, refFromSelection } from '@/doc/refs'
+import { addProjected, reprojectModel } from './project'
 import { applyTrim, trimSpan } from './trim'
 import {
   arcThrough, fieldsFor, hasText, resolveEnd, valuesOf, wrapDeg, type DrawTool, type Typed, type Values,
@@ -177,6 +178,10 @@ export async function beginSketch(o: { plane: PlaneDef; face?: string | null; mo
   await ensureSolver()
   onClose = o.onClose ?? null
   const model = o.model ?? emptyModel()
+  // projected geometry follows its source: refresh it against the bodies as they are now (a broken source is flagged, never fatal)
+  if (model.projections?.length) {
+    try { await reprojectModel(model, o.plane, useDoc.getState().geometry, (n, a) => getKernel().call(n, a as never)) } catch { /* keep the stored geometry */ }
+  }
   const r = solveFull(model)
   set({
     ...initial(), active: true, editing: o.editing ?? null, face: o.face ?? null, plane: o.plane,
@@ -709,24 +714,27 @@ function watchProject(on: boolean) {
 export async function projectRefs(refs: SelectionRef[]) {
   const s = get()
   const bodies = useDoc.getState().geometry
-  const by = new Map<string, { key: string; faces: number[]; edges: number[]; all: boolean }>()
+  // one associative projection per picked face / edge / body (the ref is what is re-projected on regeneration)
+  const jobs: { ref: string; key: string; faces: number[]; edges: number[]; all: boolean }[] = []
   for (const r of refs) {
     const b = bodies.find((x) => x.id === r.id)
     if (!b) continue
     if (b.kind !== 'brep') { flash('Only solid (B-rep) bodies can be projected'); continue }
-    const g = by.get(b.id) ?? by.set(b.id, { key: b.key, faces: [], edges: [], all: false }).get(b.id)!
-    if (r.kind === 'face' && r.index !== undefined) g.faces.push(r.index)
-    else if (r.kind === 'edge' && r.index !== undefined) g.edges.push(r.index)
-    else if (r.kind === 'body') g.all = true
+    const g = refFromSelection(r, bodies)
+    if (!g) continue
+    jobs.push({
+      ref: encodeRef(g), key: b.key,
+      faces: g.kind === 'face' ? [g.index] : [], edges: g.kind === 'edge' ? [g.index] : [], all: g.kind === 'body',
+    })
   }
-  if (!by.size) return
+  if (!jobs.length) return
   try {
-    const curves: ProjectedCurve[] = []
-    for (const g of by.values()) {
-      curves.push(...((await getKernel().call('projectEdges', { key: g.key, plane: s.plane, faces: g.faces, edges: g.edges, all: g.all })) as ProjectedCurve[]))
+    const done: { ref: string; curves: ProjectedCurve[] }[] = []
+    for (const j of jobs) {
+      done.push({ ref: j.ref, curves: (await getKernel().call('projectEdges', { key: j.key, plane: s.plane, faces: j.faces, edges: j.edges, all: j.all })) as ProjectedCurve[] })
     }
     let n = 0
-    const ok = commit((m) => { n = addProjected(m, curves) })
+    const ok = commit((m) => { for (const d of done) n += addProjected(m, d.curves, d.ref) })
     if (ok) flash(n ? `Projected ${n} curve${n === 1 ? '' : 's'}` : 'Nothing new to project (already in the sketch, or edge-on to the plane)')
   } catch (e) {
     flash('Projection failed: ' + (e instanceof Error ? e.message : String(e)))

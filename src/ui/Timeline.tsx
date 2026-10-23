@@ -69,7 +69,7 @@ export function Timeline({ onEditFeature }: TimelineProps) {
         {features.map((f, i) => {
           const I = featureIcon(f.type)
           return [
-            <Tip key={f.id} label={f.state === 'error' && f.error ? `${f.name}: ${f.error}` : f.name}>
+            <Tip key={f.id} label={f.state === 'error' && f.error ? `${f.name}: ${f.error}` : f.state === 'warning' && f.warning ? `${f.name}: ${f.warning}` : f.name}>
               <button
                 type="button"
                 className="chip"

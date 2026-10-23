@@ -1,10 +1,10 @@
 /** Hair pipeline core: sample -> centerlines -> wall -> attach -> sweep, then (final) manifold booleans. No worker/DOM dependencies. */
 import type { Manifold, ManifoldToplevel } from 'manifold-3d'
 import { prepSurface } from '../features/hair/sampling'
-import type { HairParams } from '../features/hair/schema'
+import type { HairParams, V3 } from '../features/hair/schema'
 import { attachStrands, planStrands, rawStrands, type Strand } from '../features/hair/strands'
 import { sweepStrands, type Tubes } from '../features/hair/sweep'
-import { buildWall, makeCaster, selfIntersects, wallPrisms, type Axis, type Mesh3, type WallResult } from '../features/hair/wall'
+import { buildWall, makeCaster, selfIntersects, wallField, type Axis, type Mesh3, type WallResult } from '../features/hair/wall'
 import type { TopoMesh } from './types'
 
 export interface HairInput {
@@ -63,20 +63,30 @@ function solidOf(W: ManifoldToplevel, m3: Mesh3 | TopoMesh, what: string, own: (
   return m
 }
 
-/** Wall volume. Follow walls whose offset shell folds into itself are rebuilt as the union of per-triangle prisms. */
-function wallSolid(W: ManifoldToplevel, w: WallResult, own: (m: Manifold) => Manifold): { m: Manifold; repaired: boolean } {
+/** Upper bound on SDF samples for a repair; the grid spacing grows to stay within it. */
+const REPAIR_SAMPLES = 400_000
+
+/**
+ * Wall volume. Follow walls whose offset shell folds into itself are rebuilt as the level set of a signed distance field
+ * (everything within half a thickness of the shell mid-surface), meshed by manifold-3d marching tetrahedra: always a
+ * manifold, and the cost is bounded by REPAIR_SAMPLES BVH distance queries instead of thousands of booleans.
+ */
+export function wallSolid(W: ManifoldToplevel, w: WallResult, own: (m: Manifold) => Manifold): { m: Manifold; repaired: boolean } {
   if (w.follow && selfIntersects(w.mesh)) {
-    const list: Manifold[] = []
-    for (const pr of wallPrisms(w.follow)) {
-      try {
-        const m = own(W.Manifold.ofMesh(new W.Mesh({ numProp: 3, vertProperties: pr.positions, triVerts: pr.indices })))
-        if (m.status() === 'NoError' && !m.isEmpty() && m.volume() > 0) list.push(m) // inside-out prisms (degenerate offsets) are skipped
-      } catch { /* degenerate triangle: its neighbours cover the area */ }
+    const f = wallField(w.follow)
+    if (!(f.half > 1e-6)) throw new Error('The sacrificial wall could not be built; the wall thickness is zero')
+    const pad = f.half + 1e-3
+    const lo = f.min.map((x) => x - pad) as V3, hi = f.max.map((x) => x + pad) as V3
+    const vol = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2])
+    // body-centred grid holds ~2 samples per edge-length cube; keep edges at most a third of the thickness where the budget allows
+    const edge = Math.max(f.half * 2 / 3, Math.cbrt((2 * vol) / REPAIR_SAMPLES))
+    const b = { min: lo.map((x) => x - 2 * edge) as V3, max: hi.map((x) => x + 2 * edge) as V3 }
+    let m: Manifold
+    try { m = own(W.Manifold.levelSet(f.sdf, b, edge)) } catch (e) {
+      throw new Error('The sacrificial wall could not be repaired: ' + (e instanceof Error ? e.message : String(e)))
     }
-    if (!list.length) throw new Error('The sacrificial wall could not be built; the selected surface is too crumpled for a follow wall (try a planar or cylindrical wall)')
-    const u = own(W.Manifold.union(list))
-    if (u.isEmpty() || u.volume() <= 0) throw new Error('The sacrificial wall could not be repaired; try a smaller wall offset or a planar/cylindrical wall')
-    return { m: u, repaired: true }
+    if (m.status() !== 'NoError' || m.isEmpty() || m.volume() <= 0) throw new Error('The sacrificial wall could not be repaired; try a smaller wall offset or a planar/cylindrical wall')
+    return { m, repaired: true }
   }
   return { m: solidOf(W, w.mesh, 'The sacrificial wall', own), repaired: false }
 }

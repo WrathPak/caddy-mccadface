@@ -47,14 +47,14 @@ registerFeature({
 })
 
 /** Wrap parsed triangle soups into mesh bodies in the kernel. */
-async function toBodies(ctx: FeatureCtx, parts: { name: string; positions: Float32Array }[], scale: number, baseName: string) {
+async function toBodies(ctx: FeatureCtx, parts: { name: string; positions: Float32Array }[], scale: number, baseName: string, creaseDeg: number) {
   const bodies = []
   for (let i = 0; i < parts.length; i++) {
     const positions = parts[i].positions
     if (scale !== 1) for (let k = 0; k < positions.length; k++) positions[k] *= scale
     bodies.push(
       await ctx.kernel.createMesh(
-        Comlink.transfer({ id: ctx.newBodyId(i || undefined), name: parts.length > 1 ? `${baseName} ${parts[i].name}` : baseName, positions }, [positions.buffer]),
+        Comlink.transfer({ id: ctx.newBodyId(i || undefined), name: parts.length > 1 ? `${baseName} ${parts[i].name}` : baseName, positions, creaseDeg }, [positions.buffer]),
       ),
     )
   }
@@ -65,12 +65,16 @@ registerFeature({
   type: 'importMesh',
   label: 'Import Mesh',
   icon: GridFour,
-  schema: { id: 'importMesh', title: 'Import mesh', params: [{ type: 'number', key: 'scale', label: 'Scale', unit: '', min: 0.0001, step: 0.1, default: 1 }] },
+  schema: { id: 'importMesh', title: 'Import mesh', params: [
+      { type: 'number', key: 'scale', label: 'Scale', unit: '', min: 0.0001, step: 0.1, default: 1 },
+      { type: 'number', key: 'creaseAngle', label: 'Face split angle', unit: 'deg', min: 1, max: 89, step: 1, default: 20 },
+    ],
+  },
   async compute(ctx, p) {
     const bytes = ctx.blob(p.blob as string)
     if (!bytes) throw new Error('Source file missing from document')
     const parts = p.format === '3mf' ? parse3mf(bytes) : parseStl(bytes)
-    return toBodies(ctx, parts, p.scale as number, (p.fileName as string).replace(/\.[^.]+$/, ''))
+    return toBodies(ctx, parts, p.scale as number, (p.fileName as string).replace(/\.[^.]+$/, ''), (p.creaseAngle as number | undefined) ?? 20)
   },
 })
 

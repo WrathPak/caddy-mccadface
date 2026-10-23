@@ -5,6 +5,7 @@ import { registerFeature } from '@/doc/registry'
 import { decodeRef, faceSigs, resolveFace } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
 import { refreshDims } from '@/sketch/dims'
+import { reprojectModel } from '@/sketch/project'
 import { useSketchData } from '@/sketch/draw'
 import { planeFromNormal, reanchor } from '@/sketch/plane'
 import { detectProfiles } from '@/sketch/profiles'
@@ -35,6 +36,8 @@ registerFeature({
       }
     }
     const model = JSON.parse(JSON.stringify(st.model)) as SketchModel
+    // associative Project: re-resolve and re-project; a lost source flags its curves and warns instead of failing the sketch
+    const proj = await reprojectModel(model, plane, ctx.bodies, (n, a) => ctx.kernel.call(n, a as never))
     const bad = refreshDims(model)
     if (bad.length) throw new Error('Invalid dimension expression')
     const solved = solveModel(model)
@@ -46,7 +49,10 @@ registerFeature({
       profiles: detectProfiles(solved.model),
     }
     useSketchData.getState().set(ctx.feature.id, data)
-    return { data }
+    const warning = proj.broken
+      ? `${proj.broken} projected reference${proj.broken === 1 ? '' : 's'} lost the source geometry (curves shown in red); delete them or re-project`
+      : undefined
+    return { data, warning }
   },
   edit(id, params) {
     const d = useDoc.getState()

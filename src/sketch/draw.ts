@@ -5,13 +5,13 @@ import { sampleArc, loopPoly, polar, TAU, arcInfo } from './geom'
 import { circleOf, pos } from './model'
 import type { Entity, Profile, SketchData, SketchModel, Vec2 } from './types'
 
-export interface Polyline { id: string; pts: Vec2[]; construction: boolean; ref: boolean }
+export interface Polyline { id: string; pts: Vec2[]; construction: boolean; ref: boolean; broken: boolean }
 
 export function entityPolylines(m: SketchModel): Polyline[] {
   const out: Polyline[] = []
   for (const e of m.entities) {
     if (e.type === 'point') continue
-    out.push({ id: e.id, pts: curvePoints(m, e), construction: !!e.construction, ref: !!e.ref })
+    out.push({ id: e.id, pts: curvePoints(m, e), construction: !!e.construction, ref: !!e.ref, broken: !!e.broken })
   }
   return out
 }

@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Manifold } from 'manifold-3d'
-import { buildSolids, generateHair, type HairInput } from '../../kernel/hair-core'
+import { buildSolids, wallSolid, generateHair, type HairInput } from '../../kernel/hair-core'
 import { initManifold } from '../../kernel/mesh'
 import type { Body } from '../../kernel/types'
 import { faceSigs } from '../../doc/refs'
 import { resolveRegionSet } from './region'
 import { prepSurface } from './sampling'
 import { hairSchema, type HairParams } from './schema'
-import { followResult, makeCaster, selfIntersects, wallPrisms } from './wall'
+import { followResult, makeCaster, selfIntersects } from './wall'
 
 type Mesh = { positions: Float32Array; indices: Uint32Array }
 
@@ -184,30 +184,45 @@ describe('wall and booleans', () => {
     expect(s.hair.volume()).toBeGreaterThan(0)
   })
 
-  it('repairs a folded shell via per-triangle prism union', () => {
+  /** A closed shell whose top sheet is pushed through the axis of an inward-facing cylinder (r=10): it folds through itself. */
+  function foldedWall(segs: number, rings: number) {
     const p = defaults({ density: 3, length: 12, wallThickness: 2, merge: false })
-    const small = cylinder(10, 8, 8, 1).side
-    const g = generateHair(input(small, p, 8))
-    // inward-facing cylinder (r=10) offset 14 along its normals: the shell crosses the axis and folds through itself
-    const f = g.wall!.follow!
-    const nv = f.positions.length / 6
-    const tris = f.tris.slice()
+    const g = generateHair(input(cylinder(10, 8, 8, 1).side, p, 8))
+    const base = cylinder(10, 30, segs, rings).side
+    const nv = base.positions.length / 3
+    const tris = base.indices.slice()
     for (let t = 0; t < tris.length; t += 3) { const x = tris[t + 1]; tris[t + 1] = tris[t + 2]; tris[t + 2] = x }
     const pos = new Float32Array(nv * 6)
     for (let v = 0; v < nv; v++) for (let k = 0; k < 3; k++) {
-      const base = f.positions[v * 3 + k] // already offset outward: radius > 10, still on the same side
-      const r = Math.hypot(f.positions[v * 3], f.positions[v * 3 + 1])
-      const s = k === 2 ? 1 : 10 / r
-      pos[v * 3 + k] = base * s // back onto r = 10
-      pos[(nv + v) * 3 + k] = k === 2 ? base : base * s * -0.4 // top: 14 inwards, i.e. 4 past the axis
+      const b = base.positions[v * 3 + k]
+      pos[v * 3 + k] = b
+      pos[(nv + v) * 3 + k] = k === 2 ? b : b * -0.4 // top: 14 inwards, i.e. 4 past the axis
     }
-    const wall = followResult(pos, tris)
+    return { p, g, wall: followResult(pos, tris) }
+  }
+
+  it('repairs a folded shell with a distance-field level set (manifold, one solid)', () => {
+    const { p, g, wall } = foldedWall(8, 2)
     expect(selfIntersects(wall.mesh)).toBe(true)
-    expect(Array.from(wallPrisms(wall.follow!)).length).toBe(tris.length / 3)
     const s = buildSolids(W, { ...g, wall }, p, null, own)
     expect(s.wallRepaired).toBe(true)
     expect(s.wall!.status()).toBe('NoError')
     expect(s.wall!.volume()).toBeGreaterThan(0)
+    expect(s.wall!.decompose().length).toBe(1)
+  })
+
+  it('repairs a dense tight-curvature fold in under 2 s', () => {
+    const { wall } = foldedWall(96, 30) // 5760 triangles, shell folded through the axis
+    expect(selfIntersects(wall.mesh)).toBe(true)
+    const t0 = performance.now()
+    const r = wallSolid(W, wall, own)
+    const ms = performance.now() - t0
+    console.log(`perf: wall repair ${ms.toFixed(0)} ms`)
+    expect(r.repaired).toBe(true)
+    expect(r.m.status()).toBe('NoError')
+    expect(r.m.volume()).toBeGreaterThan(0)
+    expect(r.m.decompose().length).toBe(1)
+    expect(ms).toBeLessThan(2000)
   })
 })
 

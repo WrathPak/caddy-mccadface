@@ -11,13 +11,14 @@ export const ORIGIN = 'O'
 
 /**
  * `ref`: projected reference geometry (see the Project tool). It is fixed in place (the solver treats it as constants),
- * is not draggable and takes part in profile detection like any other curve.
+ * is not draggable and takes part in profile detection like any other curve. Projected geometry is associative: it belongs to a
+ * `Projection` (see below) that is re-evaluated on every regeneration; `broken` marks entities whose source no longer resolves.
  */
-export interface PointE { id: string; type: 'point'; x: number; y: number; construction?: boolean; ref?: boolean }
-export interface LineE { id: string; type: 'line'; p1: string; p2: string; construction?: boolean; ref?: boolean }
-export interface CircleE { id: string; type: 'circle'; c: string; r: number; construction?: boolean; ref?: boolean }
+export interface PointE { id: string; type: 'point'; x: number; y: number; construction?: boolean; ref?: boolean; broken?: boolean }
+export interface LineE { id: string; type: 'line'; p1: string; p2: string; construction?: boolean; ref?: boolean; broken?: boolean }
+export interface CircleE { id: string; type: 'circle'; c: string; r: number; construction?: boolean; ref?: boolean; broken?: boolean }
 /** Counter-clockwise arc from `s` to `e` around `c`. */
-export interface ArcE { id: string; type: 'arc'; c: string; s: string; e: string; construction?: boolean; ref?: boolean }
+export interface ArcE { id: string; type: 'arc'; c: string; s: string; e: string; construction?: boolean; ref?: boolean; broken?: boolean }
 export type Entity = PointE | LineE | CircleE | ArcE
 
 export type ConstraintType =
@@ -58,10 +59,18 @@ export interface Constraint {
 export const DIM_TYPES: ConstraintType[] = ['distance', 'hdist', 'vdist', 'radius', 'diameter', 'angle', 'offset']
 export const isDim = (c: Constraint) => DIM_TYPES.includes(c.type)
 
+/**
+ * An associative Project: `ref` is an encoded GeoRef (@/doc/refs: face, edge or body of a B-rep) that is re-resolved and
+ * re-projected whenever the sketch regenerates. `ents` lists the curve entities it produced, in the order the kernel
+ * returned the curves (null: that curve was already present as ordinary geometry, or its entity was deleted).
+ */
+export interface Projection { id: string; ref: string; ents: (string | null)[]; broken?: boolean }
+
 export interface SketchModel {
   entities: Entity[]
   constraints: Constraint[]
   next: number
+  projections?: Projection[]
 }
 
 export const emptyModel = (): SketchModel => ({ entities: [], constraints: [], next: 1 })

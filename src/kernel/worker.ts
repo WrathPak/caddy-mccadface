@@ -25,8 +25,8 @@ const api = {
     return sendBody(bodyFromShape(a.id, a.name, box(a.size, a.position)))
   },
   /** Create a mesh body from raw triangles (welded here). Input buffers are consumed. */
-  async createMesh(a: BodyMeta & { positions: Float32Array; indices?: Uint32Array }): Promise<Body> {
-    return sendBody(bodyFromTopo(a.id, a.name, weld(a.positions, a.indices)))
+  async createMesh(a: BodyMeta & { positions: Float32Array; indices?: Uint32Array; /** face-split dihedral angle in degrees */ creaseDeg?: number }): Promise<Body> {
+    return sendBody(bodyFromTopo(a.id, a.name, weld(a.positions, a.indices), a.creaseDeg))
   },
   /** Import a STEP file as one B-rep body. */
   async importStep(a: BodyMeta & { bytes: ArrayBuffer }): Promise<Body> {
@@ -46,7 +46,7 @@ const api = {
         p[i + 1] = m[1] * x + m[5] * y + m[9] * z + m[13]
         p[i + 2] = m[2] * x + m[6] * y + m[10] * z + m[14]
       }
-      return sendBody(bodyFromTopo(a.id, a.name, { positions: p, indices: s.topo.indices.slice() }))
+      return sendBody(bodyFromTopo(a.id, a.name, { positions: p, indices: s.topo.indices.slice() }, s.crease))
     }
     await initOcc()
     const { pivot, rotate, scale, translate } = a.spec

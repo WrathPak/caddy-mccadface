@@ -36,12 +36,25 @@ export function decodeTris(s: string): { bodyId: string; tris: number[] } | null
   }
 }
 
-/** Region param strings for a selection set on a body (mesh: one RLE token, B-rep: face refs). */
+/** Face refs (re-resolved by signature after regeneration) for face ids of a B-rep or a face-segmented mesh body. */
+function faceRefs(body: Body, ids: Iterable<number>): string[] {
+  const sigs = faceSigs(body)
+  return [...ids].sort((a, b) => a - b).filter((i) => sigs[i]).map((i) => encodeRef({ kind: 'face', bodyId: body.id, featureId: body.featureId, index: i, sig: sigs[i] }))
+}
+
+/** Triangles of the given faces of a mesh body. */
+function trisOfFaces(body: Body, faces: Set<number>): Set<number> {
+  const out = new Set<number>()
+  const ids = body.mesh.faceIds
+  for (let t = 0; t < ids.length; t++) if (faces.has(ids[t])) out.add(t)
+  return out
+}
+
+/** Region param strings for a selection set on a body (mesh: one RLE token of triangles, B-rep: face refs). */
 export function encodeRegion(body: Body, sel: Set<number>): string[] {
   if (!sel.size) return []
   if (body.kind === 'mesh') return [encodeTris(body.id, sel)]
-  const sigs = faceSigs(body)
-  return [...sel].sort((a, b) => a - b).filter((i) => sigs[i]).map((i) => encodeRef({ kind: 'face', bodyId: body.id, featureId: body.featureId, index: i, sig: sigs[i] }))
+  return faceRefs(body, sel)
 }
 
 export interface RegionSet { body: Body; kind: 'mesh' | 'brep'; set: Set<number> }
@@ -54,8 +67,8 @@ function wholeBody(body: Body): RegionSet {
 
 /**
  * Resolve region param strings against the current bodies. Accepts paint-tool tokens (mesh triangle runs), B-rep face refs,
- * and what the Inspector's "Use sel." produces: face refs / whole-body ids. Mesh bodies have no per-face ids, so a face or body
- * selection on a mesh body means the whole mesh (use the paint tools for a sub-region).
+ * and what the Inspector's "Use sel." produces: face refs / whole-body ids. Mesh bodies are segmented into faces on import
+ * (see meshDisplay), so a face ref on a mesh body selects the triangles of that face; a body id selects the whole mesh.
  */
 export function resolveRegionSet(region: string[], bodies: Body[]): RegionSet | null {
   if (!region.length) return null
@@ -77,7 +90,7 @@ export function resolveRegionSet(region: string[], bodies: Body[]): RegionSet | 
     body = res.body
     set.add(res.index)
   }
-  if (body?.kind === 'mesh') return wholeBody(body)
+  if (body?.kind === 'mesh') return { body, kind: 'mesh', set: trisOfFaces(body, set) }
   if (body) return { body, kind: 'brep', set }
   return whole ? wholeBody(whole) : null
 }
@@ -107,7 +120,10 @@ export function regionFromSelection(sel: { kind: string; id: string; index?: num
   const bodyRef = sel.find((r) => r.kind === 'mesh' || r.kind === 'body')
   const b = bodies.find((x) => x.id === (faces[0]?.id ?? bodyRef?.id))
   if (!b) return []
-  if (b.kind === 'mesh') return [encodeTris(b.id, Array.from({ length: b.mesh.indices.length / 3 }, (_, i) => i))]
-  const ids = faces.length ? faces.filter((f) => f.id === b.id).map((f) => f.index!) : [...new Set(b.mesh.faceIds)]
-  return encodeRegion(b, new Set(ids))
+  const own = faces.filter((f) => f.id === b.id).map((f) => f.index!)
+  if (b.kind === 'mesh') {
+    if (own.length) return faceRefs(b, own)
+    return [encodeTris(b.id, Array.from({ length: b.mesh.indices.length / 3 }, (_, i) => i))]
+  }
+  return faceRefs(b, own.length ? own : new Set(b.mesh.faceIds))
 }

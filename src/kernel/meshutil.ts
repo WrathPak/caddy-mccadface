@@ -25,21 +25,96 @@ export function weld(positions: ArrayLike<number>, indices?: ArrayLike<number>, 
   return { positions: new Float32Array(out), indices: new Uint32Array(tri) }
 }
 
-/** Display mesh for a plain triangle mesh: crease-aware normals (split vertices) and feature/boundary edges. */
-export function meshDisplay(topo: TopoMesh, creaseDeg = 30): MeshData {
+/** Default dihedral angle (degrees) above which two adjacent triangles belong to different faces of a mesh body. */
+export const DEFAULT_CREASE_DEG = 20
+
+export interface Segmentation {
+  /** face id per triangle (numbered in order of first triangle) */
+  faceIds: Uint32Array
+  faceCount: number
+  /** per triangle edge k (a->b, k = 0..2): the neighbouring triangle across it, or -1 for boundary / non-manifold edges */
+  adj: Int32Array
+  /** unit triangle normals */
+  normals: Float32Array
+}
+
+/**
+ * Split a welded triangle mesh into faces: flood fill over edges shared by exactly two triangles whose dihedral angle
+ * (angle between their normals) is below `creaseDeg`. Boundary and non-manifold edges never connect.
+ */
+export function segmentFaces(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG): Segmentation {
   const p = topo.positions, idx = topo.indices
   const T = idx.length / 3
-  const nv = p.length / 3
-  const fn = new Float32Array(T * 3) // area-weighted (unnormalised) normal
-  const un = new Float32Array(T * 3) // unit normal
+  const nrm = new Float32Array(T * 3)
+  const flat = new Uint8Array(T) // zero-area triangles carry no orientation: they join whichever face they touch
   for (let t = 0; t < T; t++) {
     const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3
     const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2]
     const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2]
     const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx
-    const l = Math.hypot(x, y, z) || 1
-    fn.set([x, y, z], t * 3)
-    un.set([x / l, y / l, z / l], t * 3)
+    const l = Math.hypot(x, y, z)
+    if (l < 1e-20) flat[t] = 1
+    else nrm.set([x / l, y / l, z / l], t * 3)
+  }
+  // adj[t*3+k] is set only when the edge has exactly two triangles
+  const nv = p.length / 3
+  const slots = new Map<number, number[]>() // edge key -> slots (t*3+k)
+  for (let t = 0; t < T; t++) {
+    for (let k = 0; k < 3; k++) {
+      const x = idx[t * 3 + k], y = idx[t * 3 + ((k + 1) % 3)]
+      const key = x < y ? x * nv + y : y * nv + x
+      const l = slots.get(key)
+      if (l) l.push(t * 3 + k); else slots.set(key, [t * 3 + k])
+    }
+  }
+  const adj = new Int32Array(T * 3).fill(-1)
+  for (const l of slots.values()) {
+    if (l.length !== 2) continue
+    const t0 = (l[0] / 3) | 0, t1 = (l[1] / 3) | 0
+    if (t0 === t1) continue
+    adj[l[0]] = t1
+    adj[l[1]] = t0
+  }
+  const cosC = Math.cos((creaseDeg * Math.PI) / 180)
+  const faceIds = new Uint32Array(T).fill(0xffffffff)
+  let faceCount = 0
+  const stack: number[] = []
+  for (let s = 0; s < T; s++) {
+    if (faceIds[s] !== 0xffffffff) continue
+    const f = faceCount++
+    faceIds[s] = f
+    stack.push(s)
+    while (stack.length) {
+      const a = stack.pop()!
+      for (let k = 0; k < 3; k++) {
+        const b = adj[a * 3 + k]
+        if (b < 0 || faceIds[b] !== 0xffffffff) continue
+        const d = nrm[a * 3] * nrm[b * 3] + nrm[a * 3 + 1] * nrm[b * 3 + 1] + nrm[a * 3 + 2] * nrm[b * 3 + 2]
+        if (flat[a] || flat[b] || d >= cosC) { faceIds[b] = f; stack.push(b) }
+      }
+    }
+  }
+  return { faceIds, faceCount, adj, normals: nrm }
+}
+
+/**
+ * Display mesh for a plain triangle mesh: faces segmented by crease angle, crease-aware normals (split vertices) and
+ * feature edges. Feature edges are the face boundaries plus open / non-manifold edges; they are chained into edges
+ * (`edgeIds`) the way a B-rep's edges are: a chain continues through a vertex only while both neighbours separate the
+ * same pair of faces and the path does not turn sharply.
+ */
+export function meshDisplay(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG): MeshData {
+  const p = topo.positions, idx = topo.indices
+  const T = idx.length / 3
+  const nv = p.length / 3
+  const seg = segmentFaces(topo, creaseDeg)
+  const { faceIds, faceCount, adj, normals: un } = seg
+  const fn = new Float32Array(T * 3) // area-weighted (unnormalised) normal
+  for (let t = 0; t < T; t++) {
+    const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3
+    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2]
+    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2]
+    fn.set([uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx], t * 3)
   }
   // vertex -> triangles (CSR)
   const start = new Uint32Array(nv + 1)
@@ -70,24 +145,57 @@ export function meshDisplay(topo: TopoMesh, creaseDeg = 30): MeshData {
       indices[t * 3 + k] = t * 3 + k
     }
   }
-  // feature edges: boundary / non-manifold / sharp
-  const emap = new Map<number, number[]>()
+
+  // feature edges: every mesh edge that is open / non-manifold or separates two different faces
+  const ea: number[] = [], eb: number[] = [], ekey: number[] = []
+  const seen = new Set<number>()
+  const sentinel = faceCount // "no face on this side"
   for (let t = 0; t < T; t++) {
     for (let k = 0; k < 3; k++) {
       const a = idx[t * 3 + k], b = idx[t * 3 + ((k + 1) % 3)]
       const key = a < b ? a * nv + b : b * nv + a
-      const arr = emap.get(key)
-      if (arr) arr.push(t)
-      else emap.set(key, [t])
+      if (seen.has(key)) continue
+      seen.add(key)
+      const o = adj[t * 3 + k]
+      let f0: number, f1: number
+      if (o >= 0) {
+        f0 = faceIds[t]; f1 = faceIds[o]
+        if (f0 === f1) continue
+      } else { f0 = faceIds[t]; f1 = sentinel }
+      const lo = Math.min(f0, f1), hi = Math.max(f0, f1)
+      ea.push(a); eb.push(b); ekey.push(lo * (faceCount + 1) + hi)
     }
   }
-  const segs: number[] = []
-  for (const [key, ts] of emap) {
-    let sharp = ts.length !== 2
-    if (!sharp) sharp = un[ts[0] * 3] * un[ts[1] * 3] + un[ts[0] * 3 + 1] * un[ts[1] * 3 + 1] + un[ts[0] * 3 + 2] * un[ts[1] * 3 + 2] < cosC
-    if (!sharp) continue
-    const a = Math.floor(key / nv), b = key % nv
-    segs.push(p[a * 3], p[a * 3 + 1], p[a * 3 + 2], p[b * 3], p[b * 3 + 1], p[b * 3 + 2])
+  const E = ea.length
+  const parent = Int32Array.from({ length: E }, (_, i) => i)
+  const find = (x: number): number => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x] } return x }
+  const incident = new Map<number, number[]>()
+  for (let e = 0; e < E; e++) for (const v of [ea[e], eb[e]]) {
+    const l = incident.get(v)
+    if (l) l.push(e); else incident.set(v, [e])
   }
-  return { positions, normals, indices, faceIds: new Uint32Array(T), edges: new Float32Array(segs) }
+  const cosTurn = Math.cos((40 * Math.PI) / 180)
+  for (const [v, es] of incident) {
+    if (es.length !== 2 || ekey[es[0]] !== ekey[es[1]]) continue
+    // direction of each edge pointing away from v
+    const dir = (e: number) => {
+      const o = ea[e] === v ? eb[e] : ea[e]
+      const x = p[o * 3] - p[v * 3], y = p[o * 3 + 1] - p[v * 3 + 1], z = p[o * 3 + 2] - p[v * 3 + 2]
+      const l = Math.hypot(x, y, z) || 1
+      return [x / l, y / l, z / l]
+    }
+    const d0 = dir(es[0]), d1 = dir(es[1])
+    if (-(d0[0] * d1[0] + d0[1] * d1[1] + d0[2] * d1[2]) >= cosTurn) parent[find(es[0])] = find(es[1])
+  }
+  const ids = new Map<number, number>()
+  const segs = new Float32Array(E * 6)
+  const edgeIds = new Uint32Array(E)
+  for (let e = 0; e < E; e++) {
+    const r = find(e)
+    let id = ids.get(r)
+    if (id === undefined) { id = ids.size; ids.set(r, id) }
+    edgeIds[e] = id
+    segs.set([p[ea[e] * 3], p[ea[e] * 3 + 1], p[ea[e] * 3 + 2], p[eb[e] * 3], p[eb[e] * 3 + 1], p[eb[e] * 3 + 2]], e * 6)
+  }
+  return { positions, normals, indices, faceIds, edges: segs, edgeIds, faceCount, edgeCount: ids.size }
 }

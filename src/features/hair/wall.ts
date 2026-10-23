@@ -18,7 +18,7 @@ export interface Caster {
 
 export interface WallResult {
   mesh: Mesh3
-  /** follow walls: per-triangle prism source, used to rebuild the wall robustly when the shell self-intersects */
+  /** follow walls: bottom/top vertex sheets, used to rebuild the wall as a distance-field level set when the shell self-intersects */
   follow?: { positions: Float32Array; tris: Uint32Array }
 }
 
@@ -282,29 +282,6 @@ function followWall(s: Surf, P: HairParams): WallResult {
   return followResult(positions, g.idx)
 }
 
-/**
- * Per-triangle prisms of a follow wall. Their union is the wall volume even where the offset shell folds into itself.
- * Shared side quads use the same diagonal in both neighbours so coincident faces match exactly.
- */
-export function* wallPrisms(f: NonNullable<WallResult['follow']>, nv: number = f.positions.length / 6): Generator<Mesh3> {
-  for (let t = 0; t < f.tris.length; t += 3) {
-    const v = [f.tris[t], f.tris[t + 1], f.tris[t + 2]]
-    const positions = new Float32Array(18)
-    for (let k = 0; k < 3; k++) {
-      positions.set(f.positions.subarray(v[k] * 3, v[k] * 3 + 3), k * 3) // bottom
-      positions.set(f.positions.subarray((nv + v[k]) * 3, (nv + v[k]) * 3 + 3), (3 + k) * 3) // top
-    }
-    const idx: number[] = [0, 2, 1, 3, 4, 5]
-    for (let k = 0; k < 3; k++) {
-      const j = (k + 1) % 3
-      const A0 = k, B0 = j, A1 = 3 + k, B1 = 3 + j
-      if (v[k] < v[j]) idx.push(A0, B0, B1, A0, B1, A1)
-      else idx.push(A0, B0, A1, B0, B1, A1)
-    }
-    yield { positions, indices: Uint32Array.from(idx) }
-  }
-}
-
 // ------------------------------------------------------------------ box / cylinder walls
 
 /** Box from an origin and three orthonormal axes with extents [lo, hi] along each. */
@@ -408,4 +385,50 @@ export function buildWall(s: Surf, P: HairParams, raws: Raw[], axis: Axis): Wall
     z0 = Math.min(z0, dot(sub(q, o), a)); z1 = Math.max(z1, dot(sub(q, o), a))
   }
   return { mesh: cylinderShell(o, a, R, R + T, z0 - P.wallBottom, z1 + P.wallTop) }
+}
+
+// ------------------------------------------------------------------ robust wall volume (signed distance field)
+
+export interface WallField {
+  /** positive inside the wall, negative outside (manifold-3d levelSet convention) */
+  sdf: (p: V3) => number
+  min: V3
+  max: V3
+  /** half the wall thickness */
+  half: number
+}
+
+/**
+ * The wall volume as an SDF: every point within half a thickness of the follow sheet's mid-surface. This is the union of
+ * balls swept along the mid-sheet, so it is well defined (and the iso-surface is manifold) even where the offset shell
+ * folds through itself. Distance queries run on a BVH, so evaluation is O(log n) per sample.
+ */
+export function wallField(f: NonNullable<WallResult['follow']>): WallField {
+  const nv = f.positions.length / 6
+  const mid = new Float32Array(nv * 3)
+  let half = 0
+  const min: V3 = [Infinity, Infinity, Infinity], max: V3 = [-Infinity, -Infinity, -Infinity]
+  for (let v = 0; v < nv; v++) {
+    let d2 = 0
+    for (let k = 0; k < 3; k++) {
+      const b = f.positions[v * 3 + k], t = f.positions[(nv + v) * 3 + k]
+      mid[v * 3 + k] = (b + t) / 2
+      d2 += (t - b) * (t - b)
+      min[k] = Math.min(min[k], b, t); max[k] = Math.max(max[k], b, t)
+    }
+    half += Math.sqrt(d2) / 2
+  }
+  half /= Math.max(1, nv)
+  const { bvh } = bvhOf({ positions: mid, indices: f.tris })
+  const q = new Vector3()
+  const target = { point: new Vector3(), distance: 0, faceIndex: 0 }
+  return {
+    half,
+    min, max,
+    sdf: (p) => {
+      q.set(p[0], p[1], p[2])
+      const h = bvh.closestPointToPoint(q, target)
+      return h ? half - h.distance : -1
+    },
+  }
 }

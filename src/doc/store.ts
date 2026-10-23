@@ -53,7 +53,7 @@ interface DocState extends DocData {
   markClean: () => void
   // engine hooks
   setGeometry: (g: Body[]) => void
-  applyStatus: (s: Record<string, { state: FeatureState; error?: string }>) => void
+  applyStatus: (s: Record<string, { state: FeatureState; error?: string; warning?: string }>) => void
 }
 
 let regenHandler: () => void = () => {}
@@ -195,9 +195,9 @@ export const useDoc = create<DocState>((set, get) => {
         let changed = false
         const features = s.features.map((f) => {
           const n = st[f.id]
-          if (!n || (n.state === f.state && n.error === f.error)) return f
+          if (!n || (n.state === f.state && n.error === f.error && n.warning === f.warning)) return f
           changed = true
-          return { ...f, state: n.state, error: n.error }
+          return { ...f, state: n.state, error: n.error, warning: n.warning }
         })
         return changed ? { features } : {}
       }),

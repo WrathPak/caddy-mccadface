@@ -3,7 +3,7 @@ import type { ParamSchema, ParamValues } from '@/ui/schema'
 import type { Body } from '@/kernel/types'
 import type { KernelClient } from '@/kernel/client'
 
-export type FeatureState = 'ok' | 'error' | 'suppressed'
+export type FeatureState = 'ok' | 'warning' | 'error' | 'suppressed'
 
 /** A feature instance in the timeline. `params` may hold expression strings for number params. */
 export interface Feature {
@@ -12,6 +12,8 @@ export interface Feature {
   name: string
   state: FeatureState
   error?: string
+  /** non-fatal problem: the feature built, but something it depends on is off (state 'warning') */
+  warning?: string
   suppressed: boolean
   params: ParamValues
 }
@@ -51,6 +53,8 @@ export interface FeatureResult {
   remove?: string[]
   /** arbitrary data for later features (read with ctx.dataOf) */
   data?: unknown
+  /** non-fatal problem to show on the feature (e.g. broken references) */
+  warning?: string
 }
 
 export interface PreviewCtx {

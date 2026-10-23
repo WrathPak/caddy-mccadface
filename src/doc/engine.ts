@@ -10,7 +10,7 @@ import { getScope, resolveParams } from './params'
 import { setRegenHandler, useDoc } from './store'
 import type { FeatureCtx, FeatureResult, FeatureState } from './types'
 
-interface CacheEntry { hash: string; bodies: Body[]; data?: unknown; error?: string }
+interface CacheEntry { hash: string; bodies: Body[]; data?: unknown; error?: string; warning?: string }
 const cache = new Map<string, CacheEntry>()
 
 function hash(s: string): string {
@@ -63,7 +63,8 @@ export function regenerate(): Promise<void> {
 async function pass() {
   const { features, rollback, blobs } = useDoc.getState()
   const kernel = getKernel()
-  const status: Record<string, { state: FeatureState; error?: string }> = {}
+  const status: Record<string, { state: FeatureState; error?: string; warning?: string }> = {}
+  const stat = (e: CacheEntry | undefined) => (e?.error ? { state: 'error' as const, error: e.error } : e?.warning ? { state: 'warning' as const, warning: e.warning } : { state: 'ok' as const })
   let state: Body[] = []
   let chain = ''
   const seen = new Set<string>()
@@ -75,7 +76,7 @@ async function pass() {
     const def = getFeature(f.type)
     if (i >= rollback) {
       const e = cache.get(f.id)
-      status[f.id] = e?.error ? { state: 'error', error: e.error } : { state: 'ok' }
+      status[f.id] = stat(e)
       continue
     }
     if (!def) { status[f.id] = { state: 'error', error: `Unknown feature type "${f.type}"` }; continue }
@@ -106,7 +107,7 @@ async function pass() {
       }
       try {
         const r = await def.compute(ctx, params)
-        entry = { hash: h, bodies: merge(state, r, f.id), data: r.data }
+        entry = { hash: h, bodies: merge(state, r, f.id), data: r.data, warning: r.warning }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         console.warn(`[regen] ${f.name}:`, e)
@@ -117,7 +118,7 @@ async function pass() {
     }
     chain = hash(chain + entry.hash)
     state = entry.bodies
-    status[f.id] = entry.error ? { state: 'error', error: entry.error } : { state: 'ok' }
+    status[f.id] = stat(entry)
   }
 
   for (const id of [...cache.keys()]) if (!seen.has(id)) cache.delete(id)

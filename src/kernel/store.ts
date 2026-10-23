@@ -1,10 +1,10 @@
 /** Worker-side geometry store: B-reps and welded meshes keyed by handle. Worker-only. */
 import * as Comlink from 'comlink'
-import { meshDisplay, weld } from './meshutil'
+import { DEFAULT_CREASE_DEG, meshDisplay, weld } from './meshutil'
 import { tessellate, type Shape } from './occ'
 import type { Body, MeshData, TopoMesh } from './types'
 
-export type Stored = { kind: 'brep'; shape: Shape } | { kind: 'mesh'; topo: TopoMesh }
+export type Stored = { kind: 'brep'; shape: Shape } | { kind: 'mesh'; topo: TopoMesh; /** dihedral angle (deg) that separates faces */ crease: number }
 
 const store = new Map<string, Stored>()
 let counter = 0
@@ -49,9 +49,9 @@ export function bodyFromShape(id: string, name: string, shape: Shape): Body {
   const key = putStored({ kind: 'brep', shape })
   return { id, name, kind: 'brep', key, mesh: tessellate(shape) }
 }
-export function bodyFromTopo(id: string, name: string, topo: TopoMesh): Body {
-  const key = putStored({ kind: 'mesh', topo })
-  return { id, name, kind: 'mesh', key, mesh: meshDisplay(topo) }
+export function bodyFromTopo(id: string, name: string, topo: TopoMesh, crease: number = DEFAULT_CREASE_DEG): Body {
+  const key = putStored({ kind: 'mesh', topo, crease })
+  return { id, name, kind: 'mesh', key, mesh: meshDisplay(topo, crease) }
 }
 
 export type OpFn = (args: never, ctx: OpHelpers) => Promise<unknown> | unknown

@@ -131,6 +131,8 @@ input, select { font: inherit; color: inherit; }
 .chip[data-state='suppressed'] { opacity: 0.45; border-style: dashed; }
 .chip[data-state='error'] { border-color: var(--danger); color: var(--danger); }
 .chip[data-state='error']::after { content: ''; position: absolute; right: -1px; top: -1px; width: 6px; height: 6px; background: var(--danger); border-radius: 0 var(--radius) 0 2px; }
+.chip[data-state='warning'] { border-color: var(--warn); color: var(--warn); }
+.chip[data-state='warning']::after { content: ''; position: absolute; right: -1px; top: -1px; width: 6px; height: 6px; background: var(--warn); border-radius: 0 var(--radius) 0 2px; }
 .chip[data-rolled='true'] { opacity: 0.35; }
 .marker { width: 8px; align-self: stretch; margin: 0 1px; display: flex; justify-content: center; cursor: ew-resize; position: relative; flex: none; }
 .marker::before { content: ''; width: 2px; height: 100%; background: var(--accent); }
