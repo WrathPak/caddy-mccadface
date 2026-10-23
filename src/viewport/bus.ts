@@ -5,6 +5,8 @@ export type StepKind = 'left' | 'right' | 'up' | 'down' | 'rollCW' | 'rollCCW'
 
 export interface ViewportEvents {
   frame: undefined
+  /** fit the view to a world-space box (View > Frame Selection) */
+  frameBox: { min: [number, number, number]; max: [number, number, number] }
   view: ViewDir
   /** snap to an arbitrary view direction (unit vector from target toward camera) */
   viewVec: [number, number, number]

@@ -1,6 +1,7 @@
 import * as D from '@radix-ui/react-dropdown-menu'
 import { useUi, type SelectionFilter } from '@/store/ui'
 import { useHairView } from '@/features/hair/store'
+import { SettingsPopover } from './SettingsPopover'
 
 const FILTERS: SelectionFilter[] = ['body', 'face', 'edge']
 
@@ -49,6 +50,7 @@ export function StatusBar() {
         <span className={'dot ' + (kernelBusy ? 'busy' : 'idle')} />
         Kernel: {kernelBusy ? 'Busy' : 'Idle'}
       </span>
+      <SettingsPopover />
     </div>
   )
 }

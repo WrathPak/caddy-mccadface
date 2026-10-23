@@ -15,6 +15,7 @@ import { useUi } from '@/store/ui'
 import { useDoc } from '@/doc/store'
 import { demoExtrudeSchema, schemaDefaults } from '@/ui/schema'
 import { viewportBus } from '@/viewport/bus'
+import { selectionBounds } from '@/viewport/selectionBounds'
 
 export interface Command {
   id: string
@@ -111,7 +112,7 @@ def('solid.loft', 'Loft', Shapes, 'Create')
 def('solid.box', 'Box', Cube, 'Create')
 def('solid.cylinder', 'Cylinder', Cylinder, 'Create')
 // ---- Solid: modify
-def('solid.fillet', 'Fillet', Circle, 'Modify', 'F')
+def('solid.fillet', 'Fillet', Circle, 'Modify', 'Shift+F')
 def('solid.chamfer', 'Chamfer', Polygon, 'Modify')
 def('solid.shell', 'Shell', Package, 'Modify')
 def('solid.move', 'Move / Copy', ArrowsOutCardinal, 'Modify', 'M')
@@ -160,6 +161,11 @@ def('sketch.project', 'Project / Include', Exclude, 'Sketch')
 
 // ---- View
 def('view.frame', 'Frame All', FrameCorners, 'View', 'F6', () => viewportBus.emit('frame', undefined))
+def('view.frameSelection', 'Frame Selection', FrameCorners, 'View', 'F', () => {
+  const b = selectionBounds(useUi.getState().selection, useDoc.getState().geometry)
+  if (!b) return viewportBus.emit('frame', undefined)
+  viewportBus.emit('frameBox', { min: b.min.toArray(), max: b.max.toArray() })
+}, 'Fit the view to the selected faces, edges or bodies (everything when nothing is selected)')
 def('view.home', 'Home View', House, 'View', undefined, () => viewportBus.emit('view', 'home'))
 def('view.top', 'View Top', BoundingBox, 'View', undefined, () => viewportBus.emit('view', 'top'))
 def('view.front', 'View Front', BoundingBox, 'View', undefined, () => viewportBus.emit('view', 'front'))
