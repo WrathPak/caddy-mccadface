@@ -1,11 +1,17 @@
 /** Tiny typed event bus so commands (outside React Three Fiber) can drive the viewport. */
 export type ViewDir = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'home'
+/** ViewCube arrows: 90 degree turns about the screen axes and rolls about the view axis */
+export type StepKind = 'left' | 'right' | 'up' | 'down' | 'rollCW' | 'rollCCW'
 
 export interface ViewportEvents {
   frame: undefined
   view: ViewDir
   /** snap to an arbitrary view direction (unit vector from target toward camera) */
   viewVec: [number, number, number]
+  /** turn the view one 90 degree step (relative to the current / pending view) */
+  step: StepKind
+  /** drag-orbit by a pointer delta in pixels (the ViewCube drag) */
+  orbit: { dx: number; dy: number }
   /** request a render (frameloop is on demand) */
   redraw: undefined
 }
