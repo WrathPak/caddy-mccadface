@@ -1,3 +1,4 @@
+import { gridSnapStep } from '@/viewport/gridMath'
 /** Cursor snapping: points, midpoints, centers, on-curve, axis / alignment inference and the grid. */
 import { ORIGIN, type SketchModel, type Vec2 } from './types'
 import { closestOnArc, closestOnCircle, closestOnSegment, dist, mid } from './geom'
@@ -29,12 +30,9 @@ export interface SnapCtx {
   exclude?: Set<string>
 }
 
-/** Grid step (1, 2, 5 x 10^n) giving roughly 14-30 px cells. */
+/** Snap spacing: the visible minor / major grid layer (see viewport/gridMath), 8..80 px per cell. */
 export function gridStep(wpp: number): number {
-  const target = wpp * 14
-  const p = Math.pow(10, Math.floor(Math.log10(target)))
-  for (const m of [1, 2, 5, 10]) if (p * m >= target) return p * m
-  return p * 10
+  return gridSnapStep(wpp)
 }
 
 const centers = (m: SketchModel) => {

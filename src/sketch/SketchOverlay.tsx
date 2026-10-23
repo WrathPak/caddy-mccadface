@@ -16,7 +16,8 @@ import { circleOf, entityById, lineEnds, pos } from './model'
 import { previewPolys } from './offsetTool'
 import { fieldsFor, liveValues, resolveEnd, valuesOf, hasText, arcThrough, type DrawTool, type Typed } from './typed'
 import { planeQuaternion, toLocal } from './plane'
-import { gridStep, type Snap } from './snap'
+import { type Snap } from './snap'
+import { GRID_GLSL, gridLevels } from '@/viewport/gridMath'
 import {
   applyDimEdit, cancelDimEdit, doubleClick, editDim, pointerDown, pointerMove, pointerUp, select, setWpp, typedKey, useSketch, type SketchState,
 } from './store'
@@ -74,31 +75,25 @@ void main() {
 const gridFrag = /* glsl */ `
 varying vec2 vLocal;
 uniform float uStep;
+uniform float uBlend;
 uniform vec2 uCenter;
 uniform float uHalf;
 uniform vec3 uMinor;
 uniform vec3 uMajor;
 uniform vec3 uAxisX;
 uniform vec3 uAxisY;
-float lines(vec2 p, float size) {
-  vec2 q = p / size;
-  vec2 d = fwidth(q);
-  vec2 g = abs(fract(q - 0.5) - 0.5) / max(d, vec2(1e-6));
-  return 1.0 - min(min(g.x, g.y), 1.0);
-}
+${GRID_GLSL}
 void main() {
   vec2 p = vLocal;
-  float minor = lines(p, uStep);
-  float major = lines(p, uStep * 5.0);
+  float k = gridStrength(p, uStep, uBlend);
+  vec3 col = gridColor(k, uMinor, uMajor);
+  float a = 0.85 * k;
   vec2 ad = fwidth(p) * 1.2;
   float ax = 1.0 - min(abs(p.y) / max(ad.y, 1e-6), 1.0);
   float ay = 1.0 - min(abs(p.x) / max(ad.x, 1e-6), 1.0);
-  vec3 col = uMinor;
-  float a = minor * 0.32;
-  if (major > 0.0) { col = uMajor; a = max(a, major * 0.55); }
   if (ax > 0.0) { col = uAxisX; a = max(a, ax * 0.95); }
   if (ay > 0.0) { col = uAxisY; a = max(a, ay * 0.95); }
-  a *= 1.0 - smoothstep(uHalf * 0.3, uHalf, length(p - uCenter));
+  a *= 1.0 - smoothstep(uHalf * 0.55, uHalf, length(p - uCenter));
   if (a < 0.004) discard;
   gl_FragColor = vec4(col, a);
 }`
@@ -106,35 +101,38 @@ void main() {
 function SketchGrid() {
   const colors = useVpColors()
   const mesh = useRef<Mesh>(null)
+  const mat = useRef<ShaderMaterial>(null)
   const uniforms = useMemo(
-    () => ({ uStep: { value: 10 }, uHalf: { value: 500 }, uCenter: { value: new Vector2() }, uMinor: { value: new Color() }, uMajor: { value: new Color() }, uAxisX: { value: new Color() }, uAxisY: { value: new Color() } }),
+    () => ({ uStep: { value: 10 }, uBlend: { value: 0 }, uHalf: { value: 500 }, uCenter: { value: new Vector2() }, uMinor: { value: new Color() }, uMajor: { value: new Color() }, uAxisX: { value: new Color() }, uAxisY: { value: new Color() } }),
     [],
   )
-  uniforms.uMinor.value.set(colors.grid)
-  uniforms.uMajor.value.set(colors.gridMajor)
-  uniforms.uAxisX.value.set(colors.axisX)
-  uniforms.uAxisY.value.set(colors.axisY)
   const ray = useMemo(() => new Raycaster(), [])
   useFrame((state) => {
+    const u = mat.current?.uniforms
+    if (!u) return
+    u.uMinor.value.set(colors.grid)
+    u.uMajor.value.set(colors.gridMajor)
+    u.uAxisX.value.set(colors.axisX)
+    u.uAxisY.value.set(colors.axisY)
     const plane = useSketch.getState().plane
     const wpp = wppFor(state.camera, state.size.height, plane)
-    const step = gridStep(wpp)
-    uniforms.uStep.value = step
-    uniforms.uHalf.value = Math.max(state.size.width, state.size.height) * wpp * 0.9
-    // grid centred on what the camera looks at, snapped to whole major cells so it does not swim
+    const { step, blend } = gridLevels(wpp)
+    u.uStep.value = step
+    u.uBlend.value = blend
+    u.uHalf.value = Math.max(state.size.width, state.size.height) * wpp * 1.1
+    // the quad follows the view; the lines themselves are fixed to the sketch origin (multiples of the step), so nothing swims
     ray.setFromCamera(new Vector2(0, 0), state.camera)
     const hit = new Vector3()
     const pl = new Plane().setFromNormalAndCoplanarPoint(new Vector3(...plane.normal), new Vector3(...plane.origin))
     if (ray.ray.intersectPlane(pl, hit)) {
       const l = toLocal(plane, [hit.x, hit.y, hit.z])
-      const q = step * 5
-      uniforms.uCenter.value.set(Math.round(l[0] / q) * q, Math.round(l[1] / q) * q)
+      u.uCenter.value.set(l[0], l[1])
     }
   })
   return (
     <mesh ref={mesh} renderOrder={-1} raycast={() => null} frustumCulled={false}>
       <planeGeometry args={[2, 2]} />
-      <shaderMaterial vertexShader={gridVert} fragmentShader={gridFrag} uniforms={uniforms as never as ShaderMaterial['uniforms']} transparent depthWrite={false} side={DoubleSide} />
+      <shaderMaterial ref={mat} vertexShader={gridVert} fragmentShader={gridFrag} uniforms={uniforms as never as ShaderMaterial['uniforms']} transparent depthWrite={false} side={DoubleSide} />
     </mesh>
   )
 }
