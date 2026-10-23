@@ -122,6 +122,7 @@ function InspectorForm({ session }: { session: InspectorSession }) {
     activeRef.current = key
     setActive(key)
     const d = picks().find((p) => p.key === key)
+    useUi.setState({ pickSketches: !!d?.accepts.includes('sketch') })
     const f = d?.accepts.find((k) => k === 'body' || k === 'face' || k === 'edge')
     if (f) { touchedFilter.current = true; useUi.getState().setSelectionFilter(f) }
   }
@@ -130,7 +131,10 @@ function InspectorForm({ session }: { session: InspectorSession }) {
     const ps = picks()
     if (ps.length && !activeRef.current) activate((ps.find((p) => !(latest.current[p.key] as string[])?.length) ?? ps[0]).key)
     const restore = prevFilter.current
-    return () => { if (touchedFilter.current) useUi.getState().setSelectionFilter(restore) }
+    return () => {
+      useUi.setState({ pickSketches: false })
+      if (touchedFilter.current) useUi.getState().setSelectionFilter(restore)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // viewport / Browser picks flow into the active field

@@ -49,6 +49,10 @@ interface UiState {
   hiddenIds: Record<string, true>
   paletteOpen: boolean
   inspector: InspectorSession | null
+  /** a selection field that accepts sketches is active: finished sketch curves become clickable */
+  pickSketches: boolean
+  /** extra entities drawn highlighted without being selected (e.g. both Measure picks) */
+  highlight: SelectionRef[]
   /** section analysis clipping plane */
   section: SectionState
   /** viewport stats */
@@ -99,6 +103,8 @@ export const useUi = create<UiState>((set, get) => ({
   hiddenIds: { ...DEFAULT_HIDDEN },
   paletteOpen: false,
   inspector: null,
+  pickSketches: false,
+  highlight: [],
   section: { on: false, axis: 'Z', offset: 0, flip: false },
   triangles: 0,
   kernelBusy: false,

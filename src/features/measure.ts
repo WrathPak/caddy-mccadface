@@ -1,14 +1,16 @@
 /** Measure: pick one or two faces / edges / bodies and read lengths, areas, distances and angles. */
+import { create } from 'zustand'
 import { decodeRef, edgeSigs, faceSigs, resolveEdge, resolveFace } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
 import { bbox, type Body, type Vec3 } from '@/kernel/types'
-import { useUi } from '@/store/ui'
+import { useUi, type SelectionRef } from '@/store/ui'
 import type { ParamSchema } from '@/ui/schema'
 
-type Ent =
+type Ent = { sel: SelectionRef } & (
   | { kind: 'face'; label: string; normal: Vec3; point: Vec3; area: number }
   | { kind: 'edge'; label: string; dir: Vec3; point: Vec3; length: number }
   | { kind: 'body'; label: string; point: Vec3; size: Vec3; volume: number }
+)
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
@@ -34,18 +36,18 @@ export function entityOf(ref: string, bodies: Body[]): Ent | null {
     const hit = resolveFace(r, bodies)
     if (!hit) return null
     const s = faceSigs(hit.body)[hit.index]
-    return { kind: 'face', label: `Face of ${hit.body.name}`, normal: s.normal, point: s.centroid, area: s.area }
+    return { sel: { kind: 'face', id: hit.body.id, index: hit.index }, kind: 'face', label: `Face of ${hit.body.name}`, normal: s.normal, point: s.centroid, area: s.area }
   }
   if (r.kind === 'edge') {
     const hit = resolveEdge(r, bodies)
     if (!hit) return null
     const s = edgeSigs(hit.body)[hit.index]
-    return { kind: 'edge', label: `Edge of ${hit.body.name}`, dir: s.direction, point: s.midpoint, length: s.length }
+    return { sel: { kind: 'edge', id: hit.body.id, index: hit.index }, kind: 'edge', label: `Edge of ${hit.body.name}`, dir: s.direction, point: s.midpoint, length: s.length }
   }
   const b = bodies.find((x) => x.id === r.bodyId)
   if (!b) return null
   const bb = bbox(b.mesh.positions)
-  return { kind: 'body', label: b.name, point: [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, (bb.min[2] + bb.max[2]) / 2], size: sub(bb.max, bb.min), volume: volumeOf(b) }
+  return { sel: { kind: 'body', id: b.id }, kind: 'body', label: b.name, point: [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, (bb.min[2] + bb.max[2]) / 2], size: sub(bb.max, bb.min), volume: volumeOf(b) }
 }
 
 function describe(e: Ent): string[] {
@@ -78,6 +80,17 @@ export function measureText(refs: string[], bodies: Body[]): string {
   return out.join('\n')
 }
 
+/** What the viewport draws for the current Measure: both picks highlighted and the dimension line between their reference points. */
+export const useMeasure = create<{ a: Vec3 | null; b: Vec3 | null; label: string }>(() => ({ a: null, b: null, label: '' }))
+
+/** Reference points of the picks (face centre, edge midpoint, body centre) and their distance, for the dimension line. */
+export function measureEnds(refs: string[], bodies: Body[]): { a: Vec3 | null; b: Vec3 | null; label: string; sels: SelectionRef[] } {
+  const ents = refs.map((r) => entityOf(r, bodies)).filter((e): e is Ent => !!e)
+  const sels = ents.map((e) => e.sel)
+  if (ents.length < 2) return { a: ents[0]?.point ?? null, b: null, label: '', sels }
+  return { a: ents[0].point, b: ents[1].point, label: `${f(len(sub(ents[1].point, ents[0].point)), 2)} mm`, sels }
+}
+
 export const measureSchema: ParamSchema = {
   id: 'measure',
   title: 'Measure',
@@ -93,6 +106,8 @@ export function startMeasure() {
   const ui = useUi.getState()
   ui.inspector?.onCancel()
   const finish = () => {
+    useMeasure.setState({ a: null, b: null, label: '' })
+    useUi.setState({ highlight: [] })
     useUi.getState().closeInspector()
     useUi.getState().setActiveTool(null)
   }
@@ -100,7 +115,12 @@ export function startMeasure() {
   ui.openInspector({
     schema: measureSchema,
     values: { pick: 'face', first: [], second: [], result: '' },
-    onChange: (v) => useUi.getState().setSelectionFilter(v.pick as 'face' | 'edge' | 'body'),
+    onChange: (v) => {
+      useUi.getState().setSelectionFilter(v.pick as 'face' | 'edge' | 'body')
+      const m = measureEnds([...((v.first as string[]) ?? []), ...((v.second as string[]) ?? [])], useDoc.getState().geometry)
+      useMeasure.setState({ a: m.a, b: m.b, label: m.label })
+      useUi.setState({ highlight: m.sels })
+    },
     onOk: finish,
     onCancel: finish,
   })

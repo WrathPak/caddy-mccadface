@@ -29,7 +29,7 @@ export function Viewport() {
       <Canvas
         frameloop="demand"
         dpr={[1, 2]}
-        gl={{ antialias: true, powerPreference: 'high-performance' }}
+        gl={{ antialias: true, stencil: true, powerPreference: 'high-performance' }}
         raycaster={{ params: { Line: { threshold: 1.2 }, Mesh: {}, Points: { threshold: 1 }, LOD: {}, Sprite: {} } }}
         onCreated={({ gl }) => { gl.localClippingEnabled = true }}
         onPointerMissed={(e) => e.button === 0 && useHairPaint.getState().mode === 'off' && clear()}

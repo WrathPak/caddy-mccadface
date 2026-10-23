@@ -10,6 +10,7 @@ import { Bodies } from './Bodies'
 import { CaptureRegistrar, MoveGizmo } from './MoveGizmo'
 import { InfiniteGrid } from './InfiniteGrid'
 import { ConstructionPlanes, Origin } from './Origin'
+import { MeasureOverlay } from './MeasureOverlay'
 import { NavControls, FOV } from './NavControls'
 import { ViewCubeSync } from './ViewCube'
 import { useVpColors } from './colors'
@@ -81,6 +82,7 @@ export function Scene() {
       <PreviewLayer />
       <ProfilePicker />
       <ArrowManipulator />
+      <MeasureOverlay />
       <HairRegionOverlay />
       <HairPreviewLayer />
       <HairPaintTool />

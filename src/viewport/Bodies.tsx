@@ -14,6 +14,8 @@ import { usePreview } from './preview'
 import { useVpColors } from './colors'
 import { useSketch } from '@/sketch/store'
 import { sectionPlane } from './section'
+import { SectionCap } from './SectionCap'
+import { useSceneHalfSize } from './Origin'
 
 /** Passed explicitly in both states: R3F does not restore the prototype raycast when a prop goes back to undefined. */
 const noRaycast = () => null
@@ -40,6 +42,9 @@ function faceSubset(b: Body, geo: BufferGeometry, faces: Set<number>): BufferGeo
   g.setIndex(idx)
   return g
 }
+
+/** Cap tints, one per body (cycled), so overlapping bodies stay distinguishable in a section. */
+const CAP_COLORS = ['#5aa9c4', '#c4905a', '#7fb36a', '#b27fc4', '#c4c05a']
 
 interface Mats { base: Material; hi: Material }
 
@@ -74,12 +79,13 @@ export function Bodies() {
 
   return (
     <group name="bodies">
-      {geometry.map((b) => (hidden[b.id] ? null : <BodyView key={b.key} body={b} mats={mats} colors={colors} />))}
+      {geometry.map((b, i) => (hidden[b.id] ? null : <BodyView key={b.key} body={b} mats={mats} colors={colors} index={i} clip={clip[0]} />))}
     </group>
   )
 }
 
-function BodyView({ body, mats, colors }: { body: Body; mats: Mats; colors: ReturnType<typeof useVpColors> }) {
+function BodyView({ body, mats, colors, index, clip }: { body: Body; mats: Mats; colors: ReturnType<typeof useVpColors>; index: number; clip?: Plane }) {
+  const capSize = useSceneHalfSize() * 2
   const geo = useMemo(() => buildGeometry(body), [body])
   useEffect(() => () => geo.dispose(), [geo])
   const displayMode = useUi((s) => s.displayMode)
@@ -100,9 +106,10 @@ function BodyView({ body, mats, colors }: { body: Body; mats: Mats; colors: Retu
   const refFor = (e: ThreeEvent<PointerEvent | MouseEvent>): SelectionRef =>
     filter === 'body' ? { kind: 'body', id: body.id } : { kind: 'face', id: body.id, index: body.mesh.faceIds[e.faceIndex ?? 0] ?? 0 }
 
-  const active = [...selection, ...(hover ? [hover] : [])].filter((r) => r.id === body.id)
+  const highlight = useUi((s) => s.highlight)
+  const active = [...selection, ...highlight, ...(hover ? [hover] : [])].filter((r) => r.id === body.id)
   const wholeBody = active.some((r) => r.kind === 'body')
-  const faceSet = useMemo(() => new Set(active.filter((r) => r.kind === 'face').map((r) => r.index!)), [selection, hover]) // eslint-disable-line react-hooks/exhaustive-deps
+  const faceSet = useMemo(() => new Set(active.filter((r) => r.kind === 'face').map((r) => r.index!)), [selection, highlight, hover]) // eslint-disable-line react-hooks/exhaustive-deps
   const overlayGeo = useMemo(() => (!wholeBody && faceSet.size ? faceSubset(body, geo, faceSet) : null), [wholeBody, faceSet, body, geo])
   useEffect(() => () => overlayGeo?.dispose(), [overlayGeo])
 
@@ -120,6 +127,7 @@ function BodyView({ body, mats, colors }: { body: Body; mats: Mats; colors: Retu
         onPointerOut={() => setHover(null)}
         onClick={pickFaces ? (e) => { e.stopPropagation(); setSelection([refFor(e)], e.shiftKey || e.ctrlKey) } : undefined}
       />
+      {clip && <SectionCap geometry={geo} plane={clip} color={CAP_COLORS[index % CAP_COLORS.length]} order={20 + index * 4} size={capSize} />}
       {wholeBody && <mesh geometry={geo} material={mats.hi} raycast={() => null} renderOrder={2} />}
       {overlayGeo && <mesh geometry={overlayGeo} material={mats.hi} raycast={() => null} renderOrder={2} />}
       {showEdges && <EdgeLines body={body} color={colors.edge} accent={colors.accent} pickable={filter === 'edge' && !sketching} clip={mats.base.clippingPlanes ?? []} />}
@@ -136,6 +144,7 @@ function EdgeLines({ body, color, accent, pickable, clip }: { body: Body; color:
   useEffect(() => () => geo.dispose(), [geo])
   const hover = useUi((s) => s.hover)
   const selection = useUi((s) => s.selection)
+  const highlight = useUi((s) => s.highlight)
   const setHover = useUi((s) => s.setHover)
   const setSelection = useUi((s) => s.setSelection)
   const ids = body.mesh.edgeIds
@@ -144,7 +153,7 @@ function EdgeLines({ body, color, accent, pickable, clip }: { body: Body; color:
     return ids ? ids[seg] : seg
   }
   const lit = useMemo(() => {
-    const set = new Set([...selection, ...(hover ? [hover] : [])].filter((r) => r.kind === 'edge' && r.id === body.id).map((r) => r.index!))
+    const set = new Set([...selection, ...highlight, ...(hover ? [hover] : [])].filter((r) => r.kind === 'edge' && r.id === body.id).map((r) => r.index!))
     const out: Vector3[][] = []
     if (!set.size) return out
     const p = body.mesh.edges
@@ -152,7 +161,7 @@ function EdgeLines({ body, color, accent, pickable, clip }: { body: Body; color:
       if (set.has(ids ? ids[s] : s)) out.push([new Vector3(p[s * 6], p[s * 6 + 1], p[s * 6 + 2]), new Vector3(p[s * 6 + 3], p[s * 6 + 4], p[s * 6 + 5])])
     }
     return out
-  }, [selection, hover, body, ids])
+  }, [selection, highlight, hover, body, ids])
   return (
     <group>
       <lineSegments
