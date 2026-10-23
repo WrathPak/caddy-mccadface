@@ -24,5 +24,5 @@ function onReady(e: DockviewReadyEvent) {
 }
 
 export function Layout() {
-  return <DockviewReact className="dockview-theme-weeb" components={components} onReady={onReady} />
+  return <DockviewReact className="dockview-theme-caddy" components={components} onReady={onReady} />
 }

@@ -17,7 +17,7 @@ interface HistoryItem { label: string; data: DocData }
 
 interface DocState extends DocData {
   selectedFeatureId: string | null
-  /** import sources etc., keyed by blob id (saved in the .weebcad zip) */
+  /** import sources etc., keyed by blob id (saved in the .caddy zip) */
   blobs: Record<string, Uint8Array>
   /** bodies produced by the regeneration engine (what the viewport renders) */
   geometry: Body[]

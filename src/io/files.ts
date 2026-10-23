@@ -8,7 +8,7 @@ interface PickerWindow {
 }
 const w = window as unknown as PickerWindow
 
-const PROJECT_TYPES = [{ description: 'WeebCAD project', accept: { 'application/zip': ['.weebcad'] } }]
+const PROJECT_TYPES = [{ description: 'CADdy McCADFace project', accept: { 'application/zip': ['.caddy'] } }]
 export const MODEL_EXTS = ['.stl', '.3mf', '.step', '.stp']
 
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError'
@@ -49,7 +49,7 @@ export async function pickProject(): Promise<{ bytes: Uint8Array; name: string; 
       throw e
     }
   }
-  const [f] = await pickFiles('.weebcad')
+  const [f] = await pickFiles('.caddy')
   return f ? { bytes: new Uint8Array(await f.arrayBuffer()), name: f.name, handle: null } : null
 }
 
@@ -57,7 +57,7 @@ export async function pickProject(): Promise<{ bytes: Uint8Array; name: string; 
 export async function writeProject(bytes: Uint8Array, suggested: string, handle: FileHandleLike | null): Promise<FileHandleLike | null | undefined> {
   if (w.showSaveFilePicker) {
     try {
-      const h = handle ?? (await w.showSaveFilePicker({ suggestedName: suggested + '.weebcad', types: PROJECT_TYPES }))
+      const h = handle ?? (await w.showSaveFilePicker({ suggestedName: suggested + '.caddy', types: PROJECT_TYPES }))
       const wr = await h.createWritable()
       await wr.write(bytes as BufferSource)
       await wr.close()
@@ -67,6 +67,6 @@ export async function writeProject(bytes: Uint8Array, suggested: string, handle:
       throw e
     }
   }
-  downloadFile(suggested + '.weebcad', bytes, 'application/zip')
+  downloadFile(suggested + '.caddy', bytes, 'application/zip')
   return null
 }

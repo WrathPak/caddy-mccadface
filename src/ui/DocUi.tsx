@@ -24,7 +24,7 @@ function RecoveryPrompt() {
         </>
       }
     >
-      WeebCAD found an autosaved copy of <b>{r.name}</b> from {new Date(r.savedAt).toLocaleString()}. It was not saved to a file.
+      CADdy McCADFace found an autosaved copy of <b>{r.name}</b> from {new Date(r.savedAt).toLocaleString()}. It was not saved to a file.
     </Modal>
   )
 }

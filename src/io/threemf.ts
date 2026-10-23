@@ -34,7 +34,7 @@ export function write3mf(items: { name: string; mesh: TopoMesh }[]): Uint8Array 
   })
   const model =
     `<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">` +
-    `<metadata name="Application">WeebCAD</metadata><resources>${objs.join('')}</resources>` +
+    `<metadata name="Application">CADdy McCADFace</metadata><resources>${objs.join('')}</resources>` +
     `<build>${items.map((_, i) => `<item objectid="${i + 1}"/>`).join('')}</build></model>`
   return zipSync({
     '[Content_Types].xml': strToU8(

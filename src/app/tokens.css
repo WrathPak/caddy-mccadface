@@ -1,4 +1,4 @@
-/* WeebCAD design tokens. Dark graphite default; light via [data-theme="light"]. */
+/* CADdy McCADFace design tokens. Dark graphite default; light via [data-theme="light"]. */
 :root {
   --font-ui: 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;

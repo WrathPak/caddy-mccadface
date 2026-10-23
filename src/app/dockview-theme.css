@@ -1,4 +1,4 @@
-.dockview-theme-weeb {
+.dockview-theme-caddy {
   --dv-paneview-active-outline-color: var(--accent);
   --dv-tabs-and-actions-container-font-size: 11px;
   --dv-tabs-and-actions-container-height: 24px;
@@ -29,16 +29,16 @@
   --dv-separator-border: var(--line);
   --dv-paneview-header-border-color: var(--line);
 }
-.dockview-theme-weeb .dv-tab {
+.dockview-theme-caddy .dv-tab {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 10px;
   font-weight: 600;
   padding: 0 10px;
 }
-.dockview-theme-weeb .dv-groupview { border: none; }
-.dockview-theme-weeb .dv-groupview.dv-active-group > .dv-tabs-and-actions-container .dv-tab.dv-active-tab {
+.dockview-theme-caddy .dv-groupview { border: none; }
+.dockview-theme-caddy .dv-groupview.dv-active-group > .dv-tabs-and-actions-container .dv-tab.dv-active-tab {
   box-shadow: inset 0 2px 0 var(--accent);
 }
-.dockview-theme-weeb .dv-tabs-and-actions-container { border-bottom: 1px solid var(--line); }
-.dockview-theme-weeb .dv-watermark { display: none; }
+.dockview-theme-caddy .dv-tabs-and-actions-container { border-bottom: 1px solid var(--line); }
+.dockview-theme-caddy .dv-watermark { display: none; }

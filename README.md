@@ -1,4 +1,4 @@
-# WeebCAD
+# CADdy McCADFace
 
 Open-source, browser-based, local-only parametric CAD. Static hosting only; nothing leaves your machine.
 

@@ -75,7 +75,7 @@ export async function importFiles(files: File[]) {
     try {
       const bytes = new Uint8Array(await f.arrayBuffer())
       const d = useDoc.getState()
-      if (ext === '.weebcad') {
+      if (ext === '.caddy') {
         if (!confirmDiscard()) continue
         loadProject(bytes)
         handle = null
@@ -100,7 +100,7 @@ export async function importFiles(files: File[]) {
 }
 
 export async function importDialog() {
-  const files = await pickFiles([...MODEL_EXTS, '.weebcad'].join(','), true)
+  const files = await pickFiles([...MODEL_EXTS, '.caddy'].join(','), true)
   if (files.length) await importFiles(files)
 }
 
@@ -160,7 +160,7 @@ export async function exportBodies(format: 'stl' | '3mf' | 'step', scope: 'selec
 }
 
 // ---------------- autosave + recovery
-const AUTOSAVE_KEY = 'weebcad-autosave'
+const AUTOSAVE_KEY = 'caddy-autosave'
 interface AutosaveRecord { bytes: Uint8Array; name: string; savedAt: number }
 
 export const useRecovery = create<{ record: AutosaveRecord | null }>(() => ({ record: null }))

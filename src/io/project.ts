@@ -1,4 +1,4 @@
-/** `.weebcad` = zip of document.json + blobs/<id> (import sources) + thumbnail.png. Fully regenerable from the timeline. */
+/** `.caddy` = zip of document.json + blobs/<id> (import sources) + thumbnail.png. Fully regenerable from the timeline. */
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { clearCache } from '@/doc/engine'
 import { useDoc } from '@/doc/store'
@@ -15,7 +15,7 @@ export async function serializeProject(withThumbnail = true): Promise<Uint8Array
   // state/error are derived, not persisted
   const features = data.features.map(({ id, type, name, suppressed, params }) => ({ id, type, name, suppressed, params }))
   const files: Record<string, Uint8Array> = {
-    'document.json': strToU8(JSON.stringify({ format: FORMAT, app: 'WeebCAD', ...data, features })),
+    'document.json': strToU8(JSON.stringify({ format: FORMAT, app: 'CADdy McCADFace', ...data, features })),
   }
   for (const id of referenced) files['blobs/' + id] = s.blobs[id]
   const thumb = withThumbnail ? await captureThumbnail() : null
@@ -26,7 +26,7 @@ export async function serializeProject(withThumbnail = true): Promise<Uint8Array
 export function parseProject(bytes: Uint8Array): { data: DocData; blobs: Record<string, Uint8Array> } {
   const files = unzipSync(bytes)
   const raw = files['document.json']
-  if (!raw) throw new Error('Not a WeebCAD project (document.json missing)')
+  if (!raw) throw new Error('Not a CADdy McCADFace project (document.json missing)')
   const j = JSON.parse(strFromU8(raw))
   const blobs: Record<string, Uint8Array> = {}
   for (const [k, v] of Object.entries(files)) if (k.startsWith('blobs/')) blobs[k.slice(6)] = v

@@ -13,8 +13,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'WeebCAD',
-        short_name: 'WeebCAD',
+        name: 'CADdy McCADFace',
+        short_name: 'CADFace',
         description: 'Local-only parametric CAD',
         theme_color: '#1b1d21',
         background_color: '#1b1d21',

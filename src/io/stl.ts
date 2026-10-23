@@ -16,7 +16,7 @@ export function writeStl(meshes: TopoMesh[]): Uint8Array {
   const tris = meshes.reduce((n, m) => n + m.indices.length / 3, 0)
   const out = new ArrayBuffer(84 + tris * 50)
   const dv = new DataView(out)
-  new TextEncoder().encodeInto('WeebCAD binary STL', new Uint8Array(out, 0, 80))
+  new TextEncoder().encodeInto('CADdy McCADFace binary STL', new Uint8Array(out, 0, 80))
   dv.setUint32(80, tris, true)
   let o = 84
   for (const m of meshes) {
