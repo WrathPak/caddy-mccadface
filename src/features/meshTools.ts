@@ -25,7 +25,7 @@ interface BodyTool {
   run(kernel: KernelClient, p: ParamValues, b: Body, ids: Ids): Promise<Body[]>
 }
 
-const bodiesParam: ParamDef = { type: 'selection-ref', key: 'bodies', label: 'Bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] }
+const bodiesParam: ParamDef = { type: 'selection-ref', key: 'bodies', help: 'The bodies to work on. Click them in the viewport or the Browser.', label: 'Bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] }
 const AXES: Record<string, Vec3> = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }
 const asBody = (b: unknown) => b as Body
 
@@ -33,9 +33,9 @@ const TOOLS: BodyTool[] = [
   {
     type: 'meshPlaneCut', label: 'Plane Cut', icon: Scissors, command: 'mesh.planeCut',
     params: [
-      { type: 'enum', key: 'axis', label: 'Plane normal', display: 'segmented', default: 'Z', options: [{ value: 'X', label: 'X' }, { value: 'Y', label: 'Y' }, { value: 'Z', label: 'Z' }] },
-      { type: 'number', key: 'offset', label: 'Offset', unit: 'mm', step: 1, default: 0 },
-      { type: 'enum', key: 'keep', label: 'Keep', display: 'select', default: 'above', options: [{ value: 'above', label: 'Positive side' }, { value: 'below', label: 'Negative side' }, { value: 'both', label: 'Both (split)' }] },
+      { type: 'enum', key: 'axis', help: 'The direction the cutting plane faces: X, Y or Z.', label: 'Plane normal', display: 'segmented', default: 'Z', options: [{ value: 'X', label: 'X' }, { value: 'Y', label: 'Y' }, { value: 'Z', label: 'Z' }] },
+      { type: 'number', key: 'offset', help: 'Where the cutting plane sits along that axis, in mm.', label: 'Offset', unit: 'mm', step: 1, default: 0 },
+      { type: 'enum', key: 'keep', help: 'Which side of the plane to keep: the positive side, the negative side, or both as separate bodies.', label: 'Keep', display: 'select', default: 'above', options: [{ value: 'above', label: 'Positive side' }, { value: 'below', label: 'Negative side' }, { value: 'both', label: 'Both (split)' }] },
     ],
     async run(k, p, b, ids) {
       return (await k.call('meshPlaneCut', { id: ids.id, name: b.name, key: b.key, normal: AXES[p.axis as string] ?? AXES.Z, offset: p.offset as number, keep: p.keep, otherId: ids.otherId })) as Body[]
@@ -43,25 +43,25 @@ const TOOLS: BodyTool[] = [
   },
   {
     type: 'meshReduce', label: 'Reduce', icon: Funnel, command: 'mesh.reduce',
-    params: [{ type: 'number', key: 'tolerance', label: 'Tolerance', unit: 'mm', min: 0.0001, step: 0.01, default: 0.05 }],
+    params: [{ type: 'number', key: 'tolerance', help: 'How close two points must be to count as the same point when repairing holes and gaps, in mm.', label: 'Tolerance', unit: 'mm', min: 0.0001, step: 0.01, default: 0.05 }],
     async run(k, p, b, ids) { return [asBody(await k.call('meshReduce', { id: ids.id, name: b.name, key: b.key, tolerance: p.tolerance }))] },
   },
   {
     type: 'meshRefine', label: 'Refine', icon: GridFour, command: 'mesh.remesh',
-    params: [{ type: 'number', key: 'length', label: 'Max edge length', unit: 'mm', min: 0.01, step: 0.5, default: 2 }],
+    params: [{ type: 'number', key: 'length', help: 'Triangles with edges longer than this are split until none are, in mm. Smaller gives a finer mesh (and a heavier file).', label: 'Max edge length', unit: 'mm', min: 0.01, step: 0.5, default: 2 }],
     async run(k, p, b, ids) { return [asBody(await k.call('meshRefine', { id: ids.id, name: b.name, key: b.key, length: p.length }))] },
   },
   {
     type: 'meshSmooth', label: 'Smooth', icon: Waves, command: 'mesh.smooth',
     params: [
-      { type: 'number', key: 'iterations', label: 'Iterations', min: 1, max: 200, step: 1, default: 10 },
-      { type: 'number', key: 'strength', label: 'Strength', min: 0, max: 1, step: 0.05, default: 0.5 },
+      { type: 'number', key: 'iterations', help: 'How many smoothing passes to run. More passes give a smoother, slightly smaller surface.', label: 'Iterations', min: 1, max: 200, step: 1, default: 10 },
+      { type: 'number', key: 'strength', help: 'How far each point moves toward its neighbours per pass (0 to 1). Lower is gentler.', label: 'Strength', min: 0, max: 1, step: 0.05, default: 0.5 },
     ],
     async run(k, p, b, ids) { return [asBody(await k.call('meshSmooth', { id: ids.id, name: b.name, key: b.key, iterations: p.iterations, strength: p.strength }))] },
   },
   {
     type: 'meshRepair', label: 'Repair', icon: MagicWand, command: 'mesh.repair',
-    params: [{ type: 'number', key: 'tolerance', label: 'Weld distance', unit: 'mm', min: 0, step: 0.001, default: 0.001 }],
+    params: [{ type: 'number', key: 'tolerance', help: 'Points closer than this are merged into one, in mm. Closes tiny cracks between triangles.', label: 'Weld distance', unit: 'mm', min: 0, step: 0.001, default: 0.001 }],
     async run(k, p, b, ids) { return [((await k.call('meshRepair', { id: ids.id, name: b.name, key: b.key, tolerance: p.tolerance })) as RepairResult).body] },
   },
   {

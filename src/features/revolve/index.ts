@@ -23,24 +23,24 @@ export const revolveSchema: ParamSchema = {
   id: 'revolve',
   title: 'Revolve',
   params: [
-    { type: 'selection-ref', key: 'profiles', label: 'Profiles', accepts: ['sketch'], multiple: true, required: true, default: [] },
+    { type: 'selection-ref', key: 'profiles', help: 'The closed sketch shapes to spin around the axis.', label: 'Profiles', accepts: ['sketch'], multiple: true, required: true, default: [] },
     {
-      type: 'enum', key: 'axis', label: 'Axis', display: 'select', default: 'line',
+      type: 'enum', key: 'axis', help: 'The line to spin around: a construction line in the sketch, one of the sketch or world axes, or a model edge.', label: 'Axis', display: 'select', default: 'line',
       options: [
         { value: 'line', label: 'Sketch construction line' }, { value: 'sketchX', label: 'Sketch X axis' }, { value: 'sketchY', label: 'Sketch Y axis' },
         { value: 'worldX', label: 'World X' }, { value: 'worldY', label: 'World Y' }, { value: 'worldZ', label: 'World Z' }, { value: 'edge', label: 'Edge' },
       ],
     },
-    { type: 'selection-ref', key: 'edge', label: 'Axis edge', accepts: ['edge'], required: true, default: [], visibleWhen: (v) => v.axis === 'edge' },
-    { type: 'number', key: 'angle', label: 'Angle', unit: 'deg', step: 5, default: 360 },
+    { type: 'selection-ref', key: 'edge', help: 'Click the straight model edge to spin around.', label: 'Axis edge', accepts: ['edge'], required: true, default: [], visibleWhen: (v) => v.axis === 'edge' },
+    { type: 'number', key: 'angle', help: 'How far to spin, in degrees. 360 makes a full turn; less leaves a wedge.', label: 'Angle', unit: 'deg', step: 5, default: 360 },
     {
-      type: 'enum', key: 'operation', label: 'Operation', display: 'select', default: 'new',
+      type: 'enum', key: 'operation', help: 'Join: add to the body. Cut: remove material. Intersect: keep only the overlap. New body: make a separate body.', label: 'Operation', display: 'select', default: 'new',
       options: [
         { value: 'join', label: 'Join' }, { value: 'cut', label: 'Cut' },
         { value: 'intersect', label: 'Intersect' }, { value: 'new', label: 'New body' },
       ],
     },
-    { type: 'selection-ref', key: 'targets', label: 'Target bodies', accepts: ['body'], multiple: true, default: [], visibleWhen: (v) => v.operation !== 'new' },
+    { type: 'selection-ref', key: 'targets', help: 'The bodies to join to, cut or intersect. Leave empty to use every body that the shape touches.', label: 'Target bodies', accepts: ['body'], multiple: true, default: [], visibleWhen: (v) => v.operation !== 'new' },
   ],
 }
 

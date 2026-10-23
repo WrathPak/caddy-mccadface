@@ -105,15 +105,15 @@ export async function importDialog() {
 }
 
 // ---------------- export
-const exportSchema: ParamSchema = {
+export const exportSchema: ParamSchema = {
   id: 'export',
   title: 'Export',
   params: [
     {
-      type: 'enum', key: 'format', label: 'Format', display: 'segmented', default: 'stl',
+      type: 'enum', key: 'format', help: 'STL and 3MF are meshes for 3D printing (3MF keeps units and colours). STEP keeps exact curved surfaces for other CAD programs.', label: 'Format', display: 'segmented', default: 'stl',
       options: [{ value: 'stl', label: 'STL' }, { value: '3mf', label: '3MF' }, { value: 'step', label: 'STEP' }],
     },
-    { type: 'enum', key: 'scope', label: 'Bodies', display: 'segmented', default: 'all', options: [{ value: 'selection', label: 'Selection' }, { value: 'all', label: 'All visible' }] },
+    { type: 'enum', key: 'scope', help: 'Export only the selected bodies, or every visible body.', label: 'Bodies', display: 'segmented', default: 'all', options: [{ value: 'selection', label: 'Selection' }, { value: 'all', label: 'All visible' }] },
   ],
 }
 

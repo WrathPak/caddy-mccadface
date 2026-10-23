@@ -17,9 +17,9 @@ export const offsetPlaneSchema: ParamSchema = {
   id: 'offsetPlane',
   title: 'Offset Plane',
   params: [
-    { type: 'enum', key: 'base', label: 'Base', display: 'select', default: 'XY', options: [{ value: 'XY', label: 'XY plane' }, { value: 'XZ', label: 'XZ plane' }, { value: 'YZ', label: 'YZ plane' }, { value: 'face', label: 'Planar face' }] },
-    { type: 'selection-ref', key: 'face', label: 'Face', accepts: ['face'], required: true, pick: true, default: [], visibleWhen: (v) => v.base === 'face' },
-    { type: 'number', key: 'distance', label: 'Distance', unit: 'mm', step: 1, default: 10 },
+    { type: 'enum', key: 'base', help: 'What to offset from: an origin plane, or a flat face of a body.', label: 'Base', display: 'select', default: 'XY', options: [{ value: 'XY', label: 'XY plane' }, { value: 'XZ', label: 'XZ plane' }, { value: 'YZ', label: 'YZ plane' }, { value: 'face', label: 'Planar face' }] },
+    { type: 'selection-ref', key: 'face', help: 'Click the flat face the new plane starts from.', label: 'Face', accepts: ['face'], required: true, pick: true, default: [], visibleWhen: (v) => v.base === 'face' },
+    { type: 'number', key: 'distance', help: 'How far the new plane is from the base, in mm. Negative goes the other way. Sketch on it afterwards.', label: 'Distance', unit: 'mm', step: 1, default: 10 },
   ],
 }
 

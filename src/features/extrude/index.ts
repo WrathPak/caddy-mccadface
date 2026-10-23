@@ -19,28 +19,28 @@ export const extrudeSchema: ParamSchema = {
   id: 'extrude',
   title: 'Extrude',
   params: [
-    { type: 'selection-ref', key: 'profiles', label: 'Profiles', accepts: ['sketch', 'face'], multiple: true, required: true, default: [] },
+    { type: 'selection-ref', key: 'profiles', help: 'What to extrude: closed shapes from a sketch, or a flat face of a body. Click them in the viewport.', label: 'Profiles', accepts: ['sketch', 'face'], multiple: true, required: true, default: [] },
     {
       type: 'group',
       label: 'Extent',
       children: [
         {
-          type: 'enum', key: 'direction', label: 'Direction', display: 'segmented', default: 'one',
+          type: 'enum', key: 'direction', help: 'One side: grow one way. Symmetric: half the distance each way from the sketch. Two sides: a different distance each way.', label: 'Direction', display: 'segmented', default: 'one',
           options: [{ value: 'one', label: 'One side' }, { value: 'sym', label: 'Symmetric' }, { value: 'two', label: 'Two sides' }],
         },
-        { type: 'number', key: 'distance', label: 'Distance', unit: 'mm', step: 0.5, default: 10 },
-        { type: 'number', key: 'distance2', label: 'Distance 2', unit: 'mm', min: 0, step: 0.5, default: 5, visibleWhen: (v) => v.direction === 'two' },
-        { type: 'number', key: 'taper', label: 'Taper angle', unit: 'deg', min: -89, max: 89, step: 0.5, default: 0 },
+        { type: 'number', key: 'distance', help: 'How far to extrude, in mm. A negative number goes the other way. You can also drag the arrow in the viewport.', label: 'Distance', unit: 'mm', step: 0.5, default: 10 },
+        { type: 'number', key: 'distance2', help: 'How far to extrude in the opposite direction, in mm.', label: 'Distance 2', unit: 'mm', min: 0, step: 0.5, default: 5, visibleWhen: (v) => v.direction === 'two' },
+        { type: 'number', key: 'taper', help: 'Tilts the sides inward (positive) or outward (negative), in degrees, like a draft angle for moulding. 0 keeps the sides straight.', label: 'Taper angle', unit: 'deg', min: -89, max: 89, step: 0.5, default: 0 },
       ],
     },
     {
-      type: 'enum', key: 'operation', label: 'Operation', display: 'select', default: 'join',
+      type: 'enum', key: 'operation', help: 'Join: add to the body. Cut: remove material. Intersect: keep only the overlap. New body: make a separate body.', label: 'Operation', display: 'select', default: 'join',
       options: [
         { value: 'join', label: 'Join' }, { value: 'cut', label: 'Cut' },
         { value: 'intersect', label: 'Intersect' }, { value: 'new', label: 'New body' },
       ],
     },
-    { type: 'selection-ref', key: 'targets', label: 'Target bodies', accepts: ['body'], multiple: true, default: [], visibleWhen: (v) => v.operation !== 'new' },
+    { type: 'selection-ref', key: 'targets', help: 'The bodies to join to, cut or intersect. Leave empty to use every body that the shape touches.', label: 'Target bodies', accepts: ['body'], multiple: true, default: [], visibleWhen: (v) => v.operation !== 'new' },
   ],
 }
 

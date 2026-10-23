@@ -26,10 +26,10 @@ export const cylinderSchema: ParamSchema = {
   id: 'cylinder',
   title: 'Cylinder',
   params: [
-    { type: 'enum', key: 'plane', label: 'Base plane', display: 'segmented', default: 'XY', options: [{ value: 'XY', label: 'XY' }, { value: 'XZ', label: 'XZ' }, { value: 'YZ', label: 'YZ' }] },
-    { type: 'vector3', key: 'position', label: 'Base center', unit: 'mm', step: 1, default: [0, 0, 0] },
-    { type: 'number', key: 'radius', label: 'Radius', unit: 'mm', min: 0.001, step: 1, default: 10 },
-    { type: 'number', key: 'height', label: 'Height', unit: 'mm', min: 0.001, step: 1, default: 20 },
+    { type: 'enum', key: 'plane', help: 'The plane the cylinder stands on: XY makes it point up (Z), XZ points along Y, YZ points along X.', label: 'Base plane', display: 'segmented', default: 'XY', options: [{ value: 'XY', label: 'XY' }, { value: 'XZ', label: 'XZ' }, { value: 'YZ', label: 'YZ' }] },
+    { type: 'vector3', key: 'position', help: 'Where the middle of the cylinder base sits, as X, Y, Z in mm.', label: 'Base center', unit: 'mm', step: 1, default: [0, 0, 0] },
+    { type: 'number', key: 'radius', help: 'Radius of the cylinder, in mm (half the diameter).', label: 'Radius', unit: 'mm', min: 0.001, step: 1, default: 10 },
+    { type: 'number', key: 'height', help: 'Length of the cylinder along its axis, in mm.', label: 'Height', unit: 'mm', min: 0.001, step: 1, default: 20 },
   ],
 }
 
@@ -156,10 +156,10 @@ export const sweepSchema: ParamSchema = {
   id: 'sweep',
   title: 'Sweep',
   params: [
-    { type: 'selection-ref', key: 'profiles', label: 'Profile', accepts: ['sketch'], multiple: true, required: true, default: [] },
-    { type: 'selection-ref', key: 'path', label: 'Path', accepts: ['sketch'], required: true, pick: true, default: [] },
-    { type: 'enum', key: 'operation', label: 'Operation', display: 'select', default: 'join', options: opOptions },
-    { type: 'selection-ref', key: 'targets', label: 'Target bodies', accepts: ['body'], multiple: true, default: [], visibleWhen: (v) => v.operation !== 'new' },
+    { type: 'selection-ref', key: 'profiles', help: 'The closed sketch shape to drag along the path.', label: 'Profile', accepts: ['sketch'], multiple: true, required: true, default: [] },
+    { type: 'selection-ref', key: 'path', help: 'The sketch line or curve the profile follows. Click it in the viewport.', label: 'Path', accepts: ['sketch'], required: true, pick: true, default: [] },
+    { type: 'enum', key: 'operation', help: 'Join: add to the body. Cut: remove material. Intersect: keep only the overlap. New body: make a separate body.', label: 'Operation', display: 'select', default: 'join', options: opOptions },
+    { type: 'selection-ref', key: 'targets', help: 'The bodies to join to, cut or intersect. Leave empty to use every body that the shape touches.', label: 'Target bodies', accepts: ['body'], multiple: true, default: [], visibleWhen: (v) => v.operation !== 'new' },
   ],
 }
 
@@ -188,10 +188,10 @@ export const loftSchema: ParamSchema = {
   id: 'loft',
   title: 'Loft',
   params: [
-    { type: 'selection-ref', key: 'profiles', label: 'Profiles', accepts: ['sketch'], multiple: true, required: true, min: 2, default: [] },
-    { type: 'bool', key: 'ruled', label: 'Ruled (straight sections)', default: false },
-    { type: 'enum', key: 'operation', label: 'Operation', display: 'select', default: 'join', options: opOptions },
-    { type: 'selection-ref', key: 'targets', label: 'Target bodies', accepts: ['body'], multiple: true, default: [], visibleWhen: (v) => v.operation !== 'new' },
+    { type: 'selection-ref', key: 'profiles', help: 'The closed sketch shapes to blend between, in order. Pick at least two.', label: 'Profiles', accepts: ['sketch'], multiple: true, required: true, min: 2, default: [] },
+    { type: 'bool', key: 'ruled', help: 'On: straight lines between the profiles (angular). Off: a smooth curve through them.', label: 'Ruled (straight sections)', default: false },
+    { type: 'enum', key: 'operation', help: 'Join: add to the body. Cut: remove material. Intersect: keep only the overlap. New body: make a separate body.', label: 'Operation', display: 'select', default: 'join', options: opOptions },
+    { type: 'selection-ref', key: 'targets', help: 'The bodies to join to, cut or intersect. Leave empty to use every body that the shape touches.', label: 'Target bodies', accepts: ['body'], multiple: true, default: [], visibleWhen: (v) => v.operation !== 'new' },
   ],
 }
 
@@ -254,10 +254,10 @@ export const combineSchema: ParamSchema = {
   id: 'combine',
   title: 'Combine',
   params: [
-    { type: 'selection-ref', key: 'target', label: 'Target body', accepts: ['body'], required: true, pick: true, default: [] },
-    { type: 'selection-ref', key: 'tools', label: 'Tool bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] },
-    { type: 'enum', key: 'operation', label: 'Operation', display: 'segmented', default: 'join', options: [{ value: 'join', label: 'Join' }, { value: 'cut', label: 'Cut' }, { value: 'intersect', label: 'Intersect' }] },
-    { type: 'bool', key: 'keepTools', label: 'Keep tools', default: false },
+    { type: 'selection-ref', key: 'target', help: 'The body that is changed (the one you keep working on).', label: 'Target body', accepts: ['body'], required: true, pick: true, default: [] },
+    { type: 'selection-ref', key: 'tools', help: 'The bodies that act on the target: they are added to it, cut out of it, or intersected with it.', label: 'Tool bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] },
+    { type: 'enum', key: 'operation', help: 'Join: merge the tools into the target. Cut: subtract the tools from it. Intersect: keep only the part where they overlap.', label: 'Operation', display: 'segmented', default: 'join', options: [{ value: 'join', label: 'Join' }, { value: 'cut', label: 'Cut' }, { value: 'intersect', label: 'Intersect' }] },
+    { type: 'bool', key: 'keepTools', help: 'Leave the tool bodies in place after the operation instead of using them up.', label: 'Keep tools', default: false },
   ],
 }
 
@@ -313,9 +313,9 @@ export const shellSchema: ParamSchema = {
   id: 'shell',
   title: 'Shell',
   params: [
-    { type: 'selection-ref', key: 'faces', label: 'Faces to remove', accepts: ['face'], multiple: true, required: true, pick: true, default: [] },
-    { type: 'number', key: 'thickness', label: 'Thickness', unit: 'mm', min: 0.001, step: 0.5, default: 2 },
-    { type: 'enum', key: 'side', label: 'Direction', display: 'segmented', default: 'inside', options: [{ value: 'inside', label: 'Inside' }, { value: 'outside', label: 'Outside' }] },
+    { type: 'selection-ref', key: 'faces', help: 'The faces that become openings. Click them in the viewport. Everything else is hollowed out.', label: 'Faces to remove', accepts: ['face'], multiple: true, required: true, pick: true, default: [] },
+    { type: 'number', key: 'thickness', help: 'Wall thickness left after hollowing, in mm.', label: 'Thickness', unit: 'mm', min: 0.001, step: 0.5, default: 2 },
+    { type: 'enum', key: 'side', help: 'Inside: the wall grows into the body, keeping its outer size. Outside: the wall grows outward, keeping the inner size.', label: 'Direction', display: 'segmented', default: 'inside', options: [{ value: 'inside', label: 'Inside' }, { value: 'outside', label: 'Outside' }] },
   ],
 }
 

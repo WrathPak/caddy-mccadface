@@ -9,9 +9,9 @@ export const sectionSchema: ParamSchema = {
   id: 'section',
   title: 'Section Analysis',
   params: [
-    { type: 'enum', key: 'axis', label: 'Plane normal', display: 'segmented', default: 'Z', options: [{ value: 'X', label: 'X' }, { value: 'Y', label: 'Y' }, { value: 'Z', label: 'Z' }] },
-    { type: 'number', key: 'offset', label: 'Offset', unit: 'mm', step: 1, default: 0 },
-    { type: 'bool', key: 'flip', label: 'Flip side', default: false },
+    { type: 'enum', key: 'axis', help: 'The direction the cutting plane faces: X, Y or Z. Everything on the far side of the plane is hidden.', label: 'Plane normal', display: 'segmented', default: 'Z', options: [{ value: 'X', label: 'X' }, { value: 'Y', label: 'Y' }, { value: 'Z', label: 'Z' }] },
+    { type: 'number', key: 'offset', help: 'Where the plane sits along that axis, in mm.', label: 'Offset', unit: 'mm', step: 1, default: 0 },
+    { type: 'bool', key: 'flip', help: 'Hide the other side of the plane instead.', label: 'Flip side', default: false },
   ],
 }
 

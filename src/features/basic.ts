@@ -16,10 +16,10 @@ export const boxSchema: ParamSchema = {
   id: 'box',
   title: 'Box',
   params: [
-    { type: 'number', key: 'width', label: 'Width (X)', unit: 'mm', min: 0.001, step: 1, default: 20 },
-    { type: 'number', key: 'depth', label: 'Depth (Y)', unit: 'mm', min: 0.001, step: 1, default: 20 },
-    { type: 'number', key: 'height', label: 'Height (Z)', unit: 'mm', min: 0.001, step: 1, default: 20 },
-    { type: 'vector3', key: 'position', label: 'Base center', unit: 'mm', step: 1, default: [0, 0, 0] },
+    { type: 'number', key: 'width', help: 'Size of the box along the X axis, in mm.', label: 'Width (X)', unit: 'mm', min: 0.001, step: 1, default: 20 },
+    { type: 'number', key: 'depth', help: 'Size of the box along the Y axis, in mm.', label: 'Depth (Y)', unit: 'mm', min: 0.001, step: 1, default: 20 },
+    { type: 'number', key: 'height', help: 'Size of the box along the Z (vertical) axis, in mm.', label: 'Height (Z)', unit: 'mm', min: 0.001, step: 1, default: 20 },
+    { type: 'vector3', key: 'position', help: 'Where the middle of the box bottom sits, as X, Y, Z in mm. 0, 0, 0 is the origin.', label: 'Base center', unit: 'mm', step: 1, default: [0, 0, 0] },
   ],
 }
 
@@ -58,7 +58,7 @@ registerFeature({
   schema: {
     id: 'delete',
     title: 'Delete body',
-    params: [{ type: 'selection-ref', key: 'bodyIds', label: 'Bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] }],
+    params: [{ type: 'selection-ref', key: 'bodyIds', help: 'The bodies to delete. Click them in the viewport or the Browser.', label: 'Bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] }],
   },
   async compute(ctx, p) {
     return { remove: bodyIdsOf(p.bodyIds as string[]) }
@@ -85,8 +85,8 @@ registerFeature({
   label: 'Import Mesh',
   icon: GridFour,
   schema: { id: 'importMesh', title: 'Import mesh', params: [
-      { type: 'number', key: 'scale', label: 'Scale', unit: '', min: 0.0001, step: 0.1, default: 1 },
-      { type: 'number', key: 'creaseAngle', label: 'Face split angle', unit: 'deg', min: 1, max: 89, step: 1, default: 20 },
+      { type: 'number', key: 'scale', help: 'Multiplies the size of the imported model. Use 25.4 to bring a model made in inches into mm, 1 to keep it as is.', label: 'Scale', unit: '', min: 0.0001, step: 0.1, default: 1 },
+      { type: 'number', key: 'creaseAngle', help: 'Neighbouring triangles that meet at a sharper angle than this become separate faces you can pick. Lower values give more, smaller faces.', label: 'Face split angle', unit: 'deg', min: 1, max: 89, step: 1, default: 20 },
     ],
   },
   async compute(ctx, p) {

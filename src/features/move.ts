@@ -15,14 +15,14 @@ export const moveSchema: ParamSchema = {
   id: 'move',
   title: 'Move / Transform',
   params: [
-    { type: 'selection-ref', key: 'bodyIds', label: 'Bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] },
+    { type: 'selection-ref', key: 'bodyIds', help: 'The bodies to move, rotate or scale together.', label: 'Bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] },
     {
-      type: 'enum', key: 'gizmo', label: 'Gizmo', display: 'segmented', default: 'translate',
+      type: 'enum', key: 'gizmo', help: 'Which handle appears in the viewport: Move, Rotate or Scale. The numbers below stay in sync with it.', label: 'Gizmo', display: 'segmented', default: 'translate',
       options: [{ value: 'translate', label: 'Move' }, { value: 'rotate', label: 'Rotate' }, { value: 'scale', label: 'Scale' }],
     },
-    { type: 'vector3', key: 'translate', label: 'Translate', unit: 'mm', step: 1, default: [0, 0, 0] },
-    { type: 'vector3', key: 'rotate', label: 'Rotate', unit: 'deg', step: 5, default: [0, 0, 0] },
-    { type: 'number', key: 'scale', label: 'Scale', unit: '', min: 0.001, step: 0.1, default: 1 },
+    { type: 'vector3', key: 'translate', help: 'How far to move along X, Y and Z, in mm.', label: 'Translate', unit: 'mm', step: 1, default: [0, 0, 0] },
+    { type: 'vector3', key: 'rotate', help: 'Turn around the X, Y and Z axes through the middle of the bodies, in degrees.', label: 'Rotate', unit: 'deg', step: 5, default: [0, 0, 0] },
+    { type: 'number', key: 'scale', help: 'Resizes the bodies about their middle. 1 keeps the size, 2 doubles it, 0.5 halves it.', label: 'Scale', unit: '', min: 0.001, step: 0.1, default: 1 },
   ],
 }
 

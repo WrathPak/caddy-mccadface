@@ -21,8 +21,8 @@ const schemaFor = (mode: Mode): ParamSchema => ({
   id: mode,
   title: mode === 'fillet' ? 'Fillet' : 'Chamfer',
   params: [
-    { type: 'selection-ref', key: 'edges', label: 'Edges', accepts: ['edge'], multiple: true, required: true, default: [] },
-    { type: 'number', key: 'size', label: mode === 'fillet' ? 'Radius' : 'Distance', unit: 'mm', min: 0.001, step: 0.25, default: 1 },
+    { type: 'selection-ref', key: 'edges', help: 'The edges to round or bevel. Click them in the viewport (the selection filter switches to edges).', label: 'Edges', accepts: ['edge'], multiple: true, required: true, default: [] },
+    { type: 'number', key: 'size', help: 'Fillet: the radius of the rounding, in mm. Chamfer: how far the cut starts from the edge on each face, in mm.', label: mode === 'fillet' ? 'Radius' : 'Distance', unit: 'mm', min: 0.001, step: 0.25, default: 1 },
   ],
 })
 

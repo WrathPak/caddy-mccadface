@@ -95,10 +95,10 @@ export const measureSchema: ParamSchema = {
   id: 'measure',
   title: 'Measure',
   params: [
-    { type: 'enum', key: 'pick', label: 'Pick', display: 'segmented', default: 'face', options: [{ value: 'face', label: 'Face' }, { value: 'edge', label: 'Edge' }, { value: 'body', label: 'Body' }] },
-    { type: 'selection-ref', key: 'first', label: 'Select first', accepts: ['face', 'edge', 'body'], pick: true, required: true, default: [] },
-    { type: 'selection-ref', key: 'second', label: 'Select second', accepts: ['face', 'edge', 'body'], pick: true, default: [] },
-    { type: 'info', key: 'result', label: 'Result', default: '', text: (v) => measureText([...((v.first as string[]) ?? []), ...((v.second as string[]) ?? [])], useDoc.getState().geometry) },
+    { type: 'enum', key: 'pick', help: 'What clicking in the viewport selects: faces, edges or whole bodies.', label: 'Pick', display: 'segmented', default: 'face', options: [{ value: 'face', label: 'Face' }, { value: 'edge', label: 'Edge' }, { value: 'body', label: 'Body' }] },
+    { type: 'selection-ref', key: 'first', help: 'Click the first thing to measure.', label: 'Select first', accepts: ['face', 'edge', 'body'], pick: true, required: true, default: [] },
+    { type: 'selection-ref', key: 'second', help: 'Click a second thing to measure the distance or angle between the two. Optional.', label: 'Select second', accepts: ['face', 'edge', 'body'], pick: true, default: [] },
+    { type: 'info', key: 'result', help: 'The measured values. Nothing is added to the model.', label: 'Result', default: '', text: (v) => measureText([...((v.first as string[]) ?? []), ...((v.second as string[]) ?? [])], useDoc.getState().geometry) },
   ],
 }
 
