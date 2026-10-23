@@ -45,6 +45,7 @@ export function editFeature(id: string) {
   const f = d.features[idx]
   const def = f && getFeature(f.type)
   if (!def) return
+  if (def.edit) return def.edit(id, f.params)
   const prev = d.rollback
   d.setRollback(idx)
   openSession(

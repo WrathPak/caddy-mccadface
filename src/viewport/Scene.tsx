@@ -9,6 +9,10 @@ import { InfiniteGrid } from './InfiniteGrid'
 import { NavControls, FOV } from './NavControls'
 import { ViewCubeSync } from './ViewCube'
 import { useVpColors } from './colors'
+import { ArrowManipulator, PreviewLayer, ProfilePicker } from './preview'
+import { SketchOverlay } from '@/sketch/SketchOverlay'
+import { SketchDisplay } from '@/sketch/SketchDisplay'
+import { PlanePicker } from '@/sketch/PlanePicker'
 
 const S = 32 // origin plane half-size
 
@@ -39,6 +43,7 @@ export function Scene() {
   const ssao = useUi((s) => s.ssao)
   const showOrigin = useUi((s) => s.showOrigin)
   const showGrid = useUi((s) => s.showGrid)
+  const sketching = useUi((s) => s.sketchMode)
   const colors = useVpColors()
 
   return (
@@ -54,10 +59,16 @@ export function Scene() {
       <hemisphereLight args={['#ffffff', '#4a4f57', 0.9]} />
       <directionalLight position={[80, -120, 160]} intensity={1.6} />
       <directionalLight position={[-120, 80, 40]} intensity={0.5} />
-      {showGrid && <InfiniteGrid />}
-      {showOrigin && <Origin />}
+      {showGrid && !sketching && <InfiniteGrid />}
+      {showOrigin && !sketching && <Origin />}
       <Bodies />
       <MoveGizmo />
+      <SketchDisplay />
+      <SketchOverlay />
+      <PlanePicker />
+      <PreviewLayer />
+      <ProfilePicker />
+      <ArrowManipulator />
       <CaptureRegistrar />
       {ssao && (
         <EffectComposer enableNormalPass multisampling={0}>

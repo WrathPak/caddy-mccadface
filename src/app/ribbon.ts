@@ -60,14 +60,14 @@ export const RIBBON_TABS: RibbonTab[] = [
     label: 'Sketch',
     contextual: true,
     groups: [
-      { label: 'Create', items: [{ cmd: 'sketch.line' }, { cmd: 'sketch.rect' }, { cmd: 'sketch.circle' }, { cmd: 'sketch.arc' }] },
-      { label: 'Modify', items: [{ cmd: 'sketch.trim' }, { cmd: 'sketch.offset' }] },
+      { label: 'Create', items: [{ cmd: 'sketch.line' }, { cmd: 'sketch.rect', menu: ['sketch.rect', 'sketch.rectCenter'] }, { cmd: 'sketch.circle' }, { cmd: 'sketch.arc' }] },
+      { label: 'Modify', items: [{ cmd: 'sketch.construction' }, { cmd: 'sketch.trim' }, { cmd: 'sketch.offset' }] },
       {
         label: 'Constraints',
         items: [
-          { stack: ['sketch.coincident', 'sketch.horizontal', 'sketch.parallel'] },
-          { stack: ['sketch.perpendicular', 'sketch.tangent', 'sketch.equal'] },
-          { cmd: 'sketch.fix' },
+          { stack: ['sketch.coincident', 'sketch.horizontal', 'sketch.vertical'] },
+          { stack: ['sketch.parallel', 'sketch.perpendicular', 'sketch.tangent'] },
+          { stack: ['sketch.equal', 'sketch.midpoint', 'sketch.fix'] },
         ],
       },
       { label: 'Dimension', items: [{ cmd: 'sketch.dimension' }, { cmd: 'sketch.project' }] },

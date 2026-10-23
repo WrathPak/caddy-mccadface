@@ -1,0 +1,155 @@
+/** Revolve: sketch profiles around a sketch line, sketch axis, origin axis or edge. */
+import { ArrowsClockwise } from '@phosphor-icons/react'
+import { registerFeature } from '@/doc/registry'
+import { createFeature } from '@/doc/editor'
+import { resolveParams } from '@/doc/params'
+import { decodeRef, encodeSelection, resolveEdge } from '@/doc/refs'
+import { useDoc } from '@/doc/store'
+import type { PreviewCtx, PreviewHandle } from '@/doc/types'
+import { getKernel } from '@/kernel/client'
+import type { Body, Vec3 } from '@/kernel/types'
+import { useSketchData } from '@/sketch/draw'
+import { pos } from '@/sketch/model'
+import { dirToWorld, toWorld, yDirOf } from '@/sketch/plane'
+import type { SketchData } from '@/sketch/types'
+import { useUi } from '@/store/ui'
+import type { ParamSchema, ParamValues } from '@/ui/schema'
+import { clearPreview, setPreview, useProfilePick } from '@/viewport/preview'
+import { edgeSigs } from '@/doc/refs'
+import { combine, ctxEnv, liveEnv, profileRef, resolveInputs, type Env, type Inputs } from '../modeling'
+import { createRunner, watchSelection } from '../previewKit'
+
+export const revolveSchema: ParamSchema = {
+  id: 'revolve',
+  title: 'Revolve',
+  params: [
+    { type: 'selection-ref', key: 'profiles', label: 'Profiles', accepts: ['sketch'], multiple: true, default: [] },
+    {
+      type: 'enum', key: 'axis', label: 'Axis', display: 'select', default: 'line',
+      options: [
+        { value: 'line', label: 'Sketch construction line' }, { value: 'sketchX', label: 'Sketch X axis' }, { value: 'sketchY', label: 'Sketch Y axis' },
+        { value: 'worldX', label: 'World X' }, { value: 'worldY', label: 'World Y' }, { value: 'worldZ', label: 'World Z' }, { value: 'edge', label: 'Edge' },
+      ],
+    },
+    { type: 'selection-ref', key: 'edge', label: 'Axis edge', accepts: ['edge'], default: [], visibleWhen: (v) => v.axis === 'edge' },
+    { type: 'number', key: 'angle', label: 'Angle', unit: 'deg', step: 5, default: 360 },
+    {
+      type: 'enum', key: 'operation', label: 'Operation', display: 'select', default: 'new',
+      options: [
+        { value: 'join', label: 'Join' }, { value: 'cut', label: 'Cut' },
+        { value: 'intersect', label: 'Intersect' }, { value: 'new', label: 'New body' },
+      ],
+    },
+    { type: 'selection-ref', key: 'targets', label: 'Target bodies', accepts: ['body'], multiple: true, default: [], visibleWhen: (v) => v.operation !== 'new' },
+  ],
+}
+
+interface RevolveP { profiles: string[]; axis: string; edge: string[]; angle: number; operation: string; targets: string[] }
+const asP = (v: ParamValues) => v as unknown as RevolveP
+
+/** World-space axis for the chosen mode. */
+function axisFor(p: RevolveP, sk: NonNullable<Inputs['sketch']>, env: Env): { origin: Vec3; dir: Vec3 } {
+  const data: SketchData = sk.data
+  const plane = data.plane
+  switch (p.axis) {
+    case 'sketchX': return { origin: plane.origin, dir: plane.xDir }
+    case 'sketchY': return { origin: plane.origin, dir: yDirOf(plane) }
+    case 'worldX': return { origin: [0, 0, 0], dir: [1, 0, 0] }
+    case 'worldY': return { origin: [0, 0, 0], dir: [0, 1, 0] }
+    case 'worldZ': return { origin: [0, 0, 0], dir: [0, 0, 1] }
+    case 'edge': {
+      const ref = p.edge[0] ? decodeRef(p.edge[0]) : null
+      if (!ref || ref.kind !== 'edge') throw new Error('Select an edge for the axis')
+      const r = resolveEdge(ref, env.bodies)
+      if (!r) throw new Error('The axis edge no longer exists')
+      const sg = edgeSigs(r.body)[r.index]
+      return { origin: sg.midpoint, dir: sg.direction }
+    }
+    default: {
+      const model = { entities: data.entities, constraints: data.constraints, next: 0 }
+      const line = data.entities.find((e) => e.type === 'line' && e.construction)
+      if (!line || line.type !== 'line') throw new Error('This sketch has no construction line; draw one (X) or pick another axis')
+      const a = pos(model, line.p1), b = pos(model, line.p2)
+      return { origin: toWorld(plane, a), dir: dirToWorld(plane, [b[0] - a[0], b[1] - a[1]]) }
+    }
+  }
+}
+
+function args(p: RevolveP, inp: Inputs, env: Env, id: string, name: string) {
+  const ax = axisFor(p, inp.sketch!, env)
+  return { id, name, groups: inp.groups, axisOrigin: ax.origin, axisDir: ax.dir, angle: p.angle }
+}
+
+registerFeature({
+  type: 'revolve',
+  label: 'Revolve',
+  icon: ArrowsClockwise,
+  schema: revolveSchema,
+  async compute(ctx, raw) {
+    const p = asP(raw)
+    const env = ctxEnv(ctx)
+    const inp = resolveInputs(p.profiles, env)
+    if (!inp.groups.length || !inp.sketch) throw new Error(inp.missing ? 'The profile no longer exists' : 'Select a profile to revolve')
+    const tool = (await ctx.kernel.call('revolveTool', args(p, inp, env, ctx.newBodyId(), ctx.feature.name))) as Body
+    return combine(ctx, tool, p.operation, p.targets)
+  },
+  preview: (ctx) => revolvePreview(ctx),
+})
+
+function revolvePreview({ values, setValues }: PreviewCtx): PreviewHandle {
+  let cur = values
+  const runner = createRunner(async (stale) => {
+    let p: RevolveP
+    try { p = asP(resolveParams(revolveSchema, cur)) } catch { clearPreview(); return }
+    const env = liveEnv()
+    const inp = resolveInputs(p.profiles, env)
+    if (!inp.groups.length || !inp.sketch) { clearPreview(); return }
+    let a
+    try { a = args(p, inp, env, 'preview', 'preview') } catch { clearPreview(); return }
+    const tool = (await getKernel().call('revolveTool', a)) as Body
+    if (stale()) return
+    setPreview([{ mesh: tool.mesh, kind: p.operation === 'cut' ? 'cut' : 'add' }])
+  })
+  const sync = () => useProfilePick.setState({
+    active: true,
+    selected: (cur.profiles as string[]).filter((s) => s.startsWith('prof:')),
+    toggle: (ref) => {
+      const list = cur.profiles as string[]
+      cur = { ...cur, profiles: list.includes(ref) ? list.filter((r) => r !== ref) : [...list, ref] }
+      setValues(cur)
+    },
+  })
+  sync()
+  const off = watchSelection(['edge'], () => {
+    if (cur.axis !== 'edge') return
+    cur = { ...cur, edge: encodeSelection(useUi.getState().selection.filter((r) => r.kind === 'edge').slice(0, 1), useDoc.getState().geometry) }
+    setValues(cur)
+  })
+  runner.schedule()
+  return {
+    update(v) {
+      if (v.axis === 'edge' && cur.axis !== 'edge') useUi.getState().setSelectionFilter('edge')
+      cur = v
+      sync()
+      runner.schedule()
+    },
+    dispose() {
+      off()
+      runner.dispose()
+      clearPreview()
+      useProfilePick.setState({ active: false, selected: [], toggle: null })
+    },
+  }
+}
+
+export function startRevolve() {
+  const doc = useDoc.getState()
+  const data = useSketchData.getState().data
+  const visible = doc.features.filter((f, i) => f.type === 'sketch' && i < doc.rollback && !f.suppressed && data[f.id])
+  const chosen = useUi.getState().selection.filter((r) => r.kind === 'sketch').map((r) => r.id)
+  const pool = chosen.length ? visible.filter((f) => chosen.includes(f.id)) : visible
+  const all = pool.flatMap((f) => data[f.id].profiles.map((p) => profileRef(f.id, p.key)))
+  const has = (id: string) => pool.some((f) => f.id === id && data[f.id].entities.some((e) => e.type === 'line' && e.construction))
+  const sketchId = pool.length === 1 ? pool[0].id : ''
+  createFeature('revolve', { profiles: chosen.length || all.length === 1 ? all : [], axis: sketchId && has(sketchId) ? 'line' : 'sketchX' }, 'solid.revolve')
+}

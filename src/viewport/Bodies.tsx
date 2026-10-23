@@ -9,6 +9,7 @@ import { useDoc } from '@/doc/store'
 import { useMove } from '@/features/move'
 import { composeTransform, type Body } from '@/kernel/types'
 import { buildBvh } from './bvh'
+import { usePreview } from './preview'
 import { useVpColors } from './colors'
 
 function sameRef(a: SelectionRef | null, b: SelectionRef) {
@@ -41,7 +42,9 @@ export function Bodies() {
   const geometry = useDoc((s) => s.geometry)
   const colors = useVpColors()
   const displayMode = useUi((s) => s.displayMode)
-  const hidden = useUi((s) => s.hiddenIds)
+  const hiddenUi = useUi((s) => s.hiddenIds)
+  const previewHidden = usePreview((s) => s.hidden)
+  const hidden = useMemo(() => (previewHidden.length ? { ...hiddenUi, ...Object.fromEntries(previewHidden.map((i) => [i, true as const])) } : hiddenUi), [hiddenUi, previewHidden])
   const setStats = useUi((s) => s.setStats)
 
   useEffect(() => {
@@ -78,7 +81,8 @@ function BodyView({ body, mats, colors }: { body: Body; mats: Mats; colors: Retu
   const setSelection = useUi((s) => s.setSelection)
   const move = useMove()
 
-  const pickFaces = filter !== 'edge'
+  const sketching = useUi((s) => s.sketchMode)
+  const pickFaces = filter !== 'edge' && !sketching
   const showEdges = displayMode !== 'shaded' || filter === 'edge'
   const refFor = (e: ThreeEvent<PointerEvent | MouseEvent>): SelectionRef =>
     filter === 'body' ? { kind: 'body', id: body.id } : { kind: 'face', id: body.id, index: body.mesh.faceIds[e.faceIndex ?? 0] ?? 0 }
@@ -105,7 +109,7 @@ function BodyView({ body, mats, colors }: { body: Body; mats: Mats; colors: Retu
       />
       {wholeBody && <mesh geometry={geo} material={mats.hi} raycast={() => null} renderOrder={2} />}
       {overlayGeo && <mesh geometry={overlayGeo} material={mats.hi} raycast={() => null} renderOrder={2} />}
-      {showEdges && <EdgeLines body={body} color={colors.edge} accent={colors.accent} pickable={filter === 'edge'} />}
+      {showEdges && <EdgeLines body={body} color={colors.edge} accent={colors.accent} pickable={filter === 'edge' && !sketching} />}
     </group>
   )
 }

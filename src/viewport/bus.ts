@@ -6,6 +6,8 @@ export interface ViewportEvents {
   view: ViewDir
   /** snap to an arbitrary view direction (unit vector from target toward camera) */
   viewVec: [number, number, number]
+  /** request a render (frameloop is on demand) */
+  redraw: undefined
 }
 
 type Handler<K extends keyof ViewportEvents> = (payload: ViewportEvents[K]) => void

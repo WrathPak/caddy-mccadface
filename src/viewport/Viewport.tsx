@@ -8,6 +8,7 @@ import { ViewCube } from './ViewCube'
 import { MarkingMenu } from '@/ui/MarkingMenu'
 import { Tip } from '@/ui/Tooltip'
 import { runCommand } from '@/app/commands'
+import { SketchHud } from '@/sketch/SketchHud'
 
 const MODES: { id: DisplayMode; label: string; icon: typeof Cube }[] = [
   { id: 'shaded', label: 'Shaded', icon: Cube },
@@ -33,6 +34,7 @@ export function Viewport() {
         <Scene />
       </Canvas>
       <ViewCube />
+      <SketchHud />
       <div className="vp-toolbar">
         <div className="vp-bar">
           {MODES.map((m) => (

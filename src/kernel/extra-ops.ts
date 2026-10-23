@@ -7,4 +7,6 @@
  * and call it from a feature's compute() with `await ctx.kernel.call('extrude', args)`.
  * This module is imported once by worker.ts; import your op modules below.
  */
+import './model-ops'
+
 export {}

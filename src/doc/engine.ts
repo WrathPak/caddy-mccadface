@@ -6,7 +6,7 @@
 import { getKernel } from '@/kernel/client'
 import type { Body } from '@/kernel/types'
 import { getFeature } from './registry'
-import { resolveParams } from './params'
+import { getScope, resolveParams } from './params'
 import { setRegenHandler, useDoc } from './store'
 import type { FeatureCtx, FeatureResult, FeatureState } from './types'
 
@@ -84,7 +84,7 @@ async function pass() {
     let params
     try {
       params = resolveParams(def.schema, f.params)
-      h = hash(chain + '|' + f.type + '|' + JSON.stringify(params))
+      h = hash(chain + '|' + f.type + '|' + JSON.stringify(params) + (def.dependsOnParams ? '|' + JSON.stringify(Object.entries(getScope().values).map(([k, v]) => [k, String(v)])) : ''))
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       cache.set(f.id, { hash: 'err:' + msg, bodies: state, error: msg })

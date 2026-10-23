@@ -1,0 +1,75 @@
+/* Sketch overlay HTML (labels, glyphs, hints). Colors come from the app tokens. */
+.sk-hint, .sk-tip {
+  transform: translate(12px, 10px);
+  white-space: nowrap;
+  padding: 1px 5px;
+  font: 500 10px var(--font-ui);
+  color: var(--text);
+  background: var(--bg-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+.sk-tip { font-family: var(--font-mono); transform: translate(14px, -22px); }
+
+.sk-glyphs { display: flex; gap: 2px; transform: translate(8px, -20px); pointer-events: none; }
+.sk-glyph {
+  pointer-events: auto;
+  min-width: 14px; height: 14px; padding: 0 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 600 9px var(--font-mono);
+  color: var(--text-dim);
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  cursor: default;
+}
+.sk-glyph:hover { color: var(--text); border-color: var(--accent-line); }
+.sk-glyph[data-sel='true'] { color: var(--warn); border-color: var(--warn); }
+
+.sk-dim {
+  pointer-events: auto;
+  display: inline-block;
+  padding: 0 4px;
+  font: 500 11px var(--font-mono);
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+}
+.sk-dim:hover { border-color: var(--accent-line); }
+.sk-dim[data-sel='true'] { color: var(--warn); border-color: var(--warn); }
+.sk-dim[data-bad='true'] { color: var(--danger); border-color: var(--danger); }
+.sk-dim[data-preview='true'] { opacity: 0.8; border-style: dashed; pointer-events: none; }
+
+.sk-dim-input {
+  pointer-events: auto;
+  width: 96px; height: 20px;
+  padding: 0 5px;
+  font: 500 11px var(--font-mono);
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  outline: none;
+  user-select: text;
+}
+.sk-dim-input.err { border-color: var(--danger); }
+
+.sk-status {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+  z-index: 6; padding: 3px 10px;
+  font: 500 11px var(--font-ui); color: var(--text);
+  background: var(--bg-3); border: 1px solid var(--line-strong); border-radius: var(--radius);
+  box-shadow: var(--shadow-float);
+  pointer-events: none;
+}
+.sk-status[data-kind='warn'] { border-color: var(--warn); }
+.sk-bar {
+  position: absolute; right: 116px; top: 10px; z-index: 6;
+  display: flex; gap: 6px; align-items: center;
+}
+.sk-bar .info { font: 500 11px var(--font-ui); color: var(--text-dim); padding: 0 6px; }

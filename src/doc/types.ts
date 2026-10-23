@@ -69,4 +69,8 @@ export interface FeatureDef {
   compute(ctx: FeatureCtx, params: ParamValues): Promise<FeatureResult>
   /** optional live preview while the Inspector is open; may return a handle */
   preview?(ctx: PreviewCtx): PreviewHandle | void
+  /** custom editor (e.g. the sketcher) used instead of the Inspector when a timeline chip is double-clicked */
+  edit?(featureId: string, params: ParamValues): void
+  /** true when compute() reads user parameters itself (so a parameter change must re-run it) */
+  dependsOnParams?: boolean
 }

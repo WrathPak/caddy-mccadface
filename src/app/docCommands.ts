@@ -6,6 +6,12 @@ import { FloppyDiskBack, Function as FunctionIcon } from '@phosphor-icons/react'
 import { getCommand, registerCommand, runCommand, type Command } from './commands'
 import '@/doc/engine'
 import '@/features/basic'
+import '@/features/sketch'
+import { installSketchCommands } from '@/sketch/commands'
+import { useSketch } from '@/sketch/store'
+import { startRevolve } from '@/features/revolve'
+import { startExtrude } from '@/features/extrude'
+import { startEdgeMod } from '@/features/fillet'
 import { startMove } from '@/features/move'
 import { createFeature } from '@/doc/editor'
 import { useDoc } from '@/doc/store'
@@ -27,8 +33,14 @@ override('file.export', () => exportDialog())
 override('mesh.import', () => void importDialog())
 override('edit.undo', () => useDoc.getState().undo())
 override('edit.redo', () => useDoc.getState().redo())
-override('solid.box', () => createFeature('box', {}, 'solid.box'))
-override('solid.move', startMove)
+/** Solid tools are unavailable while a sketch is open (finish it first). */
+const solid = (fn: () => void) => () => { if (!useSketch.getState().active) fn() }
+override('solid.box', solid(() => createFeature('box', {}, 'solid.box')))
+override('solid.move', solid(startMove))
+override('solid.extrude', solid(startExtrude))
+override('solid.revolve', solid(startRevolve))
+override('solid.fillet', solid(() => startEdgeMod('fillet')))
+override('solid.chamfer', solid(() => startEdgeMod('chamfer')))
 override('edit.delete', () => {
   const ui = useUi.getState()
   const ids = [...new Set(ui.selection.map((r) => r.id))].filter((id) => useDoc.getState().geometry.some((b) => b.id === id))
@@ -44,3 +56,6 @@ override('edit.delete', () => {
 registerCommand({ id: 'file.saveAs', label: 'Save As...', icon: FloppyDiskBack, shortcut: 'Ctrl+Shift+S', category: 'File', run: () => void saveDocument(true) })
 registerCommand({ id: 'edit.redo2', label: 'Redo', icon: getCommand('edit.redo')!.icon, shortcut: 'Ctrl+Shift+Z', category: 'Edit', run: () => runCommand('edit.redo') })
 registerCommand({ id: 'doc.parameters', label: 'Parameters', icon: FunctionIcon, category: 'Document', run: () => useParamsDialog.getState().set(true) })
+
+// sketcher commands wrap undo / redo / delete / escape, so install them last
+installSketchCommands()
