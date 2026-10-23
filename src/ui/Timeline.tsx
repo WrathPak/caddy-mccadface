@@ -2,6 +2,8 @@ import { useRef } from 'react'
 import type { Icon } from '@phosphor-icons/react'
 import { ArrowArcRight, ArrowFatLineUp, ArrowsClockwise, ArrowsOutCardinal, Circle, GridFour, PencilSimpleLine, Polygon, Question, Spiral } from '@phosphor-icons/react'
 import { useDoc } from '@/doc/store'
+import { getFeature } from '@/doc/registry'
+import { editFeature } from '@/doc/editor'
 import { useUi } from '@/store/ui'
 import { Tip } from './Tooltip'
 
@@ -16,7 +18,7 @@ const ICONS: Record<string, Icon> = {
   hair: Spiral,
   arc: ArrowArcRight,
 }
-export const featureIcon = (type: string): Icon => ICONS[type] ?? Question
+export const featureIcon = (type: string): Icon => getFeature(type)?.icon ?? ICONS[type] ?? Question
 
 export interface TimelineProps {
   /** double-click on a chip; real document engine opens the feature's Inspector here */
@@ -32,7 +34,7 @@ export function Timeline({ onEditFeature }: TimelineProps) {
   const edit = (id: string) => {
     selectFeature(id)
     if (onEditFeature) onEditFeature(id)
-    else console.info('[timeline] edit', id)
+    else editFeature(id)
     setActiveTool(null)
   }
 

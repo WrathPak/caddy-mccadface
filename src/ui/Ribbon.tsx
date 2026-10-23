@@ -54,6 +54,32 @@ function Large({ item }: { item: RibbonItem }) {
   )
 }
 
+const FILE_ITEMS = ['file.new', 'file.open', 'file.save', 'file.saveAs', '-', 'file.import', 'file.export']
+
+function FileMenu() {
+  return (
+    <D.Root>
+      <D.Trigger asChild>
+        <button type="button" className="ribbon-tab" style={{ marginRight: 4, color: 'var(--accent)' }}>File</button>
+      </D.Trigger>
+      <D.Portal>
+        <D.Content className="menu" sideOffset={2} align="start">
+          {FILE_ITEMS.map((id, i) => {
+            if (id === '-') return <D.Separator key={i} className="menu-sep" />
+            const c = getCommand(id)
+            return c ? (
+              <D.Item key={id} className="menu-item" onSelect={() => runCommand(id)}>
+                <c.icon size={14} /> {c.label}
+                {c.shortcut && <span className="kbd">{c.shortcut}</span>}
+              </D.Item>
+            ) : null
+          })}
+        </D.Content>
+      </D.Portal>
+    </D.Root>
+  )
+}
+
 export function Ribbon() {
   const workspace = useUi((s) => s.workspace)
   const sketchMode = useUi((s) => s.sketchMode)
@@ -66,6 +92,7 @@ export function Ribbon() {
   return (
     <div className="ribbon">
       <div className="ribbon-tabs" role="tablist">
+        <FileMenu />
         {RIBBON_TABS.filter((t) => !t.contextual || sketchMode).map((t) => (
           <button
             key={t.id}

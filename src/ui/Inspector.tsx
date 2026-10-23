@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useUi } from '@/store/ui'
+import { useDoc } from '@/doc/store'
+import { evalNumber } from '@/doc/params'
+import { encodeSelection } from '@/doc/refs'
 import { NumberField } from './NumberField'
 import { Select } from './Select'
 import { Checkbox } from './Toggle'
@@ -24,8 +27,8 @@ function Param({ def, values, set }: { def: ParamDef; values: ParamValues; set: 
   switch (def.type) {
     case 'number':
       return (
-        <NumberField label={def.label} value={v as number} unit={def.unit} min={def.min} max={def.max} step={def.step}
-          onChange={(n) => set(def.key, n)} />
+        <NumberField label={def.label} value={typeof v === 'string' ? (evalNumber(v, def.unit) ?? 0) : (v as number)} expr={typeof v === 'string' ? v : undefined} unit={def.unit} min={def.min} max={def.max} step={def.step}
+          onChange={(n, ex) => set(def.key, ex ?? n)} />
       )
     case 'enum':
       return def.display === 'segmented' ? (
@@ -62,10 +65,10 @@ function SelectionRef({ label, accepts, value, onChange }: { label: string; acce
       <span className="field-label">{label}</span>
       <div className="inp" style={{ gap: 6, borderColor: value.length ? undefined : 'var(--accent-line)' }}>
         <span style={{ flex: 1, color: value.length ? 'var(--text)' : 'var(--text-faint)' }}>
-          {value.length ? `${value.length} selected` : `Select ${accepts.join(' / ')}`}
+          {value.length ? `${value.length} selected` : `Select ${accepts.join(" / ")}`}
         </span>
         <button type="button" className="btn" style={{ height: 16, padding: '0 5px', fontSize: 10 }}
-          onClick={() => onChange(sel.map((r) => r.id + (r.index !== undefined ? ':' + r.index : '')))}>
+          onClick={() => onChange(encodeSelection(sel, useDoc.getState().geometry))}>
           Use sel.
         </button>
         {value.length > 0 && (

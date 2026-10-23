@@ -32,6 +32,7 @@ export const RIBBON_TABS: RibbonTab[] = [
       },
       { label: 'Construct', items: [{ cmd: 'construct.plane' }, { cmd: 'construct.axis' }] },
       { label: 'Inspect', items: [{ cmd: 'inspect.measure' }, { cmd: 'inspect.section' }] },
+      { label: 'Document', items: [{ cmd: 'doc.parameters' }] },
     ],
   },
   { id: 'surface', label: 'Surface', disabled: true, groups: [] },

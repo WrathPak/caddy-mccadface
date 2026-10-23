@@ -5,6 +5,8 @@ import { CommandPalette } from '@/ui/CommandPalette'
 import { TooltipProvider } from '@/ui/Tooltip'
 import { Layout } from './Layout'
 import { installShortcuts } from './shortcuts'
+import { DocUi } from '@/ui/DocUi'
+import { Toast } from '@/ui/Modal'
 
 export function App() {
   useEffect(() => installShortcuts(), [])
@@ -17,6 +19,8 @@ export function App() {
         </div>
         <StatusBar />
         <CommandPalette />
+        <DocUi />
+        <Toast />
       </div>
     </TooltipProvider>
   )

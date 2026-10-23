@@ -4,13 +4,11 @@ import { BrowserTree } from '@/ui/BrowserTree'
 import { Inspector } from '@/ui/Inspector'
 import { Timeline } from '@/ui/Timeline'
 import { Viewport } from '@/viewport/Viewport'
-import { runCommand } from './commands'
 
 const components = {
   browser: (_: IDockviewPanelProps) => <BrowserTree />,
   inspector: (_: IDockviewPanelProps) => <Inspector />,
-  // double-click edit is a demo until the document engine supplies real feature dialogs
-  timeline: (_: IDockviewPanelProps) => <Timeline onEditFeature={() => runCommand('solid.extrude')} />,
+  timeline: (_: IDockviewPanelProps) => <Timeline />,
   viewport: (_: IDockviewPanelProps) => <Viewport />,
 }
 

@@ -1,0 +1,72 @@
+import type { Icon } from '@phosphor-icons/react'
+import type { ParamSchema, ParamValues } from '@/ui/schema'
+import type { Body } from '@/kernel/types'
+import type { KernelClient } from '@/kernel/client'
+
+export type FeatureState = 'ok' | 'error' | 'suppressed'
+
+/** A feature instance in the timeline. `params` may hold expression strings for number params. */
+export interface Feature {
+  id: string
+  type: string
+  name: string
+  state: FeatureState
+  error?: string
+  suppressed: boolean
+  params: ParamValues
+}
+
+export interface UserParam { name: string; expr: string }
+
+/** Everything undo/redo and save/load care about. */
+export interface DocData {
+  name: string
+  features: Feature[]
+  rollback: number
+  userParams: UserParam[]
+  bodyNames: Record<string, string>
+}
+
+export interface FeatureCtx {
+  feature: { id: string; type: string; name: string }
+  /** bodies alive before this feature (output of the previous feature) */
+  bodies: Body[]
+  body(id: string): Body | undefined
+  /** worker API (heavy geometry work happens there) */
+  kernel: KernelClient
+  /** bytes stored in the document (import sources) */
+  blob(id: string): Uint8Array | undefined
+  /** `${featureId}` for n = 0/undefined, else `${featureId}.${n}` */
+  newBodyId(n?: number): string
+  /** the `data` a previous feature returned (e.g. a sketch's profiles) */
+  dataOf(featureId: string): unknown
+  /** raw feature record by id (earlier features only is the caller's responsibility) */
+  featureById(id: string): Feature | undefined
+}
+
+export interface FeatureResult {
+  /** bodies to add, or replace when the id already exists */
+  bodies?: Body[]
+  /** ids of bodies to remove */
+  remove?: string[]
+  /** arbitrary data for later features (read with ctx.dataOf) */
+  data?: unknown
+}
+
+export interface PreviewCtx {
+  values: ParamValues
+  /** push new values into the open Inspector (e.g. from an on-canvas manipulator) */
+  setValues(v: ParamValues): void
+}
+export interface PreviewHandle { update(values: ParamValues): void; dispose(): void }
+
+export interface FeatureDef {
+  type: string
+  label: string
+  icon: Icon
+  schema: ParamSchema
+  /** `params` arrive with number expressions resolved and defaults filled */
+  compute(ctx: FeatureCtx, params: ParamValues): Promise<FeatureResult>
+  /** optional live preview while the Inspector is open; may return a handle */
+  preview?(ctx: PreviewCtx): PreviewHandle | void
+}

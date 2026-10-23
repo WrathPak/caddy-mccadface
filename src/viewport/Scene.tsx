@@ -4,6 +4,7 @@ import { BlendFunction } from 'postprocessing'
 import { DoubleSide } from 'three'
 import { useUi } from '@/store/ui'
 import { Bodies } from './Bodies'
+import { CaptureRegistrar, MoveGizmo } from './MoveGizmo'
 import { InfiniteGrid } from './InfiniteGrid'
 import { NavControls, FOV } from './NavControls'
 import { ViewCubeSync } from './ViewCube'
@@ -56,6 +57,8 @@ export function Scene() {
       {showGrid && <InfiniteGrid />}
       {showOrigin && <Origin />}
       <Bodies />
+      <MoveGizmo />
+      <CaptureRegistrar />
       {ssao && (
         <EffectComposer enableNormalPass multisampling={0}>
           <SSAO blendFunction={BlendFunction.MULTIPLY} samples={16} rings={4} radius={0.06} intensity={18} luminanceInfluence={0.5} bias={0.02} />
