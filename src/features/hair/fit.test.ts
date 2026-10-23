@@ -7,6 +7,7 @@ import { initManifold } from '../../kernel/mesh'
 import { hairSchema, type HairParams, type V3 } from './schema'
 import { effWidth } from './sampling'
 import { makeCaster } from './wall'
+import { tipOverlapOf } from './strands'
 
 type Mesh = { positions: Float32Array; indices: Uint32Array }
 
@@ -291,6 +292,19 @@ describe('face-following wall', () => {
       for (const t of th) expect(Math.abs(t - p.wallThickness) / p.wallThickness).toBeLessThan(0.05)
     })
   }
+
+  it('blend 3 mm: thickness is uniform within 5 % including the corner arc, and every tip sits in the wall within the overlap', () => {
+    const { g, p } = wallOf({ dirMode: 'blend', blendDistance: 3, jitter: 0 })
+    const th = thicknesses(g)
+    const worst = Math.max(...th.map((t) => Math.abs(t - p.wallThickness) / p.wallThickness))
+    expect(worst, 'worst relative thickness error').toBeLessThan(0.05)
+    const caster = makeCaster(g.wall!.mesh)
+    const ov = tipOverlapOf(p, p.wallThickness)
+    for (const st of g.strands) {
+      expect(st.contact).not.toBeNull()
+      expect(caster.closest(st.tip).dist).toBeLessThanOrEqual(ov + 1e-3)
+    }
+  })
 
   it('Perpendicular + sharp corners: two flat slabs joined at the corner, flat top and bottom', () => {
     const { g, p } = wallOf({ dirMode: 'perFace', wallCorner: 'miter' })

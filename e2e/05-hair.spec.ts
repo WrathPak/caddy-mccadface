@@ -144,7 +144,8 @@ for (const mode of ['perFace', 'blend'] as const) {
     expect(wall.hi[2] - wall.lo[2]).toBeGreaterThan(20)
     await app.ev((c) => c.hair.setState({ showGlyphs: false }))
     for (const [view, label] of [['top', 'top'], ['home', '34']] as const) {
-      await app.ev((c, v) => { c.runCommand('view.' + v); c.runCommand('view.frame') }, view)
+      // the plan view is orthographic: in perspective a 28 mm tall wall shows its inner face and looks several times too thick
+      await app.ev((c, v) => { if ((v === 'top') !== (c.ui.getState().projection === 'orthographic')) c.runCommand('view.ortho'); c.runCommand('view.' + v); c.runCommand('view.frame') }, view)
       await app.cameraStable()
       await app.shot(`hair-corner-${mode}-${label}`)
     }

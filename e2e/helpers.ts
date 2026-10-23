@@ -76,6 +76,7 @@ export class App {
 
   /** Wait until the camera stops moving (view transitions animate). */
   async cameraStable() {
+    await this.page.waitForFunction(() => !!(window as any).__caddy?.three) // eslint-disable-line
     // software WebGL can take over a hundred milliseconds per frame, so one unchanged reading proves nothing: require several
     const read = () => this.page.evaluate(() => JSON.stringify((window as any).__caddy.three.camera.matrixWorld.elements)) // eslint-disable-line
     let prev = await read()
