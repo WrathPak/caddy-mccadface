@@ -10,7 +10,7 @@ function Btn({ id, small }: { id: string; small?: boolean }) {
   const active = useUi((s) => s.activeTool === id)
   if (!c) return null
   return (
-    <Tip label={c.label} shortcut={c.shortcut}>
+    <Tip label={c.tip ?? c.label} shortcut={c.shortcut}>
       <button type="button" className={'rbtn' + (small ? ' small' : '')} data-active={active} onClick={() => runCommand(id)}>
         <c.icon size={small ? 14 : 24} weight="light" />
         <span className="lbl">{c.label.split(' / ')[0].replace('Create ', '')}</span>
@@ -24,19 +24,24 @@ function Large({ item }: { item: RibbonItem }) {
   const active = useUi((s) => s.activeTool === item.cmd)
   if (!c) return null
   if (!item.menu) return <Btn id={item.cmd!} />
+  const lbl = c.label.replace('Create ', '').split(' / ')[0]
   return (
     <D.Root>
-      <Tip label={c.label} shortcut={c.shortcut}>
-        <button type="button" className="rbtn" data-active={active} onClick={() => runCommand(item.cmd!)}>
-          <c.icon size={24} weight="light" />
+      <div className="rsplit" data-active={active}>
+        <Tip label={c.tip ?? c.label} shortcut={c.shortcut}>
+          <button type="button" className="rbtn main" data-active={active} onClick={() => runCommand(item.cmd!)}>
+            <c.icon size={24} weight="light" />
+            <span className="lbl">{lbl}</span>
+          </button>
+        </Tip>
+        <Tip label={`${lbl} options`}>
           <D.Trigger asChild>
-            <span className="lbl" onClick={(e) => e.stopPropagation()} style={{ cursor: 'default' }}>
-              {c.label.replace('Create ', '').split(' / ')[0]}
-              <CaretDown size={8} weight="bold" className="rcaret" />
-            </span>
+            <button type="button" className="rbtn caret" aria-label={`${lbl} options`}>
+              <CaretDown size={9} weight="bold" className="rcaret" />
+            </button>
           </D.Trigger>
-        </button>
-      </Tip>
+        </Tip>
+      </div>
       <D.Portal>
         <D.Content className="menu" sideOffset={2} align="start">
           {item.menu.map((m) => {

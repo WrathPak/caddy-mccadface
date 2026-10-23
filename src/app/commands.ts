@@ -19,11 +19,15 @@ import { viewportBus } from '@/viewport/bus'
 export interface Command {
   id: string
   label: string
+  /** longer tooltip text (e.g. the supported formats); falls back to the label */
+  tip?: string
   icon: Icon
   /** e.g. 'E', 'Ctrl+Z', 'Shift+F', 'F6', 'Delete' */
   shortcut?: string
   /** palette grouping */
   category: string
+  /** keep out of the palette (alternate shortcut bindings) */
+  hidden?: boolean
   /** true for placeholder implementations that a later agent replaces */
   stub?: boolean
   run: () => void
@@ -53,8 +57,8 @@ const stubRun = (id: string) => () => {
   console.info(`[stub] command ${id}`)
 }
 
-function def(id: string, label: string, icon: Icon, category: string, shortcut?: string, run?: () => void) {
-  registerCommand({ id, label, icon, category, shortcut, stub: !run, run: run ?? stubRun(id) })
+function def(id: string, label: string, icon: Icon, category: string, shortcut?: string, run?: () => void, tip?: string) {
+  registerCommand({ id, label, tip, icon, category, shortcut, stub: !run, run: run ?? stubRun(id) })
 }
 
 /** Opens the schema-driven Inspector with the demo Extrude schema. */
@@ -80,8 +84,8 @@ function openExtrudeDemo() {
 def('file.new', 'New Document', FilePlus, 'File', 'Ctrl+N')
 def('file.open', 'Open...', FolderOpen, 'File', 'Ctrl+O')
 def('file.save', 'Save', FloppyDisk, 'File', 'Ctrl+S')
-def('file.import', 'Import (STL / 3MF / STEP)', UploadSimple, 'File', undefined)
-def('file.export', 'Export (STL / 3MF / STEP)', DownloadSimple, 'File', undefined)
+def('file.import', 'Import', UploadSimple, 'File', undefined, undefined, 'Import a model: STL, 3MF, STEP or a .caddy project')
+def('file.export', 'Export', DownloadSimple, 'File', undefined, undefined, 'Export bodies as STL, 3MF or STEP')
 def('edit.undo', 'Undo', ArrowUUpLeft, 'Edit', 'Ctrl+Z')
 def('edit.redo', 'Redo', ArrowUUpRight, 'Edit', 'Ctrl+Y')
 def('edit.delete', 'Delete', Trash, 'Edit', 'Delete')

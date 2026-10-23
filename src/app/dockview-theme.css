@@ -42,3 +42,5 @@
 }
 .dockview-theme-caddy .dv-tabs-and-actions-container { border-bottom: 1px solid var(--line); }
 .dockview-theme-caddy .dv-watermark { display: none; }
+/* panels are fixed furniture: no close buttons on the tabs */
+.dockview-theme-caddy .dv-tab .dv-default-tab .dv-default-tab-action { display: none; }

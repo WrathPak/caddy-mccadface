@@ -59,7 +59,7 @@ override('edit.delete', () => {
 })
 
 registerCommand({ id: 'file.saveAs', label: 'Save As...', icon: FloppyDiskBack, shortcut: 'Ctrl+Shift+S', category: 'File', run: () => void saveDocument(true) })
-registerCommand({ id: 'edit.redo2', label: 'Redo', icon: getCommand('edit.redo')!.icon, shortcut: 'Ctrl+Shift+Z', category: 'Edit', run: () => runCommand('edit.redo') })
+registerCommand({ id: 'edit.redo2', label: 'Redo', icon: getCommand('edit.redo')!.icon, shortcut: 'Ctrl+Shift+Z', category: 'Edit', hidden: true, run: () => runCommand('edit.redo') })
 registerCommand({ id: 'doc.parameters', label: 'Parameters', icon: FunctionIcon, category: 'Document', run: () => useParamsDialog.getState().set(true) })
 
 // sketcher commands wrap undo / redo / delete / escape, so install them last

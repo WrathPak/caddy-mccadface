@@ -9,7 +9,7 @@ export function CommandPalette() {
   const setOpen = useUi((s) => s.setPaletteOpen)
   const groups = useMemo(() => {
     const m = new Map<string, Cmd[]>()
-    for (const c of allCommands()) m.set(c.category, [...(m.get(c.category) ?? []), c])
+    for (const c of allCommands()) if (!c.hidden) m.set(c.category, [...(m.get(c.category) ?? []), c])
     return [...m.entries()]
   }, [open])
   if (!open) return null
