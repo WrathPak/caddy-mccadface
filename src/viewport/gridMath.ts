@@ -22,19 +22,36 @@ export function gridSnapStep(worldPerPixel: number): number {
   return blend <= 0.18 ? step : step * 10
 }
 
-/** GLSL: `float gridStrength(vec2 p, float step, float blend)` -> 0..1, and `gridColor(strength, minor, major)`. Needs derivatives. */
+/**
+ * Where the grid fades out: fully visible up to `start`, gone at `end` (distance from the camera, or depth for an orthographic
+ * camera). Tied to the camera far plane, which already follows the scene size and the camera distance, so the grid is always
+ * invisible before the far plane could clip it into a hard edge.
+ */
+export function gridFadeRange(far: number, ortho: boolean): { start: number; end: number } {
+  return ortho ? { start: far * 0.5, end: far * 0.95 } : { start: far * 0.1, end: far * 0.9 }
+}
+
+/**
+ * GLSL: `float gridStrength(vec2 p, float step, float blend, float fade)` -> 0..1, and `gridColor(strength, minor, major)`.
+ * Needs derivatives. `fade` (0..1) is the distance fade: the finest layer follows it cubed, the next one squared and the
+ * coarsest linearly, so the minor lines are gone before the major ones. Each layer also fades out by itself once its cells
+ * shrink below a few pixels (per line direction, so a grazing view loses the foreshortened lines instead of smearing them
+ * into moire).
+ */
 export const GRID_GLSL = /* glsl */ `
 float gridLine(vec2 p, float size) {
   vec2 q = p / size;
   vec2 w = fwidth(q);
   vec2 g = abs(fract(q - 0.5) - 0.5) / max(w, vec2(1e-6));
-  return 1.0 - min(min(g.x, g.y), 1.0);
+  vec2 l = 1.0 - min(g, vec2(1.0));
+  vec2 vis = 1.0 - smoothstep(vec2(0.18), vec2(0.45), w);
+  return max(l.x * vis.x, l.y * vis.y);
 }
-float gridStrength(vec2 p, float step, float blend) {
-  float k0 = 0.55 * (1.0 - smoothstep(0.1, 0.45, blend));
-  float k1 = mix(1.0, 0.55, smoothstep(0.0, 0.5, blend));
+float gridStrength(vec2 p, float step, float blend, float fade) {
+  float k0 = 0.55 * (1.0 - smoothstep(0.1, 0.45, blend)) * fade * fade * fade;
+  float k1 = mix(1.0, 0.55, smoothstep(0.0, 0.5, blend)) * fade * fade;
   // the ladder: fine (fading out) < minor 0.55 < major 1.0; every layer coarser than the major stays at the major strength
-  return max(max(gridLine(p, step) * k0, gridLine(p, step * 10.0) * k1), gridLine(p, step * 100.0));
+  return max(max(gridLine(p, step) * k0, gridLine(p, step * 10.0) * k1), gridLine(p, step * 100.0) * fade);
 }
 vec3 gridColor(float k, vec3 minor, vec3 major) {
   return mix(minor, major, clamp((k - 0.3) / 0.7, 0.0, 1.0));
