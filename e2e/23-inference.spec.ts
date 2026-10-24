@@ -150,3 +150,44 @@ test('inference: tangent leaving an arc end and tangent to a circle; settings an
   await page.keyboard.up('Control')
   await page.keyboard.press('Escape')
 })
+
+test('inference: perpendicular to a circle is radial, and a new circle snaps concentric', async ({ app, page }) => {
+  await app.open()
+  await startSketch(app)
+  await app.ribbon('Circle').first().click()
+  await click(app, 60, 0)
+  await click(app, 80, 0)
+  await page.keyboard.press('Escape')
+  await app.ribbon('Line').first().click()
+  await click(app, 0, 10)
+  await hover(app, 60, 19) // wake the circle
+  await hover(app, 30, 5.4)
+  await expect(page.locator('.sk-hint')).toContainText('Perpendicular')
+  await app.shot('inference-radial')
+  const p = await app.project(30, 5.4, 0)
+  await page.mouse.click(p.x, p.y)
+  await page.keyboard.press('Escape')
+  let m = await model(app)
+  const circle = m.entities.find((e: any) => e.type === 'circle') as any // eslint-disable-line
+  const line = m.entities.find((e: any) => e.type === 'line') as any // eslint-disable-line
+  expect(m.constraints.some((k: any) => k.type === 'pointOnLine' && k.refs.includes(circle.c) && k.refs.includes(line.id))).toBe(true) // eslint-disable-line
+  const pts = Object.fromEntries(m.entities.filter((e: any) => e.type === 'point').map((q: any) => [q.id, q])) // eslint-disable-line
+  const a = pts[line.p1], b = pts[line.p2], c = pts[circle.c]
+  expect(Math.abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) / Math.hypot(b.x - a.x, b.y - a.y)).toBeLessThan(1e-6)
+
+  // a circle started on the centre of the first one is concentric with it
+  await app.ribbon('Circle').first().click()
+  await hover(app, 60.4, 0.3)
+  await expect(page.locator('.sk-hint')).toContainText('Concentric')
+  await app.shot('inference-concentric')
+  const q = await app.project(60.4, 0.3, 0)
+  await page.mouse.click(q.x, q.y)
+  await click(app, 60, 35)
+  await page.keyboard.press('Escape')
+  m = await model(app)
+  const circles = m.entities.filter((e: any) => e.type === 'circle') as any[] // eslint-disable-line
+  expect(circles.length).toBe(2)
+  const pp = Object.fromEntries(m.entities.filter((e: any) => e.type === 'point').map((r: any) => [r.id, r])) // eslint-disable-line
+  const c1 = pp[circles[0].c], c2 = pp[circles[1].c]
+  expect(Math.hypot(c1.x - c2.x, c1.y - c2.y)).toBeLessThan(1e-6)
+})

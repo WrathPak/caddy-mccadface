@@ -1,13 +1,13 @@
 /** Splines and ellipses reach the kernel as exact curves (not as polylines or approximations). */
 import { beforeAll, describe, expect, it } from 'vitest'
 import { measureVolume, type AnyShape } from 'replicad'
-import { initOcc } from './occ'
+import { initOcc, topoOf } from './occ'
 import { getBrep, getOp, helpers } from './store'
 import type { Body } from './types'
 import './model-ops'
 import './solid-ops'
-import type { ExtrudeArgs } from './model-ops'
-import type { SweepArgs } from './solid-ops'
+import type { ExtrudeArgs, RevolveArgs } from './model-ops'
+import type { LoftArgs, SweepArgs } from './solid-ops'
 import { derivedSegs } from '../sketch/curves'
 import { addEllipse, addPoint } from '../sketch/model'
 import { emptyModel, type Loop, type PlaneDef } from '../sketch/types'
@@ -54,5 +54,34 @@ describe('parameters', () => {
     const s = setUserParams([{ name: 'a', expr: 'b + 1' }, { name: 'b', expr: '2' }])
     expect(s.errors.a).toMatch(/listed after/)
     setUserParams([])
+  })
+})
+
+describe('exact curves in revolve and loft', () => {
+  it('a revolved ellipse has the analytic volume (Pappus)', async () => {
+    const m = emptyModel()
+    const e = addEllipse(m, addPoint(m, 20, 0), addPoint(m, 25, 0), 3)
+    const outer = derivedSegs(m, e)[0] as Loop
+    const a: RevolveArgs = { id: 'r', name: 'r', groups: [{ plane: XY, profiles: [{ outer, holes: [] }] }], axisOrigin: [0, 0, 0], axisDir: [0, 1, 0], angle: 360 }
+    const v = vol(await run('revolveTool', a))
+    expect(Math.abs(v / (2 * Math.PI * 20 * Math.PI * 5 * 3) - 1)).toBeLessThan(1e-6)
+  })
+
+  it('a loft from a spline profile to a circle is a valid solid with spline faces', async () => {
+    const lens: Loop = [
+      { k: 'b', a: [-10, 0], c1: [-5, 8], c2: [5, 8], b: [10, 0] },
+      { k: 'b', a: [10, 0], c1: [5, -8], c2: [-5, -8], b: [-10, 0] },
+    ]
+    const a: LoftArgs = {
+      id: 'l', name: 'l', ruled: false,
+      sections: [
+        { plane: XY, profile: { outer: lens, holes: [] } },
+        { plane: { ...XY, origin: [0, 0, 15] }, profile: { outer: [{ k: 'c', c: [0, 0], r: 6 }], holes: [] } },
+      ],
+    }
+    const b = await run('loftTool', a)
+    expect(vol(b)).toBeGreaterThan(0)
+    const kinds = topoOf(getBrep(b.key) as unknown as AnyShape).faces.map((f) => String(f.geomType))
+    expect(kinds.some((k) => /BSPLINE|BEZIER/i.test(k))).toBe(true)
   })
 })
