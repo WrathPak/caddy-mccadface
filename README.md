@@ -15,6 +15,7 @@ i got tired of fighting fusion 360 for 3d printing stuff (especially hair on fig
 - extrude, revolve, sweep, loft, fillet, chamfer, shell, combine
 - import/export stl, 3mf, step
 - mesh tools (plane cut, reduce, smooth, repair)
+- assemblies: components with instances, linked files, joints (rigid, revolute, slider and more) snapped to faces and edges, drag and drive motion, interference check, exploded views, step and 3mf export of the structure
 - hair tool: paint faces, pick a direction, get printable strands with a sacrificial wall
 - saves `.caddy` project files straight to your disk
 

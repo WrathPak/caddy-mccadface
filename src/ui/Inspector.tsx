@@ -171,8 +171,12 @@ function InspectorForm({ session }: { session: InspectorSession }) {
   // the active field is the first empty pick field (or the first one)
   useEffect(() => {
     const ps = picks()
-    // (a remount, as StrictMode does in dev, runs the cleanup below first: activate again so the pick kinds are set)
-    if (ps.length) activate(activeRef.current ?? (ps.find((p) => !(latest.current[p.key] as string[])?.length) ?? ps[0]).key)
+    if (ps.length && !activeRef.current) activate((ps.find((p) => !(latest.current[p.key] as string[])?.length) ?? ps[0]).key)
+    else if (activeRef.current) {
+      // a remount (StrictMode does that in dev) ran the cleanup below first: only the pick kinds need setting again
+      const d = ps.find((p) => p.key === activeRef.current)
+      useUi.setState({ pickSketches: !!d?.accepts.includes('sketch'), pickKinds: (d?.accepts ?? []) as never })
+    }
     const restore = prevFilter.current
     return () => {
       useUi.setState({ pickSketches: false, pickKinds: [] })

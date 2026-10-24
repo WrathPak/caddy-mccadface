@@ -172,8 +172,10 @@ test('status bar menus, selection filters and the Browser tree', async ({ app, p
 })
 
 test('every registered command runs without throwing (empty doc, then with a body)', async ({ app, page }) => {
+  test.setTimeout(240_000) // a hundred commands, each a round trip: slow on a throttled CPU
   await app.open()
-  const skip = new Set(['file.new', 'file.open', 'file.save', 'file.saveAs', 'file.import', 'file.export', 'mesh.import', 'app.palette', 'view.resetLayout'])
+  // (the insert commands open a file picker)
+  const skip = new Set(['file.new', 'file.open', 'file.save', 'file.saveAs', 'file.import', 'file.export', 'mesh.import', 'app.palette', 'view.resetLayout', 'assembly.insertLinked', 'assembly.insertEmbedded'])
   const all: string[] = await page.evaluate(async () => {
     const mod = await import('/src/app/commands.ts')
     return mod.allCommands().map((c: { id: string }) => c.id)

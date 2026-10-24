@@ -1,8 +1,7 @@
 /** The Assembly panel over the viewport: drive joints, motion study, explode steps, interference and clearance. */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ArrowCounterClockwise, Pause, Play, PencilSimple, Plus, Stop, Trash, X } from '@phosphor-icons/react'
 import { useDoc } from '@/doc/store'
-import { useUi } from '@/store/ui'
 import { NumberField } from '@/ui/NumberField'
 import { Select } from '@/ui/Select'
 import { Slider } from '@/ui/Slider'
@@ -22,7 +21,6 @@ import { usePlacement } from './place'
 import { useAssemblyRuntime, type AssemblyPanel } from './runtime'
 import { selectedInstances } from './selection'
 import type { ExplodeStep, Joint } from './types'
-import { useEffect } from 'react'
 import './assembly.css'
 
 const TABS: { id: AssemblyPanel; label: string }[] = [
@@ -318,4 +316,3 @@ function CheckTab() {
   )
 }
 
-export { useUi }

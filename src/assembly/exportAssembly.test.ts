@@ -77,7 +77,7 @@ describe('STEP assembly structure', () => {
     expect(parts).toBe(3)
     expect(skipped).toEqual([])
     const text = new TextDecoder().decode(bytes)
-    for (const n of ["'Fixture'", "'Untitled'", "'Bolt:1'", "'Bolt:2'", "'Base'", "'Shaft'", "'Plate'", "'Loose'"]) if (n !== "'Fixture'") expect(text).toContain(n)
+    for (const n of ["'Untitled'", "'Bolt:1'", "'Bolt:2'", "'Base'", "'Shaft'", "'Plate'", "'Loose'"]) expect(text).toContain(n)
     expect((text.match(/NEXT_ASSEMBLY_USAGE_OCCURRENCE/g) ?? []).length).toBeGreaterThanOrEqual(4)
     const shape = await importSTEP(new Blob([bytes]))
     const m = shape.mesh({ tolerance: 0.1, angularTolerance: 0.3 })
