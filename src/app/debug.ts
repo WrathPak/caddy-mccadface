@@ -33,6 +33,13 @@ const navTools = {
       await new Promise<void>((r) => requestAnimationFrame(() => r()))
     }
   },
+  /** Let running camera animations and inertia finish on stepped time, however slow the renderer is. */
+  settle: async (ms = 500) => {
+    const wasFrozen = navClock.isFrozen()
+    navClock.freeze()
+    await navTools.step(ms, 250)
+    if (!wasFrozen) navClock.unfreeze()
+  },
 }
 
 export function installDebugHandle() {

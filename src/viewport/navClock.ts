@@ -7,6 +7,7 @@ let offset = 0
 
 export const navClock = {
   now: () => (frozenAt ?? performance.now() + offset),
+  isFrozen: () => frozenAt !== null,
   /** Stop the clock: time only moves through advance(). */
   freeze() {
     if (frozenAt === null) frozenAt = performance.now() + offset
