@@ -3,7 +3,7 @@ import { ArrowsClockwise } from '@phosphor-icons/react'
 import { registerFeature } from '@/doc/registry'
 import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
-import { decodeRef, encodeSelection, resolveEdge } from '@/doc/refs'
+import { RefError, RefReport, decodeRef, encodeSelection, resolveEdge } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
 import type { PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel } from '@/kernel/client'
@@ -48,7 +48,7 @@ interface RevolveP { profiles: string[]; axis: string; edge: string[]; angle: nu
 const asP = (v: ParamValues) => v as unknown as RevolveP
 
 /** World-space axis for the chosen mode. */
-function axisFor(p: RevolveP, sk: NonNullable<Inputs['sketch']>, env: Env): { origin: Vec3; dir: Vec3 } {
+function axisFor(p: RevolveP, sk: NonNullable<Inputs['sketch']>, env: Env, report?: RefReport): { origin: Vec3; dir: Vec3 } {
   const data: SketchData = sk.data
   const plane = data.plane
   switch (p.axis) {
@@ -60,8 +60,9 @@ function axisFor(p: RevolveP, sk: NonNullable<Inputs['sketch']>, env: Env): { or
     case 'edge': {
       const ref = p.edge[0] ? decodeRef(p.edge[0]) : null
       if (!ref || ref.kind !== 'edge') throw new Error('Select an edge for the axis')
-      const r = resolveEdge(ref, env.bodies)
-      if (!r) throw new Error('The axis edge no longer exists')
+      const rep = report ?? new RefReport()
+      const r = resolveEdge(ref, env.bodies, rep)
+      if (!r) throw new RefError('The axis edge no longer exists (an edit upstream removed it). Pick it again.', rep.lostRefs)
       const sg = edgeSigs(r.body)[r.index]
       return { origin: sg.midpoint, dir: sg.direction }
     }
@@ -76,7 +77,7 @@ function axisFor(p: RevolveP, sk: NonNullable<Inputs['sketch']>, env: Env): { or
 }
 
 function args(p: RevolveP, inp: Inputs, env: Env, id: string, name: string) {
-  const ax = axisFor(p, inp.sketch!, env)
+  const ax = axisFor(p, inp.sketch!, env, inp.report)
   return { id, name, groups: inp.groups, axisOrigin: ax.origin, axisDir: ax.dir, angle: p.angle }
 }
 
@@ -91,7 +92,8 @@ registerFeature({
     const inp = resolveInputs(p.profiles, env)
     if (!inp.groups.length || !inp.sketch) throw new Error(inp.missing ? 'The profile no longer exists' : 'Select a profile to revolve')
     const tool = (await ctx.kernel.call('revolveTool', args(p, inp, env, ctx.newBodyId(), ctx.feature.name))) as Body
-    return combine(ctx, tool, p.operation, p.targets)
+    const res = await combine(ctx, tool, p.operation, p.targets)
+    return { ...res, warning: inp.report.warning ?? res.warning, reboundRefs: inp.report.flagged }
   },
   preview: (ctx) => revolvePreview(ctx),
 })

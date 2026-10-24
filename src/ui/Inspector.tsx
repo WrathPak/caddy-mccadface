@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Crosshair, X } from '@phosphor-icons/react'
 import { useUi, type InspectorSession, type SelectionRef } from '@/store/ui'
 import { useDoc } from '@/doc/store'
 import { evalNumber, resolveParams } from '@/doc/params'
-import { bodyIdsOf, encodeSelection } from '@/doc/refs'
+import { bodyIdsOf, decodeRef, encodeRef, encodeSelection } from '@/doc/refs'
 import { NumberField } from './NumberField'
 import { Select } from './Select'
 import { Checkbox } from './Toggle'
@@ -12,6 +12,13 @@ import { NUDGE_EVENT } from './accept'
 import { OptionList } from './OptionList'
 import { Section } from './Section'
 import { missingRequired, schemaDefaults, selectionParams, type ParamDef, type ParamValue, type ParamValues, type SelectionRefParam } from './schema'
+
+/** Stored refs of the feature being edited that the last regeneration re-bound by position / could not resolve. */
+interface RefFlags { rebound: Set<string>; lost: Set<string> }
+const RefFlagsCtx = createContext<RefFlags>({ rebound: new Set(), lost: new Set() })
+const normRef = (s: string) => {
+  try { const r = s.startsWith('{') ? decodeRef(s) : null; return r ? encodeRef(r) : s } catch { return s }
+}
 
 type Setter = (key: string, v: ParamValue) => void
 interface Pick { active: string | null; activate: (key: string) => void; many: (v: ParamValues) => void; group: (id: string) => void }
@@ -96,14 +103,22 @@ function ParamInner({ def, values, set, pick }: { def: ParamDef; values: ParamVa
 
 function SelectionRef({ def, value, onChange, active, onActivate }: { def: SelectionRefParam; value: string[]; onChange: (s: string[]) => void; active: boolean; onActivate: () => void }) {
   const sel = useUi((s) => s.selection)
+  const flags = useContext(RefFlagsCtx)
   const { label, accepts } = def
   const empty = value.length === 0
+  const lost = value.filter((x) => flags.lost.has(normRef(x))).length
+  const rebound = lost ? 0 : value.filter((x) => flags.rebound.has(normRef(x))).length
+  const flag = lost ? 'lost' : rebound ? 'rebound' : undefined
+  const note = lost
+    ? `${lost} of ${value.length} no longer exist${lost === 1 ? 's' : ''}: pick again`
+    : rebound ? `${rebound} of ${value.length} re-bound by position: check ${rebound === 1 ? 'it' : 'them'}` : undefined
+  const flagColor = flag === 'lost' ? 'var(--danger, #e06060)' : '#e0b050'
   return (
-    <div className="field" data-sel-key={def.key} data-active={active} data-empty={empty}>
+    <div className="field" data-sel-key={def.key} data-active={active} data-empty={empty} data-ref-flag={flag}>
       <span className="field-label" title={def.help ?? label}>{label}{def.required ? ' *' : ''}</span>
-      <div className={'inp sel-ref' + (active ? ' active' : '')} data-testid={'sel-' + def.key} style={{ borderColor: active || empty ? 'var(--accent-line)' : undefined, cursor: def.pick ? 'pointer' : undefined }} onClick={onActivate}>
-        <span className="txt" title={empty ? undefined : `${value.length} selected`} style={{ color: empty ? 'var(--text-faint)' : 'var(--text)' }}>
-          {empty ? `Select ${accepts.join(' / ')}` : `${value.length} selected`}
+      <div className={'inp sel-ref' + (active ? ' active' : '')} data-testid={'sel-' + def.key} style={{ borderColor: flag ? flagColor : active || empty ? 'var(--accent-line)' : undefined, cursor: def.pick ? 'pointer' : undefined }} onClick={onActivate}>
+        <span className="txt" title={note ?? (empty ? undefined : `${value.length} selected`)} style={{ color: flag ? flagColor : empty ? 'var(--text-faint)' : 'var(--text)' }}>
+          {empty ? `Select ${accepts.join(' / ')}` : note ? `${value.length} selected - ${note}` : `${value.length} selected`}
         </span>
         <button type="button" className="icon-btn" title="Use current selection" aria-label="Use selection" onClick={(e) => { e.stopPropagation(); onChange(encodeSelection(sel, useDoc.getState().geometry)) }}>
           <Crosshair size={12} />
@@ -254,7 +269,14 @@ function InspectorForm({ session }: { session: InspectorSession }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
   const pickCtx: Pick = { active, activate, many, group: (id) => session.onActiveGroup?.(id) }
+  const feat = useDoc((s) => (session.featureId ? s.features.find((f) => f.id === session.featureId) : undefined))
+  const flags = useMemo<RefFlags>(
+    () => ({ rebound: new Set((feat?.reboundRefs ?? []).map(normRef)), lost: new Set((feat?.lostRefs ?? []).map(normRef)) }),
+    [feat?.reboundRefs, feat?.lostRefs],
+  )
+  const featureNote = feat && (feat.state === 'error' ? feat.error : feat.state === 'warning' ? feat.warning : undefined)
   return (
+    <RefFlagsCtx.Provider value={flags}>
     <div className="panel" data-inspector-root>
       <div className="panel-title">{session.schema.title}</div>
       <div className="panel-scroll">
@@ -268,6 +290,7 @@ function InspectorForm({ session }: { session: InspectorSession }) {
         ))}
       </div>
       {notice && <div className="inspector-warn error" role="alert" data-testid="inspector-notice">{notice}</div>}
+      {featureNote && <div className={'inspector-warn' + (feat?.state === 'error' ? ' error' : '')} role="note" data-testid="feature-note">{featureNote}</div>}
       {warnings.map((w, i) => <div key={i} className="inspector-warn" role="note" data-testid="inspector-warning">{w}</div>)}
       {blocked && <div key={nudge} className={'inspector-hint' + (nudge ? ' nudge' : '')} role="status" data-testid="inspector-hint">{hint}</div>}
       <div className="inspector-foot">
@@ -275,5 +298,6 @@ function InspectorForm({ session }: { session: InspectorSession }) {
         <button type="button" className="btn primary" disabled={blocked} title={blocked ? hint : undefined} onClick={() => !blocked && session.onOk(latest.current)}>OK</button>
       </div>
     </div>
+    </RefFlagsCtx.Provider>
   )
 }

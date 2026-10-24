@@ -1,6 +1,7 @@
 /** Worker ops for the primitive and advanced solid tools: cylinder, sweep, loft and shell. */
 import { assembleWire, genericSweep, loft, makeCylinder, makeLine, makeThreePointArc, measureVolume, type AnyShape, type Wire } from 'replicad'
 import { registerOp } from './store'
+import { finalize, shellNamed } from './naming'
 import { topoOf, type Shape } from './occ'
 import { fuseAll, planeOf, profileWires, type ProfileGroup, type ProfileIn } from './model-ops'
 import type { PlaneDef, Vec3 } from '../sketch/types'
@@ -10,7 +11,15 @@ type Sh = Shape
 export interface CylinderArgs { id: string; name: string; radius: number; height: number; origin: Vec3; dir: Vec3 }
 registerOp<CylinderArgs>('cylinderTool', (a, h) => {
   if (!(a.radius > 0) || !(a.height > 0)) throw new Error('Radius and height must be greater than zero')
-  return h.sendBody(h.bodyFromShape(a.id, a.name, makeCylinder(a.radius, a.height, a.origin, a.dir) as unknown as Sh))
+  const cyl = makeCylinder(a.radius, a.height, a.origin, a.dir) as unknown as Sh
+  // caps by the side of the axis they face, the wall is the only curved face
+  const d = a.dir
+  const claims = topoOf(cyl as unknown as AnyShape).faces.map((f) => {
+    if (f.geomType !== 'PLANE') return [`${a.id}:side`]
+    const nv = f.normalAt()
+    return [`${a.id}:${nv.x * d[0] + nv.y * d[1] + nv.z * d[2] > 0 ? 'top' : 'bottom'}`]
+  })
+  return h.sendBody(h.bodyFromShape(a.id, a.name, cyl, finalize(cyl as unknown as AnyShape, claims, a.id)))
 })
 
 /** A world-space path segment (lines and three-point arcs). */
@@ -69,6 +78,8 @@ export interface ShellArgs {
   thickness: number
   /** 'inside' keeps the outer surface, 'outside' grows the wall outwards */
   side: 'inside' | 'outside'
+  /** the feature running the op (names of the faces it creates are rooted there) */
+  fid?: string
 }
 
 registerOp<ShellArgs>('shellOp', (a, h) => {
@@ -82,13 +93,13 @@ registerOp<ShellArgs>('shellOp', (a, h) => {
     const minDim = Math.min(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2])
     if (a.thickness * 2 >= minDim * 0.995) throw new Error(`The thickness must be less than half the smallest dimension of the body (${+(minDim / 2).toFixed(3)} mm)`)
   }
-  const body = shape as unknown as { shell(t: number, f: (f: { inList(l: AnyShape[]): unknown }) => unknown): Sh }
-  let out: Sh
+  let out: { shape: Sh; faces: string[][] }
   try {
-    out = body.shell(a.side === 'inside' ? a.thickness : -a.thickness, (f) => f.inList(list))
+    // OCC offsets towards the outside for a positive value; 'inside' therefore passes -thickness
+    out = shellNamed(h.getNamed(a.key), a.faces, a.side === 'inside' ? -a.thickness : a.thickness, 0.001, a.fid ?? a.id)
   } catch (e) {
     throw new Error(`A shell of ${a.thickness} mm is not possible here (${e instanceof Error ? e.message : e})`)
   }
-  if (!valid(out)) throw new Error(`A shell of ${a.thickness} mm is not possible here`)
-  return h.sendBody(h.bodyFromShape(a.id, a.name, out))
+  if (!valid(out.shape)) throw new Error(`A shell of ${a.thickness} mm is not possible here`)
+  return h.sendBody(h.bodyFromShape(a.id, a.name, out.shape, out.faces))
 })

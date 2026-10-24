@@ -1,5 +1,5 @@
 /** Shared helpers for solid features: profile / face inputs, boolean combination, preview plumbing. */
-import { decodeRef, faceSigs, resolveFace, bodyIdsOf } from '@/doc/refs'
+import { RefReport, decodeRef, faceSigs, resolveFace, bodyIdsOf } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
 import type { FeatureCtx, FeatureResult } from '@/doc/types'
 import { getKernel } from '@/kernel/client'
@@ -31,6 +31,8 @@ export interface Inputs {
   /** first profile's sketch (for revolve axes) */
   sketch: { id: string; data: SketchData } | null
   missing: number
+  /** refs that were re-bound by position / could not be resolved */
+  report: RefReport
 }
 
 function nearestProfile(data: SketchData, key: string) {
@@ -50,6 +52,7 @@ export function resolveInputs(refs: string[], env: Env): Inputs {
   const faces: FaceIn[] = []
   let anchor: Vec3 | null = null, normal: Vec3 | null = null, missing = 0
   let sketch: Inputs['sketch'] = null
+  const report = new RefReport()
   for (const r of refs) {
     if (r.startsWith('prof:')) {
       const [, fid, ...rest] = r.split(':')
@@ -65,13 +68,13 @@ export function resolveInputs(refs: string[], env: Env): Inputs {
     }
     const ref = decodeRef(r)
     if (ref && ref.kind === 'face') {
-      const res = resolveFace(ref, env.bodies)
+      const res = resolveFace(ref, env.bodies, report)
       if (!res) { missing++; continue }
       faces.push({ key: res.body.key, index: res.index })
       if (!anchor) { const sg = faceSigs(res.body)[res.index]; anchor = sg.centroid; normal = sg.normal }
     } else missing++
   }
-  return { groups: [...groups.values()], faces, anchor, normal, sketch, missing }
+  return { groups: [...groups.values()], faces, anchor, normal, sketch, missing, report }
 }
 
 const overlaps = (a: Body, t: { min: Vec3; max: Vec3 }) => {
@@ -96,13 +99,13 @@ export async function combine(ctx: FeatureCtx, tool: Body, op: string, explicit:
   if (op === 'join') {
     if (!targets.length) return asNew()
     const [base, ...rest] = targets
-    const r = (await kernel.boolean({ id: base.id, name: base.name, op: 'union', base: base.key, tools: [...rest.map((b) => b.key), tool.key] })) as Body
+    const r = (await kernel.boolean({ id: base.id, name: base.name, op: 'union', base: base.key, tools: [...rest.map((b) => b.key), tool.key], fid: ctx.feature.id })) as Body
     return { bodies: [r], remove: rest.map((b) => b.id) }
   }
   if (!targets.length) throw new Error(op === 'cut' ? 'Cut does not touch any body' : 'Intersect does not touch any body')
   const out: Body[] = []
   for (const t of targets) {
-    out.push((await kernel.boolean({ id: t.id, name: t.name, op: op === 'cut' ? 'subtract' : 'intersect', base: t.key, tools: [tool.key] })) as Body)
+    out.push((await kernel.boolean({ id: t.id, name: t.name, op: op === 'cut' ? 'subtract' : 'intersect', base: t.key, tools: [tool.key], fid: ctx.feature.id })) as Body)
   }
   return { bodies: out }
 }

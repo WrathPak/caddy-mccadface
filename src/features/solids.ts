@@ -3,7 +3,7 @@ import { Cylinder, Package, Path, Shapes, Unite } from '@phosphor-icons/react'
 import { registerFeature } from '@/doc/registry'
 import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
-import { bodyIdsOf, decodeRef, encodeSelection, resolveFace } from '@/doc/refs'
+import { RefError, RefReport, bodyIdsOf, decodeRef, encodeSelection, resolveFace } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
 import type { PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel, type KernelClient } from '@/kernel/client'
@@ -319,12 +319,12 @@ export const shellSchema: ParamSchema = {
   ],
 }
 
-function shellGroups(refs: string[], bodies: Body[]): { body: Body; faces: number[] }[] {
+function shellGroups(refs: string[], bodies: Body[], report = new RefReport()): { body: Body; faces: number[] }[] {
   const by = new Map<string, { body: Body; faces: number[] }>()
   for (const s of refs) {
     const ref = decodeRef(s)
-    const r = ref && ref.kind === 'face' ? resolveFace(ref, bodies) : null
-    if (!r) throw new Error('A selected face no longer exists')
+    const r = ref && ref.kind === 'face' ? resolveFace(ref, bodies, report) : null
+    if (!r) throw new RefError('A face to remove no longer exists (an edit upstream removed it). Pick it again.', report.lostRefs)
     const g = by.get(r.body.id) ?? by.set(r.body.id, { body: r.body, faces: [] }).get(r.body.id)!
     if (!g.faces.includes(r.index)) g.faces.push(r.index)
   }
@@ -333,10 +333,10 @@ function shellGroups(refs: string[], bodies: Body[]): { body: Body; faces: numbe
   return [...by.values()]
 }
 
-async function runShell(kernel: KernelClient, p: ParamValues, bodies: Body[], idOf?: (b: Body) => string): Promise<Body[]> {
+async function runShell(kernel: KernelClient, p: ParamValues, bodies: Body[], idOf?: (b: Body) => string, fid = 'preview', report = new RefReport()): Promise<Body[]> {
   const out: Body[] = []
-  for (const g of shellGroups(p.faces as string[], bodies)) {
-    out.push((await kernel.call('shellOp', { id: idOf ? idOf(g.body) : g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, thickness: p.thickness as number, side: p.side as string })) as Body)
+  for (const g of shellGroups(p.faces as string[], bodies, report)) {
+    out.push((await kernel.call('shellOp', { id: idOf ? idOf(g.body) : g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, thickness: p.thickness as number, side: p.side as string, fid })) as Body)
   }
   return out
 }
@@ -347,7 +347,9 @@ registerFeature({
   icon: Package,
   schema: shellSchema,
   async compute(ctx, p) {
-    return { bodies: await runShell(ctx.kernel, p, ctx.bodies) }
+    const report = new RefReport()
+    const bodies = await runShell(ctx.kernel, p, ctx.bodies, undefined, ctx.feature.id, report)
+    return { bodies, warning: report.warning, reboundRefs: report.flagged }
   },
   preview({ values }) {
     let cur = values

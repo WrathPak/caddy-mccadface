@@ -7,10 +7,11 @@ import { getKernel } from '@/kernel/client'
 import type { Body } from '@/kernel/types'
 import { getFeature } from './registry'
 import { getScope, resolveParams } from './params'
-import { setRegenHandler, useDoc } from './store'
+import { RefError } from './refs'
+import { setRegenHandler, useDoc, type FeatureStatus } from './store'
 import type { FeatureCtx, FeatureResult, FeatureState } from './types'
 
-interface CacheEntry { hash: string; bodies: Body[]; data?: unknown; error?: string; warning?: string }
+interface CacheEntry { hash: string; bodies: Body[]; data?: unknown; error?: string; warning?: string; rebound?: string[]; lost?: string[] }
 const cache = new Map<string, CacheEntry>()
 
 function hash(s: string): string {
@@ -63,8 +64,9 @@ export function regenerate(): Promise<void> {
 async function pass() {
   const { features, rollback, blobs } = useDoc.getState()
   const kernel = getKernel()
-  const status: Record<string, { state: FeatureState; error?: string; warning?: string }> = {}
-  const stat = (e: CacheEntry | undefined) => (e?.error ? { state: 'error' as const, error: e.error } : e?.warning ? { state: 'warning' as const, warning: e.warning } : { state: 'ok' as const })
+  const status: Record<string, FeatureStatus> = {}
+  const stat = (e: CacheEntry | undefined): FeatureStatus =>
+    e?.error ? { state: 'error', error: e.error, lostRefs: e.lost } : e?.warning ? { state: 'warning', warning: e.warning, reboundRefs: e.rebound } : { state: 'ok' }
   let state: Body[] = []
   let chain = ''
   const seen = new Set<string>()
@@ -107,11 +109,11 @@ async function pass() {
       }
       try {
         const r = await def.compute(ctx, params)
-        entry = { hash: h, bodies: merge(state, r, f.id), data: r.data, warning: r.warning }
+        entry = { hash: h, bodies: merge(state, r, f.id), data: r.data, warning: r.warning, rebound: r.reboundRefs }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         console.warn(`[regen] ${f.name}:`, e)
-        entry = { hash: h, bodies: state, error: msg }
+        entry = { hash: h, bodies: state, error: msg, lost: e instanceof RefError ? e.refs : undefined }
       }
       cache.set(f.id, entry)
       if (again) return // a newer edit arrived; restart from the top

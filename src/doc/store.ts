@@ -11,6 +11,8 @@ import { setUserParams as applyUserParams } from './params'
 import type { DocData, Feature, FeatureState, UserParam } from './types'
 
 export type { Feature, FeatureState } from './types'
+/** What the engine reports per feature after a pass. */
+export interface FeatureStatus { state: FeatureState; error?: string; warning?: string; reboundRefs?: string[]; lostRefs?: string[] }
 export interface TreeEntity { id: string; name: string }
 type Coll = 'bodies' | 'sketches' | 'meshes' | 'features'
 
@@ -54,7 +56,7 @@ interface DocState extends DocData {
   markClean: () => void
   // engine hooks
   setGeometry: (g: Body[]) => void
-  applyStatus: (s: Record<string, { state: FeatureState; error?: string; warning?: string }>) => void
+  applyStatus: (s: Record<string, FeatureStatus>) => void
 }
 
 let regenHandler: () => void = () => {}
@@ -198,9 +200,10 @@ export const useDoc = create<DocState>((set, get) => {
         let changed = false
         const features = s.features.map((f) => {
           const n = st[f.id]
-          if (!n || (n.state === f.state && n.error === f.error && n.warning === f.warning)) return f
+          const same = (a?: string[], b?: string[]) => JSON.stringify(a ?? []) === JSON.stringify(b ?? [])
+          if (!n || (n.state === f.state && n.error === f.error && n.warning === f.warning && same(n.reboundRefs, f.reboundRefs) && same(n.lostRefs, f.lostRefs))) return f
           changed = true
-          return { ...f, state: n.state, error: n.error, warning: n.warning }
+          return { ...f, state: n.state, error: n.error, warning: n.warning, reboundRefs: n.reboundRefs, lostRefs: n.lostRefs }
         })
         return changed ? { features } : {}
       }),

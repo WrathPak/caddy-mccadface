@@ -14,6 +14,9 @@ export interface Feature {
   error?: string
   /** non-fatal problem: the feature built, but something it depends on is off (state 'warning') */
   warning?: string
+  /** stored refs (as they appear in `params`) the last regeneration had to re-bind by position, or could not resolve */
+  reboundRefs?: string[]
+  lostRefs?: string[]
   suppressed: boolean
   params: ParamValues
 }
@@ -55,6 +58,8 @@ export interface FeatureResult {
   data?: unknown
   /** non-fatal problem to show on the feature (e.g. broken references) */
   warning?: string
+  /** the stored refs behind `warning` that were re-bound by position (highlighted in the Inspector) */
+  reboundRefs?: string[]
 }
 
 export interface PreviewCtx {

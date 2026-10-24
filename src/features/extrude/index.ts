@@ -3,7 +3,7 @@ import { ArrowFatLineUp } from '@phosphor-icons/react'
 import { registerFeature } from '@/doc/registry'
 import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
-import { encodeSelection } from '@/doc/refs'
+import { RefError, encodeSelection } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
 import type { PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel } from '@/kernel/client'
@@ -60,9 +60,12 @@ registerFeature({
   async compute(ctx, raw) {
     const p = asP(raw)
     const inp = resolveInputs(p.profiles, ctxEnv(ctx))
-    if (!inp.groups.length && !inp.faces.length) throw new Error(inp.missing ? 'The profile or face no longer exists' : 'Select a profile or face to extrude')
+    if (!inp.groups.length && !inp.faces.length) {
+      throw new RefError(inp.missing ? 'The profile or face to extrude no longer exists (an edit upstream removed it). Pick it again.' : 'Select a profile or face to extrude', inp.report.lostRefs)
+    }
     const tool = (await ctx.kernel.call('extrudeTool', toolArgs(p, inp, ctx.newBodyId(), ctx.feature.name))) as Body
-    return combine(ctx, tool, p.operation, p.targets)
+    const res = await combine(ctx, tool, p.operation, p.targets)
+    return { ...res, warning: inp.report.warning ?? res.warning, reboundRefs: inp.report.flagged }
   },
   preview: (ctx) => extrudePreview(ctx),
 })

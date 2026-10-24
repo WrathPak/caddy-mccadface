@@ -4,7 +4,7 @@
  * refs are re-resolved against the current bodies and re-projected, so the geometry follows its source. A ref that no longer
  * resolves marks its curves `broken` (drawn red, the feature gets a warning); the last known geometry stays in place.
  */
-import { decodeRef, resolveEdge, resolveFace } from '@/doc/refs'
+import { decodeRef, resolveEdge, resolveFace, type RefReport } from '@/doc/refs'
 import type { Body } from '@/kernel/types'
 import type { ProjectedCurve } from '@/kernel/sketch-ops'
 import { dist } from './geom'
@@ -109,14 +109,14 @@ export function addProjected(m: SketchModel, curves: ProjectedCurve[], ref: stri
 
 interface Target { body: Body; faces: number[]; edges: number[]; all: boolean }
 
-function resolveTarget(refStr: string, bodies: Body[]): Target | null {
+function resolveTarget(refStr: string, bodies: Body[], report?: RefReport): Target | null {
   const ref = decodeRef(refStr)
   if (!ref) return null
   if (ref.kind === 'body') {
     const body = bodies.find((b) => b.id === ref.bodyId)
     return body ? { body, faces: [], edges: [], all: true } : null
   }
-  const r = ref.kind === 'face' ? resolveFace(ref, bodies) : resolveEdge(ref, bodies)
+  const r = ref.kind === 'face' ? resolveFace(ref, bodies, report) : resolveEdge(ref, bodies, report)
   if (!r) return null
   return ref.kind === 'face' ? { body: r.body, faces: [r.index], edges: [], all: false } : { body: r.body, faces: [], edges: [r.index], all: false }
 }
@@ -125,11 +125,11 @@ function resolveTarget(refStr: string, bodies: Body[]): Target | null {
  * Re-resolve and re-project every projection of the model (mutates it; the caller owns the model). Refs that cannot be
  * resolved, or whose body is not a B-rep, are marked broken but never throw. Returns the number of broken projections.
  */
-export async function reprojectModel(m: SketchModel, plane: PlaneDef, bodies: Body[], call: KernelCall): Promise<{ total: number; broken: number }> {
+export async function reprojectModel(m: SketchModel, plane: PlaneDef, bodies: Body[], call: KernelCall, report?: RefReport): Promise<{ total: number; broken: number }> {
   let broken = 0
   const list = m.projections ?? []
   for (const p of list) {
-    const t = resolveTarget(p.ref, bodies)
+    const t = resolveTarget(p.ref, bodies, report)
     if (!t || t.body.kind !== 'brep') { setBroken(m, p, true); broken++; continue }
     try {
       const curves = (await call('projectEdges', { key: t.body.key, plane, faces: t.faces, edges: t.edges, all: t.all })) as ProjectedCurve[]

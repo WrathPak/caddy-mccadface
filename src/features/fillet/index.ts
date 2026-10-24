@@ -3,7 +3,7 @@ import { Circle, Polygon, type Icon } from '@phosphor-icons/react'
 import { registerFeature } from '@/doc/registry'
 import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
-import { decodeRef, encodeSelection, resolveEdge } from '@/doc/refs'
+import { RefError, RefReport, decodeRef, encodeSelection, resolveEdge } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
 import type { PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel } from '@/kernel/client'
@@ -27,18 +27,18 @@ const schemaFor = (mode: Mode): ParamSchema => ({
 })
 
 /** Group the edge refs by body, resolving each against the current geometry. */
-function resolveEdges(refs: string[], env: Env): { body: Body; edges: number[] }[] {
+function resolveEdges(refs: string[], env: Env, report = new RefReport()): { body: Body; edges: number[] }[] {
   const by = new Map<string, { body: Body; edges: number[] }>()
   let missing = 0
   for (const s of refs) {
     const ref = decodeRef(s)
     if (!ref || ref.kind !== 'edge') { missing++; continue }
-    const r = resolveEdge(ref, env.bodies)
+    const r = resolveEdge(ref, env.bodies, report)
     if (!r) { missing++; continue }
     const g = by.get(r.body.id) ?? by.set(r.body.id, { body: r.body, edges: [] }).get(r.body.id)!
     if (!g.edges.includes(r.index)) g.edges.push(r.index)
   }
-  if (!by.size) throw new Error(missing ? 'The selected edges no longer exist' : 'Select the edges to ' + 'modify')
+  if (!by.size) throw new RefError(missing ? 'The selected edges no longer exist (an edit upstream removed them). Pick them again.' : 'Select the edges to modify', report.lostRefs)
   for (const g of by.values()) if (g.body.kind !== 'brep') throw new Error('Fillet and Chamfer need a solid (B-rep) body')
   return [...by.values()]
 }
@@ -51,12 +51,13 @@ function register(mode: Mode, icon: Icon) {
     icon,
     schema,
     async compute(ctx, p) {
-      const groups = resolveEdges(p.edges as string[], { bodies: ctx.bodies, dataOf: ctx.dataOf })
+      const report = new RefReport()
+      const groups = resolveEdges(p.edges as string[], { bodies: ctx.bodies, dataOf: ctx.dataOf }, report)
       const bodies: Body[] = []
       for (const g of groups) {
-        bodies.push((await ctx.kernel.call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size: p.size as number, mode })) as Body)
+        bodies.push((await ctx.kernel.call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size: p.size as number, mode, fid: ctx.feature.id })) as Body)
       }
-      return { bodies }
+      return { bodies, warning: report.warning, reboundRefs: report.flagged }
     },
     preview: (ctx) => edgePreview(mode, schema, ctx),
   })
@@ -86,7 +87,7 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
       }
     } catch { resetManip() }
     const out: Body[] = []
-    for (const g of groups) out.push((await getKernel().call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size: p.size as number, mode })) as Body)
+    for (const g of groups) out.push((await getKernel().call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size: p.size as number, mode, fid: 'preview' })) as Body)
     if (stale()) return
     setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), out.map((b) => b.id))
   })
