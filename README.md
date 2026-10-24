@@ -1,14 +1,30 @@
 # CADdy McCADFace
 
-Open-source, browser-based, local-only parametric CAD. Static hosting only; nothing leaves your machine.
+browser cad that runs 100% on your machine. no accounts, no cloud, nothing gets uploaded. you can host it anywhere static and your files still never leave your computer.
 
-- Solids: OpenCascade (replicad). Meshes: manifold-3d. Sketch solver: planegcs.
-- Stack: Vite, React 19, TypeScript, three.js / R3F, dockview, zustand.
+i got tired of fighting fusion 360 for 3d printing stuff (especially hair on figures) so i'm building my own.
+
+## what it does right now
+
+- parametric timeline, edit any feature and everything after it rebuilds
+- sketches with constraints and dimensions
+- extrude, revolve, sweep, loft, fillet, chamfer, shell, combine
+- import/export stl, 3mf, step
+- mesh tools (plane cut, reduce, smooth, repair)
+- hair tool: paint faces, pick a direction, get printable strands with a sacrificial wall
+- saves `.caddy` project files straight to your disk
+
+## running it
 
 ```
 pnpm install
 pnpm dev
-pnpm build
 ```
 
-License: MIT
+tests: `pnpm test` (unit) and `pnpm exec playwright test` (browser)
+
+## under the hood
+
+opencascade (via replicad) for solids, manifold-3d for meshes, planegcs for the sketch solver, three.js for the viewport.
+
+MIT licensed
