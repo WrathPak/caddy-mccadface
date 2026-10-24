@@ -5,7 +5,7 @@ export type Workspace = 'solid' | 'surface' | 'mesh' | 'hair'
 export type DisplayMode = 'shaded' | 'shadedEdges' | 'wireframe' | 'xray'
 export type Projection = 'perspective' | 'orthographic'
 export type Theme = 'dark' | 'light'
-export type SelectionFilter = 'body' | 'face' | 'edge'
+export type SelectionFilter = 'body' | 'face' | 'edge' | 'component'
 export type EntityKind = 'body' | 'face' | 'edge' | 'sketch' | 'mesh' | 'plane' | 'axis' | 'feature' | 'point' | 'vertex' | 'snap' | 'component'
 
 export interface SelectionRef {

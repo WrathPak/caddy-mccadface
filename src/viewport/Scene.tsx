@@ -22,6 +22,7 @@ import { PlanePicker } from '@/sketch/PlanePicker'
 import { HairPaintTool, HairRegionOverlay } from '@/features/hair/PaintTool'
 import { HairDirectionOverlay, HairOverlayPass, HairPreviewLayer } from '@/features/hair/layer'
 import { PrintCanvas } from '@/features/print/PrintCanvas'
+import { AssemblyLayer } from '@/assembly/AssemblyLayer'
 
 /**
  * SSAO reads the depth / normal pre-pass. Translucent overlays that do not write depth (the infinite grid, origin
@@ -77,6 +78,7 @@ export function Scene() {
       {showOrigin && !sketching && <Origin />}
       {showOrigin && !sketching && <ConstructionPlanes />}
       <Bodies />
+      <AssemblyLayer />
       <MoveGizmo />
       <SketchDisplay />
       <SketchOverlay />

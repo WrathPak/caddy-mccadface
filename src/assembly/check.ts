@@ -11,7 +11,7 @@ import { useAssemblyRuntime, type ClearanceReport, type InterferenceHit, type In
 /** Instances in their assembled places: joints solved, nothing exploded, nothing held at its origin for editing. */
 export function assembledInstances(): Instance[] {
   const d = useDoc.getState()
-  const place = placeAssembly(d.assembly, useAssemblyRuntime.getState().drive, null, 0)
+  const place = placeAssembly(d.assembly, useAssemblyRuntime.getState().drive, null, 0, d.geometry)
   const hidden = useUi.getState().hiddenIds
   return expandInstances(d.assembly, d.geometry, place.worlds).filter((i) => !hidden[i.body.id] && !(i.path && i.path.split('/').some((o) => hidden[o])))
 }

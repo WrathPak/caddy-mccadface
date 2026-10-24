@@ -88,8 +88,10 @@ registerOp<{ items: InterferenceItem[]; minVolume?: number; focus?: string[] }, 
 export interface StepDef {
   id: string
   name: string
-  /** the bodies of this component (worker handles) */
-  bodies: { key: string; name: string }[]
+  /** this definition is a single part: the solid with this worker handle */
+  solid?: string
+  /** the bodies of this component (worker handles), each placed by `matrix` (column-major 4x4, identity when absent) */
+  bodies: { key: string; name: string; matrix?: number[] }[]
   /** components placed inside this one; `matrix` is column-major 4x4 */
   children: { def: string; name: string; matrix: number[] }[]
 }
@@ -125,11 +127,12 @@ export async function writeStepAssembly(defs: StepDef[], rootId: string): Promis
     const label: OcLabel = tool.NewShape()
     labels.set(id, label)
     name(label, d.name)
+    if (d.solid) tool.SetShape(label, (getBrep(d.solid) as AnyShape).wrapped)
     for (const b of d.bodies) {
       const bl: OcLabel = tool.NewShape()
       tool.SetShape(bl, (getBrep(b.key) as AnyShape).wrapped)
       name(bl, b.name)
-      const comp = tool.AddComponent(label, bl, loc([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]))
+      const comp = tool.AddComponent(label, bl, loc(b.matrix ?? [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]))
       name(comp, b.name)
     }
     for (const c of d.children) {

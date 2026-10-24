@@ -8,6 +8,7 @@ import { useUi } from '@/store/ui'
 import { expandInstances, flatten, lastOf, parentPath, placeAssembly, within } from './instances'
 import { defaultLimits, defaultValues, restValues } from './joints'
 import { identity, invert, multiply, translation, type Mat4 } from './matrix'
+import { useAssemblyRuntime } from './runtime'
 import { ROOT, type AssemblyData, type ExplodeStep, type Joint, type MotionLink, type MotionTrack } from './types'
 
 const nextNum = (ids: string[], prefix: string) => ids.reduce((m, id) => (id.startsWith(prefix) ? Math.max(m, parseInt(id.slice(prefix.length), 10) || 0) : m), 0) + 1
@@ -137,7 +138,7 @@ export function renameComponent(def: string, name: string) {
 /** World extent along X of everything inside an instance (for placing a new instance beside it). */
 function widthOf(path: string): number {
   const d = useDoc.getState()
-  const place = placeAssembly(d.assembly)
+  const place = placeAssembly(d.assembly, {}, null, 0, d.geometry)
   let lo = Infinity, hi = -Infinity
   for (const i of expandInstances(d.assembly, d.geometry, place.worlds)) {
     if (!within(i.path, path)) continue
@@ -202,7 +203,7 @@ export function deleteOccurrence(path: string) {
  * An occurrence seen through several instances of its parent cannot hold a different pose in each, so those stay as stored.
  */
 function bake(a: AssemblyData): AssemblyData {
-  const place = placeAssembly(a)
+  const place = placeAssembly(a, {}, null, 0, useDoc.getState().geometry)
   const count = new Map<string, number>()
   for (const n of place.nodes) count.set(n.occ, (count.get(n.occ) ?? 0) + 1)
   const transforms = new Map<string, Mat4>()
@@ -240,6 +241,13 @@ export function deleteJoint(id: string) {
 /** Set joint values (the end of a drive, or the rest position) as one undo step. */
 export function setJointValues(values: Record<string, Record<string, number>>, label = 'Drive joint') {
   edit(label, (a) => ({ ...a, joints: a.joints.map((j) => (values[j.id] ? { ...j, values: { ...j.values, ...values[j.id] } } : j)) }))
+  // what was just set is the joint's value now: a leftover drive value (from scrubbing the motion study) must not hide it
+  const rt = useAssemblyRuntime.getState()
+  for (const [id, v] of Object.entries(values)) {
+    const left = { ...rt.drive[id] }
+    for (const k of Object.keys(v)) delete left[k]
+    if (rt.drive[id]) { rt.clearDrive(id); for (const [k, x] of Object.entries(left)) rt.setDrive(id, k, x) }
+  }
 }
 export function resetJointToRest(id: string) {
   const j = useDoc.getState().assembly.joints.find((x) => x.id === id)

@@ -24,10 +24,12 @@ export interface EdgeRef { kind: 'edge'; bodyId: string; featureId?: string; ind
 export interface VertexSig { pos: Vec3 }
 /** Vertices are named from the faces that meet there (kernel/naming.ts); no feature picks them yet, but refs to them are stable. */
 export interface VertexRef { kind: 'vertex'; bodyId: string; featureId?: string; index: number; sig: VertexSig; name?: string; path?: string }
-export interface BodyRef { kind: 'body'; bodyId: string }
+export interface BodyRef { kind: 'body'; bodyId: string; path?: string }
+/** A component instance (an occurrence path), picked in the Browser or by its body in the viewport. */
+export interface ComponentRef { kind: 'component'; bodyId: string; path: string }
 /** A joint origin snap point: the spec says which point of which face / edge / vertex (see assembly/snaps.ts). */
 export interface SnapRef { kind: 'snap'; bodyId: string; path?: string; spec: { kind: string; ref: string } }
-export type GeoRef = FaceRef | EdgeRef | VertexRef | BodyRef | SnapRef
+export type GeoRef = FaceRef | EdgeRef | VertexRef | BodyRef | SnapRef | ComponentRef
 
 /**
  * `path` on a face / edge / vertex ref is the component path of the occurrence it was picked in (occurrence ids from the top
@@ -105,9 +107,10 @@ export function vertexRef(b: Body, index: number): VertexRef | null {
 
 /** Build a ref from a viewport selection ref (kind face/edge/body) against the current bodies. */
 export function refFromSelection(sel: SelectionRef, bodies: Body[]): GeoRef | null {
+  if (sel.kind === 'component') return { kind: 'component', bodyId: '', path: sel.id }
   const b = bodies.find((x) => x.id === sel.id)
   if (!b) return null
-  if (sel.kind === 'body' || sel.kind === 'mesh') return { kind: 'body', bodyId: b.id }
+  if (sel.kind === 'body' || sel.kind === 'mesh') return sel.path ? { kind: 'body', bodyId: b.id, path: sel.path } : { kind: 'body', bodyId: b.id }
   if (sel.kind === 'face' && sel.index !== undefined) {
     const sig = faceSigs(b)[sel.index]
     return sig ? { kind: 'face', bodyId: b.id, featureId: b.featureId, index: sel.index, sig, name: nameOf(b, 'face', sel.index), ...(sel.path ? { path: sel.path } : {}) } : null
@@ -233,7 +236,7 @@ export function resolveEdge(ref: EdgeRef, bodies: Body[], report?: RefReport): R
   return resolveGeneric('edge', ref, encodeRef(ref), findBody(ref, bodies), edgeSigs, edgeScore, EDGE_LEGACY, EDGE_REBIND, report)
 }
 
-export const encodeRef = (r: GeoRef): string => (r.kind === 'body' ? r.bodyId : JSON.stringify(r))
+export const encodeRef = (r: GeoRef): string => (r.kind === 'body' && !r.path ? r.bodyId : JSON.stringify(r))
 export function decodeRef(s: string): GeoRef | null {
   if (s.startsWith('{')) {
     try { return JSON.parse(s) as GeoRef } catch { return null }

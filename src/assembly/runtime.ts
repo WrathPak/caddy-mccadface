@@ -2,6 +2,7 @@
 import { create } from 'zustand'
 import type { Vec3 } from '@/kernel/types'
 import type { DriveMap } from './solver'
+import type { Joint } from './types'
 
 export type AssemblyPanel = 'joints' | 'motion' | 'explode' | 'check'
 
@@ -64,8 +65,17 @@ export interface AssemblyRuntime {
   playTime: number
   setPlay: (p: { playing?: boolean; playTime?: number }) => void
 
+  /** the joint of the open Joint dialog, applied to the placement while it is open so the components move as you choose */
+  previewJoint: Joint | null
+  setPreviewJoint: (j: Joint | null) => void
+  /** the joint selected in the panel (its glyph is highlighted) */
+  selectedJoint: string | null
+  selectJoint: (id: string | null) => void
+  /** a component being dragged freely (no joint holds it): its new placement, applied until the drag ends */
+  freeMove: { occ: string; transform: number[] } | null
+  setFreeMove: (m: AssemblyRuntime['freeMove']) => void
   /** the joint origin snap under the pointer while the joint tool is active */
-  snapHover: { inst: string; index: number } | null
+  snapHover: { inst: string; index: number; near: number[] } | null
   setSnapHover: (h: AssemblyRuntime['snapHover']) => void
 }
 
@@ -98,6 +108,12 @@ export const useAssemblyRuntime = create<AssemblyRuntime>((set) => ({
   playing: false,
   playTime: 0,
   setPlay: (p) => set(p),
+  previewJoint: null,
+  setPreviewJoint: (previewJoint) => set({ previewJoint }),
+  selectedJoint: null,
+  selectJoint: (selectedJoint) => set({ selectedJoint }),
+  freeMove: null,
+  setFreeMove: (freeMove) => set({ freeMove }),
   snapHover: null,
   setSnapHover: (snapHover) => set({ snapHover }),
 }))

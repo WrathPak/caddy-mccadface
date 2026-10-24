@@ -2,32 +2,40 @@
 import { useMemo } from 'react'
 import { useDoc, activeDefId } from '@/doc/store'
 import { useUi } from '@/store/ui'
+import type { Body } from '@/kernel/types'
 import { expandInstances, placeAssembly, type Instance, type Placement } from './instances'
 import { isIdentity } from './matrix'
 import { useAssemblyRuntime } from './runtime'
-import type { AssemblyData } from './types'
+import type { AssemblyData, Joint } from './types'
 import { ROOT } from './types'
 
 let last: { key: unknown[]; value: Placement } | null = null
 
-function placementFor(assembly: AssemblyData, drive: ReturnType<typeof useAssemblyRuntime.getState>['drive'], active: string | null, explode: number): Placement {
-  const key = [assembly, drive, active, explode]
+type FreeMove = ReturnType<typeof useAssemblyRuntime.getState>['freeMove']
+function placementFor(assembly: AssemblyData, drive: ReturnType<typeof useAssemblyRuntime.getState>['drive'], active: string | null, explode: number, preview: Joint | null, free: FreeMove, geometry: Body[]): Placement {
+  const key = [assembly, drive, active, explode, preview, free, geometry]
   if (last && last.key.every((v, i) => v === key[i])) return last.value
-  const value = placeAssembly(assembly, drive, active, explode)
+  let a = assembly
+  if (preview) a = { ...a, joints: [...a.joints.filter((j) => j.id !== preview.id), preview] }
+  if (free) a = { ...a, occurrences: a.occurrences.map((o) => (o.id === free.occ ? { ...o, transform: free.transform } : o)) }
+  const value = placeAssembly(a, drive, active, explode, geometry)
   last = { key, value }
   return value
 }
 
 export function currentPlacement(): Placement {
   const d = useDoc.getState(), r = useAssemblyRuntime.getState()
-  return placementFor(d.assembly, r.drive, d.activeOcc, r.explode)
+  return placementFor(d.assembly, r.drive, d.activeOcc, r.explode, r.previewJoint, r.freeMove, d.geometry)
 }
 export function usePlacement(): Placement {
   const assembly = useDoc((s) => s.assembly)
   const active = useDoc((s) => s.activeOcc)
   const drive = useAssemblyRuntime((s) => s.drive)
   const explode = useAssemblyRuntime((s) => s.explode)
-  return useMemo(() => placementFor(assembly, drive, active, explode), [assembly, drive, active, explode])
+  const preview = useAssemblyRuntime((s) => s.previewJoint)
+  const free = useAssemblyRuntime((s) => s.freeMove)
+  const geometry = useDoc((s) => s.geometry)
+  return useMemo(() => placementFor(assembly, drive, active, explode, preview, free, geometry), [assembly, drive, active, explode, preview, free, geometry])
 }
 
 export function currentInstances(): Instance[] {

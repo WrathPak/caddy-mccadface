@@ -133,7 +133,7 @@ function SelectionRef({ def, value, onChange, active, onActivate }: { def: Selec
   )
 }
 
-const KIND_OF: Record<string, string> = { body: 'body', mesh: 'body', face: 'face', edge: 'edge', sketch: 'sketch', plane: 'plane', axis: 'axis', point: 'point', vertex: 'vertex', feature: 'feature' }
+const KIND_OF: Record<string, string> = { body: 'body', mesh: 'body', face: 'face', edge: 'edge', sketch: 'sketch', plane: 'plane', axis: 'axis', point: 'point', vertex: 'vertex', feature: 'feature', snap: 'snap', component: 'component' }
 
 /** Schema-driven feature dialog. Renders `ui.inspector` (any ParamSchema) with OK / Cancel. */
 export function Inspector() {
@@ -171,7 +171,8 @@ function InspectorForm({ session }: { session: InspectorSession }) {
   // the active field is the first empty pick field (or the first one)
   useEffect(() => {
     const ps = picks()
-    if (ps.length && !activeRef.current) activate((ps.find((p) => !(latest.current[p.key] as string[])?.length) ?? ps[0]).key)
+    // (a remount, as StrictMode does in dev, runs the cleanup below first: activate again so the pick kinds are set)
+    if (ps.length) activate(activeRef.current ?? (ps.find((p) => !(latest.current[p.key] as string[])?.length) ?? ps[0]).key)
     const restore = prevFilter.current
     return () => {
       useUi.setState({ pickSketches: false, pickKinds: [] })

@@ -5,8 +5,8 @@
  */
 import { decodeRef, edgeSigs, encodeRef, faceSigs, nameOf, resolveEdge, resolveFace, resolveVertex, vertexRef, vertexSigs, type EdgeRef, type FaceRef, type GeoRef, type VertexRef } from '@/doc/refs'
 import type { Body, Vec3 } from '@/kernel/types'
-import { add, cross, dist, dot, len, mul, norm, perpendicular, sub, type Frame } from './matrix'
-import type { SnapKind, SnapSpec } from './types'
+import { add, cross, dist, dot, frameMatrix, len, matrixFrame, mul, multiply, norm, perpendicular, sub, type Frame } from './matrix'
+import type { Joint, JointOrigin, SnapKind, SnapSpec } from './types'
 
 export interface SnapPoint {
   kind: SnapKind
@@ -172,7 +172,10 @@ export function persistentName(spec: SnapSpec): string {
   return `${r.path ? r.path + '/' : ''}${nm}@${spec.kind}`
 }
 
-/** Find the snap point a spec stands for in the current bodies; null when its face / edge / vertex is gone. */
+/**
+ * Find the snap point a spec stands for in the current bodies; null when its face / edge / vertex is gone.
+ * The frame is in the space of the component (a body of a linked component sits somewhere in it).
+ */
 export function resolveSnap(spec: SnapSpec, bodies: Body[]): { frame: Frame; body: Body; point: SnapPoint } | null {
   const r = decodeRef(spec.ref)
   if (!r || r.kind === 'body') return null
@@ -182,7 +185,36 @@ export function resolveSnap(spec: SnapSpec, bodies: Body[]): { frame: Frame; bod
   else if (r.kind === 'vertex') hit = resolveVertex(r as VertexRef, bodies)
   if (!hit) return null
   const point = snapPoints(hit.body).find((s) => s.kind === spec.kind && s.index === hit!.index)
-  return point ? { frame: snapFrame(point), body: hit.body, point } : null
+  if (!point) return null
+  const f = snapFrame(point)
+  return { frame: hit.body.placement ? matrixFrame(multiply(hit.body.placement, frameMatrix(f))) : f, body: hit.body, point }
+}
+
+/**
+ * The joints with their origins put where their snap points are NOW: an origin follows its face, edge or vertex when the model is
+ * edited upstream. An origin whose snap point is gone keeps the frame it last had and is reported.
+ */
+export function refreshJoints(joints: Joint[], bodies: Body[]): { joints: Joint[]; errors: Record<string, string> } {
+  const errors: Record<string, string> = {}
+  const side = (j: Joint, o: JointOrigin, which: string): JointOrigin => {
+    if (!o.snap) return o
+    const hit = resolveSnap(o.snap, bodies)
+    if (!hit) {
+      errors[j.id] ??= `The ${which} joint origin lost the face, edge or vertex it was snapped to. Edit the joint and pick it again.`
+      return o
+    }
+    const f = hit.frame
+    const same = f.origin.every((v, i) => v === o.frame.origin[i]) && f.z.every((v, i) => v === o.frame.z[i]) && f.x.every((v, i) => v === o.frame.x[i])
+    return same ? o : { ...o, frame: f }
+  }
+  let changed = false
+  const out = joints.map((j) => {
+    const a = side(j, j.a, 'first'), b = side(j, j.b, 'second')
+    if (a === j.a && b === j.b) return j
+    changed = true
+    return { ...j, a, b }
+  })
+  return { joints: changed ? out : joints, errors }
 }
 
 export const SNAP_LABEL: Record<SnapKind, string> = { face: 'Face center', edgeMid: 'Edge midpoint', circle: 'Circle center', vertex: 'Vertex' }

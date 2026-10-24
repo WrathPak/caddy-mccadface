@@ -1,6 +1,7 @@
 /** Turning the component tree + the bodies the timeline produced into the placed instances the viewport and exports use. */
 import type { Body } from '@/kernel/types'
 import { identity, multiply, translation, mul, norm, type Mat4 } from './matrix'
+import { refreshJoints } from './snaps'
 import { occurrenceMap, solveAssembly, worldOf, type DriveMap, type PlacedNode, type SolveResult } from './solver'
 import { ROOT, type AssemblyData, type ExplodeStep } from './types'
 
@@ -69,17 +70,21 @@ export function expandInstances(a: Pick<AssemblyData, 'occurrences' | 'bodyOwner
   return out
 }
 
-/** Offsets (world translation) the explode steps give every instance at `amount` (0 collapsed, 1 fully exploded); children follow their parent. */
+/**
+ * Offsets (world translation) the explode steps give every instance at `amount` (0 collapsed, 1 fully exploded); children follow their
+ * parent. The steps play one after the other: with n steps, step k is under way while amount is between k/n and (k+1)/n.
+ */
 export function explodeOffsets(nodes: PlacedNode[], steps: ExplodeStep[], amount: number): Record<string, [number, number, number]> {
   const byId = occurrenceMap({ nodes })
   const own: Record<string, [number, number, number]> = {}
-  for (const s of steps) {
-    const d = mul(norm(s.direction), s.distance * amount)
+  steps.forEach((s, k) => {
+    const progress = Math.min(1, Math.max(0, amount * steps.length - k))
+    const d = mul(norm(s.direction), s.distance * progress)
     for (const o of s.occs) {
       const c = own[o] ?? [0, 0, 0]
       own[o] = [c[0] + d[0], c[1] + d[1], c[2] + d[2]]
     }
-  }
+  })
   const total: Record<string, [number, number, number]> = {}
   for (const n of nodes) {
     let t: [number, number, number] = [0, 0, 0]
@@ -98,6 +103,8 @@ export function explodeOffsets(nodes: PlacedNode[], steps: ExplodeStep[], amount
 
 export interface Placement {
   solve: SolveResult
+  /** joints whose origin lost its snap point (the origin keeps its last frame), by joint id */
+  frameErrors: Record<string, string>
   nodes: OccNode[]
   /** what to draw: solved placements, the active instance at its own origin, explode offsets applied */
   worlds: Record<string, Mat4>
@@ -105,14 +112,16 @@ export interface Placement {
 
 /**
  * Placements for display. The active instance is shown at its own origin (so sketches and features line up with the origin
- * planes you work on), the explode offsets move the others.
+ * planes you work on), the explode offsets move the others. With `geometry` the joint origins follow their snap points.
  */
-export function placeAssembly(a: AssemblyData, drive: DriveMap = {}, activeOcc: string | null = null, explode = 0, steps: ExplodeStep[] = a.explode.steps): Placement {
+export function placeAssembly(a: AssemblyData, drive: DriveMap = {}, activeOcc: string | null = null, explode = 0, geometry?: Body[]): Placement {
   const nodes = flatten(a)
-  const solve = solveAssembly({ nodes, joints: a.joints, links: a.links }, drive)
+  const live = geometry ? refreshJoints(a.joints, geometry) : { joints: a.joints, errors: {} }
+  const solve = solveAssembly({ nodes, joints: live.joints, links: a.links }, drive)
   const byId = occurrenceMap({ nodes })
   const over: Record<string, Mat4> = { ...solve.over }
   if (activeOcc && byId.has(activeOcc)) over[activeOcc] = identity()
+  const steps: ExplodeStep[] = a.explode.steps
   const offsets = explode > 0 && steps.length ? explodeOffsets(nodes, steps, explode) : {}
   const memo: Record<string, Mat4> = {}
   const worlds: Record<string, Mat4> = {}
@@ -121,5 +130,5 @@ export function placeAssembly(a: AssemblyData, drive: DriveMap = {}, activeOcc: 
     const off = offsets[n.id]
     worlds[n.id] = off ? multiply(translation(off), w) : w
   }
-  return { solve, nodes, worlds }
+  return { solve, frameErrors: live.errors, nodes, worlds }
 }

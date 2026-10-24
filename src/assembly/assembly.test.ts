@@ -27,7 +27,7 @@ import { applyExternalUpdate, checkExternals, dismissExternalUpdate, insertExter
 import { expandInstances, placeAssembly } from './instances'
 import { originOf, point } from './matrix'
 import { useAssemblyRuntime } from './runtime'
-import { persistentName, resolveSnap, snapPoints, snapSpec } from './snaps'
+import { persistentName, resolveSnap, snapFrame, snapPoints, snapSpec } from './snaps'
 import { ROOT } from './types'
 
 beforeAll(async () => { await initOcc() })
@@ -266,6 +266,47 @@ describe('joint origins snapped to geometry', () => {
     expect(hit.frame.origin[2]).toBeCloseTo(35, 6)
     expect(hit.frame.z[2]).toBeCloseTo(1, 6)
     expect(persistentName(spec)).toBe(name0)
+  })
+})
+
+describe('joint origins follow the model', () => {
+  async function plateAndArm() {
+    const base = newComponent('Base')
+    const baseBox = await addBox(box(20, 20, 10))
+    activateOcc(null)
+    const arm = newComponent('Arm')
+    const armBox = await addBox(box(6, 6, 6, [30, 0, 0]))
+    activateOcc(null)
+    setGrounded(base.occ, true)
+    const bodyOf = (id: string) => doc().geometry.find((b) => b.id === id)!
+    const top = snapPoints(bodyOf(baseBox)).find((p) => p.kind === 'face' && p.z[2] > 0.99)!
+    const bottom = snapPoints(bodyOf(armBox)).find((p) => p.kind === 'face' && p.z[2] < -0.99)!
+    const id = addJoint({
+      name: 'Rest', type: 'rigid', flip: true, offset: [0, 0, 0], angle: 0, ...newJointDefaults('rigid'),
+      a: { occ: base.path, frame: snapFrame(top), snap: snapSpec(bodyOf(baseBox), top, base.path) },
+      b: { occ: arm.path, frame: snapFrame(bottom), snap: snapSpec(bodyOf(armBox), bottom, arm.path) },
+    })
+    return { base, arm, baseBox, armBox, id }
+  }
+  const armZ = (geometry = doc().geometry) => placeAssembly(doc().assembly, {}, null, 0, geometry).worlds.o2[14]
+
+  it('the arm rests on the base, and keeps resting on it when the base is made taller', async () => {
+    const { baseBox } = await plateAndArm()
+    expect(armZ()).toBeCloseTo(10, 6)
+    doc().updateFeature(baseBox, box(20, 20, 25) as never)
+    await regenerate()
+    expect(armZ()).toBeCloseTo(25, 6)
+    // the frames written in the joint are the ones from when it was made: only the live resolution moves it
+    expect(placeAssembly(doc().assembly).worlds.o2[14]).toBeCloseTo(10, 6)
+  })
+
+  it('a joint origin whose face is gone keeps its last frame and says so', async () => {
+    const { baseBox, id } = await plateAndArm()
+    doc().removeFeature(baseBox)
+    await regenerate()
+    const p = placeAssembly(doc().assembly, {}, null, 0, doc().geometry)
+    expect(p.frameErrors[id]).toMatch(/lost the face/)
+    expect(armZ()).toBeCloseTo(10, 6)
   })
 })
 

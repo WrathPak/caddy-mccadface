@@ -9,6 +9,8 @@ import { del, get, set } from 'idb-keyval'
 import { useDoc, activeDefId } from '@/doc/store'
 import { regenerate } from '@/doc/engine'
 import { parseProject } from '@/io/projectParse'
+import { pickFiles } from '@/io/files'
+import { toast } from '@/ui/Modal'
 import { identity } from './matrix'
 import { nextId } from './actions'
 import { useAssemblyRuntime } from './runtime'
@@ -18,6 +20,8 @@ import type { ExternalRef } from './types'
 export interface ExternalSource { read(): Promise<{ bytes: Uint8Array; stamp: number }> }
 
 const sources = new Map<string, ExternalSource>()
+/** The file handles behind the sources, so they can be stored again when the document is saved under another name. */
+const handles = new Map<string, HandleLike>()
 export const setExternalSource = (extId: string, s: ExternalSource | null) => { if (s) sources.set(extId, s); else sources.delete(extId) }
 export const hasExternalSource = (extId: string) => sources.has(extId)
 
@@ -67,6 +71,7 @@ export async function insertExternal(bytes: Uint8Array, fileName: string, opts: 
     if (opts.source) setExternalSource(ext, opts.source)
     else if (opts.handle) {
       setExternalSource(ext, handleSource(opts.handle))
+      handles.set(ext, opts.handle)
       try { await set(handleKey(hostKey, ext), opts.handle) } catch { /* storage unavailable: the component still works, it just cannot be re-read automatically */ }
     }
   }
@@ -124,6 +129,31 @@ export async function applyExternalUpdate(extId: string, bytes?: Uint8Array, sta
   await regenerate()
 }
 
+/**
+ * Update from file: re-read the file the component is linked to and take it when it changed. A component whose file this browser
+ * cannot read by itself (no stored file handle) asks for the file.
+ */
+export async function refreshExternal(extId: string): Promise<void> {
+  const ref = useDoc.getState().assembly.externals.find((e) => e.id === extId)
+  if (!ref) return
+  try {
+    if (sources.has(extId)) {
+      await checkExternals()
+      const note = useAssemblyRuntime.getState().extChanged[extId]
+      if (note) return void (await applyExternalUpdate(extId))
+      return void toast(`${ref.fileName} has not changed.`)
+    }
+    const [f] = await pickFiles('.caddy')
+    if (!f) return
+    const bytes = new Uint8Array(await f.arrayBuffer())
+    if (hashBytes(bytes) === ref.hash) return void toast(`${f.name} is the version already in this document.`)
+    await applyExternalUpdate(extId, bytes, f.lastModified)
+    toast(`Updated from ${f.name}.`)
+  } catch (e) {
+    toast(`Update failed: ${e instanceof Error ? e.message : String(e)}`, 'error')
+  }
+}
+
 /** Keep the document's copy and stop asking about this change (until the file changes again). */
 export function dismissExternalUpdate(extId: string) {
   const ref = useDoc.getState().assembly.externals.find((e) => e.id === extId)
@@ -146,6 +176,7 @@ export async function restoreExternals(): Promise<void> {
       const h = await get<HandleLike>(handleKey(hostKey, ref.id))
       if (!h) continue
       const perm = (await h.queryPermission?.({ mode: 'read' })) ?? 'granted'
+      handles.set(ref.id, h)
       if (perm === 'granted') setExternalSource(ref.id, handleSource(h))
       else pendingPermission.set(ref.id, h)
     } catch { /* no storage, no handle */ }
@@ -166,8 +197,16 @@ export async function grantExternalAccess(extId: string): Promise<boolean> {
   return true
 }
 
+/** Store the file handles of the linked components under the document's current name. */
+export async function persistExternalHandles() {
+  for (const [ext, h] of handles) {
+    try { await set(handleKey(hostKey, ext), h) } catch { /* storage unavailable */ }
+  }
+}
+
 export async function forgetExternal(extId: string) {
   sources.delete(extId)
+  handles.delete(extId)
   pendingPermission.delete(extId)
   try { await del(handleKey(hostKey, extId)) } catch { /* nothing stored */ }
 }

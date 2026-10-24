@@ -251,7 +251,8 @@ export function solveAssembly(data: SolveInput, drive: DriveMap = {}): SolveResu
   for (const members of setList) {
     const joints = active.filter((j) => members.includes(j.a.occ))
     const grounded = members.filter((m) => byId.get(m)?.grounded)
-    const rootIds = grounded.length ? grounded : [members[0]]
+    // with nothing grounded the first joint's first origin stays put and the rest move to it
+    const rootIds = grounded.length ? grounded : [joints[0]?.a.occ ?? members[0]]
     const roots = new Map<string, Mat4>()
     for (const r of rootIds) roots.set(r, worldOf(r, byId, over))
 
@@ -287,10 +288,13 @@ export function solveAssembly(data: SolveInput, drive: DriveMap = {}): SolveResu
     }
     if (res > 1e-4) {
       overConstrained = true
-      const msg = unknownsMessage(joints, drive, dependent)
-      for (const j of joints) if (!sol.tree.has(j.id)) errors[j.id] = msg
-      // tell the user which joints form the loop: every joint of a set that has a closing joint
-      for (const j of joints) errors[j.id] ??= 'Part of a loop of joints that cannot be satisfied together'
+      // every joint on a loop that does not close gets the error: the closing joint and the joints that connect its two ends
+      const byJoint = new Map(joints.map((j) => [j.id, j]))
+      for (const closing of joints.filter((j) => !sol.tree.has(j.id))) {
+        const loop = loopOf(closing, sol.via, byJoint)
+        const msg = loopMessage(loop, drive, dependent)
+        for (const j of loop) errors[j.id] ??= msg
+      }
     }
     for (const [o, w] of Object.entries(sol.poses)) { over[o] = w; placed.add(o) }
     Object.assign(via, sol.via)
@@ -302,9 +306,30 @@ export function solveAssembly(data: SolveInput, drive: DriveMap = {}): SolveResu
   return { worlds, values, errors, linkErrors, placed, over, via, overConstrained }
 }
 
-function unknownsMessage(joints: Joint[], drive: DriveMap, dependent: Set<string>): string {
-  const free = joints.some((j) => dofsOf(j.type).some((d) => drive[j.id]?.[d.key] === undefined && !dependent.has(j.id + ':' + d.key)))
+/** The joints of the loop a closing joint makes: itself plus the tree joints that connect its two ends. */
+function loopOf(closing: Joint, via: Record<string, string>, byJoint: Map<string, Joint>): Joint[] {
+  const path = (occ: string) => {
+    const nodes = [occ], js: Joint[] = []
+    let cur = occ
+    for (let guard = 0; via[cur] && guard < 1000; guard++) {
+      const j = byJoint.get(via[cur])!
+      js.push(j)
+      cur = j.a.occ === cur ? j.b.occ : j.a.occ
+      nodes.push(cur)
+    }
+    return { nodes, js }
+  }
+  const pa = path(closing.a.occ), pb = path(closing.b.occ)
+  const common = pb.nodes.find((n) => pa.nodes.includes(n))
+  const upto = (p: { nodes: string[]; js: Joint[] }) => (common === undefined ? p.js : p.js.slice(0, p.nodes.indexOf(common)))
+  return [closing, ...upto(pa), ...upto(pb)]
+}
+
+function loopMessage(loop: Joint[], drive: DriveMap, dependent: Set<string>): string {
+  const dofs = loop.flatMap((j) => dofsOf(j.type).map((d) => ({ j, d })))
+  if (!dofs.length) return 'Over-constrained: the joints of this loop hold the components in places that cannot all be true at once. Remove one of them or change an offset.'
+  const free = dofs.some(({ j, d }) => drive[j.id]?.[d.key] === undefined && !dependent.has(j.id + ':' + d.key))
   return free
-    ? 'Over-constrained: this joint closes a loop of components that cannot reach each other with the joint limits'
-    : 'Over-constrained: every joint of this loop is fixed (driven or linked), so the loop cannot close'
+    ? 'Over-constrained: the joints of this loop cannot reach each other (check the joint origins and limits).'
+    : 'Over-constrained: every movable joint of this loop is driven or linked, so the loop cannot close.'
 }

@@ -1,6 +1,7 @@
 import * as D from '@radix-ui/react-dropdown-menu'
 import { useUi, type SelectionFilter } from '@/store/ui'
 import { useHairView } from '@/features/hair/store'
+import { useDoc } from '@/doc/store'
 import { SettingsPopover } from './SettingsPopover'
 import { SnapPopover } from '@/sketch/SnapPopover'
 
@@ -9,6 +10,7 @@ const FILTERS: SelectionFilter[] = ['body', 'face', 'edge']
 export function StatusBar() {
   const { units, setUnits, snap, toggleSnap, selectionFilter, setSelectionFilter, triangles, kernelBusy, selection } = useUi()
   const hair = useHairView()
+  const hasComponents = useDoc((s) => s.assembly.occurrences.length > 0)
   const section = useUi((s) => s.section)
   const hs = hair.result?.stats
   return (
@@ -31,7 +33,7 @@ export function StatusBar() {
         </D.Trigger>
         <D.Portal>
           <D.Content className="menu" side="top" align="start">
-            {FILTERS.map((f) => <D.Item key={f} className="menu-item" style={{ textTransform: 'capitalize' }} onSelect={() => setSelectionFilter(f)}>{f}</D.Item>)}
+            {(hasComponents ? [...FILTERS, 'component' as const] : FILTERS).map((f) => <D.Item key={f} className="menu-item" style={{ textTransform: 'capitalize' }} onSelect={() => setSelectionFilter(f)}>{f}</D.Item>)}
           </D.Content>
         </D.Portal>
       </D.Root>

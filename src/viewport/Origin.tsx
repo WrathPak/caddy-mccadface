@@ -8,6 +8,8 @@ import { planeQuaternion } from '@/sketch/plane'
 import { useUi } from '@/store/ui'
 import { bbox } from '@/kernel/types'
 import { useVpColors } from './colors'
+import { useInstances } from '@/assembly/place'
+import type { Instance } from '@/assembly/instances'
 
 /** Rounds up to a tidy value (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8 x 10^n) so the plane edges land on round numbers. */
 export function niceCeil(v: number): number {
@@ -26,9 +28,24 @@ export function sceneHalfSize(bodies: { mesh: { positions: Float32Array } }[]): 
   return Math.max(15, niceCeil(r * 1.1))
 }
 
+/** Like sceneHalfSize, for the bodies where they are drawn (instances of components are placed). */
+export function instancesHalfSize(instances: Instance[]): number {
+  let r = 0
+  for (const i of instances) {
+    const p = i.body.mesh.positions, m = i.world
+    for (let k = 0; k < p.length; k += 3) {
+      const x = m[0] * p[k] + m[4] * p[k + 1] + m[8] * p[k + 2] + m[12]
+      const y = m[1] * p[k] + m[5] * p[k + 1] + m[9] * p[k + 2] + m[13]
+      const z = m[2] * p[k] + m[6] * p[k + 1] + m[10] * p[k + 2] + m[14]
+      r = Math.max(r, Math.abs(x), Math.abs(y), Math.abs(z))
+    }
+  }
+  return Math.max(15, niceCeil(r * 1.1))
+}
+
 export function useSceneHalfSize() {
-  const geometry = useDoc((s) => s.geometry)
-  return useMemo(() => sceneHalfSize(geometry), [geometry])
+  const instances = useInstances()
+  return useMemo(() => instancesHalfSize(instances), [instances])
 }
 
 /** Rectangle outline (closed) of a square plane of half-size `s`. */
