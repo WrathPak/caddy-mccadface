@@ -31,6 +31,8 @@ export interface TextureInput {
   projection: 'triplanar' | 'uv'
   /** edge length of the refined mesh, mm; 0 picks one from the pattern */
   detail: number
+  /** previews make the mesh this many times coarser (1 = as asked) */
+  coarsen?: number
   /** largest number of triangles the result may have */
   maxTris: number
 }
@@ -108,7 +110,7 @@ export function applyTexture(a: TextureInput): TextureResult {
   const scale = Math.max(0.05, a.scale)
 
   // detail: what was asked for, or a fraction of the pattern's smallest feature; then whatever fits the triangle budget
-  let L = a.detail > 0 ? a.detail : Math.max(0.1, scale * (def?.feature ?? 0.1))
+  let L = (a.detail > 0 ? a.detail : Math.max(0.1, scale * (def?.feature ?? 0.1))) * (a.coarsen ?? 1)
   const rest = T - regionTris
   let limited = false
   while (estimateTriangles(regionArea, L) + rest > a.maxTris && L < 1e4) { L *= 1.15; limited = true }

@@ -51,8 +51,8 @@ function TextureMesh() {
   useEffect(() => { invalidate() }, [geo, invalidate])
   if (!geo) return null
   return (
-    <mesh geometry={geo} raycast={() => null} renderOrder={3}>
-      <meshStandardMaterial color={colors.body} roughness={0.62} metalness={0.05} side={DoubleSide} />
+    <mesh geometry={geo} raycast={() => null} renderOrder={6}>
+      <meshStandardMaterial color={colors.body} roughness={0.62} metalness={0.05} side={DoubleSide} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} />
     </mesh>
   )
 }

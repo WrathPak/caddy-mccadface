@@ -145,7 +145,7 @@ registerOp<TextureOpArgs>('textureFace', async (a, h) => {
     }
     const input: TextureInput = { ...a, positions: mesh.positions, indices: mesh.indices, region: flags }
     // a preview works on a coarse version of the model, the final result at the requested detail
-    if (a.preview) input.maxTris = Math.min(a.maxTris, PREVIEW_TRIS)
+    if (a.preview) { input.maxTris = Math.min(a.maxTris, PREVIEW_TRIS); input.coarsen = 2 }
     const r = applyTexture(input)
     const check = solidOf(W, r.mesh, 'The textured model', own)
     if (check.genus() < 0) throw new Error('The textured model is not valid')

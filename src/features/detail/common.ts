@@ -29,7 +29,23 @@ export function centroidOf(positions: Float32Array, indices: Uint32Array): V3 {
     z += (w * (positions[i + 2] + positions[j + 2] + positions[k + 2])) / 3
     a += w
   }
-  return a ? [+(x / a).toFixed(3), +(y / a).toFixed(3), +(z / a).toFixed(3)] : [0, 0, 0]
+  if (!a) return [0, 0, 0]
+  const c: V3 = [x / a, y / a, z / a]
+  // a centre that is not on the surface (the middle of a round face lies on its axis): use the point of the faces that looks toward the default view
+  let near = Infinity, best: V3 = c, bestScore = -Infinity
+  for (let t = 0; t < indices.length; t += 3) {
+    const m: V3 = [0, 0, 0]
+    for (let k = 0; k < 3; k++) for (let d = 0; d < 3; d++) m[d] += positions[indices[t + k] * 3 + d] / 3
+    const i = indices[t] * 3, j = indices[t + 1] * 3, k2 = indices[t + 2] * 3
+    const ux = positions[j] - positions[i], uy = positions[j + 1] - positions[i + 1], uz = positions[j + 2] - positions[i + 2]
+    const vx = positions[k2] - positions[i], vy = positions[k2 + 1] - positions[i + 1], vz = positions[k2 + 2] - positions[i + 2]
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, nl = Math.hypot(nx, ny, nz) || 1
+    near = Math.min(near, Math.abs(((c[0] - m[0]) * nx + (c[1] - m[1]) * ny + (c[2] - m[2]) * nz) / nl))
+    const score = m[0] - m[1] + 0.5 * m[2]
+    if (score > bestScore) { bestScore = score; best = m }
+  }
+  const p = near > 0.75 ? best : c
+  return [+p[0].toFixed(3), +p[1].toFixed(3), +p[2].toFixed(3)]
 }
 
 /**
