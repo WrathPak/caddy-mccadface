@@ -42,6 +42,9 @@ export class App {
   allow(re: RegExp) { this.allowed.push(re) }
 
   async open() {
+    // E2E_CPU_THROTTLE=4 runs the page on a 4x slower CPU, like a busy CI runner
+    const slow = Number(process.env.E2E_CPU_THROTTLE ?? 1)
+    if (slow > 1) await (await this.page.context().newCDPSession(this.page)).send('Emulation.setCPUThrottlingRate', { rate: slow })
     await this.page.goto('/')
     await this.page.waitForFunction(() => !!(window as any).__caddy) // eslint-disable-line
     await expect(this.page.locator('canvas').first()).toBeVisible()
@@ -84,6 +87,8 @@ export class App {
     await this.page.waitForFunction(() => !!(window as any).__caddy?.three) // eslint-disable-line
     // software WebGL can take over a hundred milliseconds per frame, so one unchanged reading proves nothing: require several
     const read = () => this.page.evaluate(() => JSON.stringify((window as any).__caddy.three.camera.matrixWorld.elements)) // eslint-disable-line
+    // run the camera's animation to its end on stepped time, so a slow frame rate can't leave it half way
+    await this.page.evaluate(() => (window as any).__caddy.nav.settle()) // eslint-disable-line
     let prev = await read()
     let same = 0
     for (let i = 0; i < 80 && same < 3; i++) {

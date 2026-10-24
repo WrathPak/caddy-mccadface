@@ -33,11 +33,19 @@ const navTools = {
       await new Promise<void>((r) => requestAnimationFrame(() => r()))
     }
   },
+  /** Let running camera animations and inertia finish on stepped time, however slow the renderer is. */
+  settle: async (ms = 500) => {
+    const wasFrozen = navClock.isFrozen()
+    navClock.freeze()
+    await navTools.step(ms, 250)
+    if (!wasFrozen) navClock.unfreeze()
+  },
 }
 
 export function installDebugHandle() {
   ;(window as unknown as { __caddy: unknown }).__caddy = {
     doc: useDoc, ui: useUi, sketch: useSketch, hair: useHairView, preview: usePreview, planes: usePlanes, paint: useHairPaint, bus: viewportBus,
+    ...((window as unknown as { __caddyExtra?: object }).__caddyExtra ?? {}),
     nav: navTools, runCommand, regenerate, importFiles, saveDocument, serializeProject, parseProject,
   }
 }

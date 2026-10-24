@@ -3,8 +3,9 @@ import { gridSnapStep } from '@/viewport/gridMath'
 import { ORIGIN, type SketchModel, type Vec2 } from './types'
 import { closestOnArc, closestOnCircle, closestOnSegment, dist, mid } from './geom'
 import { circleOf, lineEnds, pos } from './model'
+import { closestOnDerived, isDerived } from './curves'
 
-export type SnapKind = 'point' | 'origin' | 'center' | 'mid' | 'on' | 'axis' | 'grid' | 'free'
+export type SnapKind = 'point' | 'origin' | 'center' | 'mid' | 'on' | 'axis' | 'grid' | 'free' | 'quad' | 'int' | 'infer'
 
 export interface Guide { from: Vec2; to: Vec2 }
 export interface Snap {
@@ -18,6 +19,16 @@ export interface Snap {
   h?: boolean
   v?: boolean
   guides: Guide[]
+  /** relations inferred for the segment being drawn (see infer.ts), applied as constraints when the point is placed */
+  rel?: import('./infer').Rel[]
+  /** reference curves to highlight */
+  refs?: string[]
+  /** intersection: the two curves; quadrant: the circle's centre and whether the point is level (h) or above / below (v) it */
+  entityIds?: string[]
+  quad?: { center: string; axis: 'h' | 'v' }
+  hint?: string
+  /** unit direction of the inferred ray */
+  dir?: Vec2
 }
 
 export interface SnapCtx {
@@ -81,9 +92,11 @@ export function snap(raw: Vec2, ctx: SnapCtx): Snap {
     } else if (e.type === 'circle') {
       const { c, r } = circleOf(m, e)
       q = closestOnCircle(raw, c, r)
-    } else {
+    } else if (e.type === 'arc') {
       q = closestOnArc(raw, pos(m, e.c), pos(m, e.s), pos(m, e.e))
-    }
+    } else if (isDerived(e)) {
+      q = closestOnDerived(m, e, raw).pt
+    } else continue
     const d = dist(raw, q)
     if (d < px(7) && (!on || d < on.d)) on = { snap: { ...out, pos: q, kind: 'on', entityId: e.id }, d }
   }

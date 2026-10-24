@@ -15,6 +15,7 @@ import { ViewCubeSync } from './ViewCube'
 import { useVpColors } from './colors'
 import { navClock } from './navClock'
 import { ArrowManipulator, PreviewLayer, ProfilePicker } from './preview'
+import { ConstructLayer } from '@/features/modeling-tools/ConstructLayer'
 import { SketchOverlay } from '@/sketch/SketchOverlay'
 import { SketchDisplay } from '@/sketch/SketchDisplay'
 import { PlanePicker } from '@/sketch/PlanePicker'
@@ -125,6 +126,7 @@ export function Scene() {
       <PreviewLayer />
       <ProfilePicker />
       <ArrowManipulator />
+      <ConstructLayer />
       <MeasureOverlay />
       <HairRegionOverlay />
       <HairPreviewLayer />

@@ -97,3 +97,18 @@
 .sk-keys { font: 500 9px var(--font-ui); color: var(--text-faint); padding: 0 2px; }
 @keyframes sk-blink { 50% { opacity: 0; } }
 .sk-tip-input { background: var(--bg-input); border: 1px solid var(--accent); border-radius: 3px; color: var(--text); padding: 1px 4px; outline: none; }
+
+/* options bar of the newer sketch tools */
+.sk-toolbar {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 92%;
+  padding: 4px 10px; font: 500 11px var(--font-ui); color: var(--text);
+  background: var(--bg-2); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow-float); z-index: 5;
+}
+.sk-toolbar b { font-weight: 600; color: var(--accent); }
+.sk-opt { display: inline-flex; align-items: center; gap: 4px; }
+.sk-opt span { color: var(--text-dim); }
+.sk-opt input:not([type='checkbox']), .sk-opt select { width: 64px; height: 20px; padding: 0 4px; font: 11px var(--font-mono); color: var(--text); background: var(--bg-1); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+.sk-opt select { width: auto; }
+.sk-opt input[data-testid='sk-opt-text'], .sk-opt input[data-testid='sk-text-edit'] { width: 150px; }
+.sk-note { color: var(--text-dim); }

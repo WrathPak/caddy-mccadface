@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { Path, Shape, ShapeGeometry } from 'three'
 import { sampleArc, loopPoly, polar, TAU, arcInfo } from './geom'
 import { circleOf, pos } from './model'
+import { derivedPolys, isDerived } from './curves'
 import type { Entity, Profile, SketchData, SketchModel, Vec2 } from './types'
 
 export interface Polyline { id: string; pts: Vec2[]; construction: boolean; ref: boolean; broken: boolean }
@@ -11,10 +12,16 @@ export function entityPolylines(m: SketchModel): Polyline[] {
   const out: Polyline[] = []
   for (const e of m.entities) {
     if (e.type === 'point') continue
+    if (isDerived(e)) {
+      for (const pts of derivedPolys(m, e)) out.push({ id: e.id, pts: e.type === 'ellipse' || (e.type === 'spline' && e.closed) || e.type === 'text' ? closeLoop(pts) : pts, construction: !!e.construction, ref: !!e.ref, broken: !!e.broken })
+      continue
+    }
     out.push({ id: e.id, pts: curvePoints(m, e), construction: !!e.construction, ref: !!e.ref, broken: !!e.broken })
   }
   return out
 }
+
+const closeLoop = (pts: Vec2[]): Vec2[] => (pts.length > 1 && (pts[0][0] !== pts[pts.length - 1][0] || pts[0][1] !== pts[pts.length - 1][1]) ? [...pts, pts[0]] : pts)
 
 export function curvePoints(m: SketchModel, e: Entity): Vec2[] {
   if (e.type === 'line') return [pos(m, e.p1), pos(m, e.p2)]
@@ -29,6 +36,7 @@ export function curvePoints(m: SketchModel, e: Entity): Vec2[] {
     const i = arcInfo(c, s, t)
     return [s, ...sampleArc(c, i.r, i.a0, i.a1, Math.PI / 48)]
   }
+  if (isDerived(e)) return derivedPolys(m, e).flat()
   return []
 }
 

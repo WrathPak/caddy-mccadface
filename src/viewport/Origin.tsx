@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import { DoubleSide, type Quaternion } from 'three'
 import { useDoc } from '@/doc/store'
-import { usePlanes } from '@/sketch/planes'
+import { PLANE_FEATURES, usePlanes } from '@/sketch/planes'
 import { planeQuaternion } from '@/sketch/plane'
 import { useUi } from '@/store/ui'
 import { bbox } from '@/kernel/types'
@@ -86,7 +86,7 @@ export function ConstructionPlanes() {
   const hidden = useUi((st) => st.hiddenIds)
   const s = useSceneHalfSize()
   const list = features
-    .filter((f, i) => f.type === 'offsetPlane' && i < rollback && !f.suppressed && data[f.id] && !hidden[f.id])
+    .filter((f, i) => PLANE_FEATURES.has(f.type) && i < rollback && !f.suppressed && data[f.id] && !hidden[f.id])
     .map((f) => ({ id: f.id, plane: data[f.id] }))
   if (data.preview) list.push({ id: 'preview', plane: data.preview })
   return (
