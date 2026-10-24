@@ -32,7 +32,7 @@ function useGeo(m: Mesh3 | null | undefined) {
 }
 
 /** True while the composer (ambient occlusion) is on: the hair is then drawn by HairOverlayPass instead of the main pass. */
-export const useHairSplit = () => useUi((s) => s.ssao && !s.section.on)
+export const useHairSplit = () => useUi((s) => s.aoActive)
 
 export function HairPreviewLayer() {
   const result = useHairView((s) => s.result)
