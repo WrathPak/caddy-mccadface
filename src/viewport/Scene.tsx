@@ -1,9 +1,6 @@
-import { useEffect, useRef } from 'react'
-import { useThree } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { OrthographicCamera, PerspectiveCamera } from '@react-three/drei'
-import { EffectComposer, SSAO } from '@react-three/postprocessing'
-import { BlendFunction } from 'postprocessing'
-import type { Object3D } from 'three'
+import { EffectComposer, N8AO } from '@react-three/postprocessing'
 import { useUi } from '@/store/ui'
 import { DebugProbe } from '@/app/debug'
 import { Bodies } from './Bodies'
@@ -23,33 +20,19 @@ import { HairDirectionOverlay, HairOverlayPass, HairPreviewLayer } from '@/featu
 import { PrintCanvas } from '@/features/print/PrintCanvas'
 
 /**
- * SSAO reads the depth / normal pre-pass. Translucent overlays that do not write depth (the infinite grid, origin
- * planes, selection tints, x-ray bodies) must not be part of it, otherwise the AO is computed against them and every
- * face that crosses one picks up speckled shadows. The pre-pass renders the whole scene, so hide those objects for it.
+ * N8AO renders its own depth pre-pass and already keeps translucent overlays that do not write depth (infinite grid, origin
+ * planes, selection tints, x-ray bodies) out of the AO. Anything flagged `userData.noAo` is additionally marked as not
+ * receiving AO, so it is drawn on top of the result untouched.
  */
-function useAoOverlayMask(composer: { current: unknown }, enabled: boolean) {
+function useAoOverlayMask(enabled: boolean) {
   const scene = useThree((s) => s.scene)
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const passes = (composer.current as any)?.passes as { name?: string; render: (...a: unknown[]) => void }[] | undefined
-    const pass = passes?.find((p) => p.name === 'NormalPass')
-    if (!enabled || !pass) return
-    const orig = pass.render
-    pass.render = function (this: unknown, ...a: unknown[]) {
-      const hidden: Object3D[] = []
-      scene.traverse((o) => {
-        const m = (o as { material?: { transparent?: boolean; depthWrite?: boolean } | { transparent?: boolean; depthWrite?: boolean }[] }).material
-        const mat = Array.isArray(m) ? m[0] : m
-        if (o.visible && ((mat && mat.transparent && mat.depthWrite === false) || o.userData.noAo)) { o.visible = false; hidden.push(o) }
-      })
-      try { orig.apply(this, a) } finally { for (const o of hidden) o.visible = true }
-    }
-    return () => { pass.render = orig }
+  useFrame(() => {
+    if (!enabled) return
+    scene.traverse((o) => { if (o.userData.noAo && !o.userData.cannotReceiveAO) o.userData.cannotReceiveAO = true })
   })
 }
 
 export function Scene() {
-  const composer = useRef<unknown>(null)
   const projection = useUi((s) => s.projection)
   const ssao = useUi((s) => s.ssao)
   const showOrigin = useUi((s) => s.showOrigin)
@@ -57,7 +40,7 @@ export function Scene() {
   const sketching = useUi((s) => s.sketchMode)
   const sectioned = useUi((s) => s.section.on)
   const colors = useVpColors()
-  useAoOverlayMask(composer, ssao)
+  useAoOverlayMask(ssao)
 
   return (
     <>
@@ -93,8 +76,8 @@ export function Scene() {
       {import.meta.env.DEV && <DebugProbe />}
       {ssao && !sectioned && <HairOverlayPass />}
       {ssao && !sectioned && (
-        <EffectComposer ref={composer as never} enableNormalPass multisampling={0}>
-          <SSAO blendFunction={BlendFunction.MULTIPLY} samples={16} rings={4} radius={0.06} intensity={8} luminanceInfluence={0.5} bias={0.1} />
+        <EffectComposer multisampling={4}>
+          <N8AO halfRes depthAwareUpsampling quality="medium" aoRadius={14} screenSpaceRadius={false} distanceFalloff={1} intensity={1.6} aoSamples={16} denoiseSamples={8} denoiseRadius={12} />
         </EffectComposer>
       )}
     </>
