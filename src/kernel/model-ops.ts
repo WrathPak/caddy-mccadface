@@ -27,6 +27,14 @@ function loopDrawing(loop: Loop) {
     const { c, r } = loop[0]
     return draw([c[0] + r, c[1]]).threePointsArcTo([c[0] - r, c[1]], [c[0], c[1] + r]).threePointsArcTo([c[0] + r, c[1]], [c[0], c[1] - r]).close()
   }
+  // an untouched ellipse is drawn as the true ellipse (two half ellipses), not as its cubic approximation
+  const first = loop[0]
+  if (loop.length === 8 && first.k === 'b' && first.ell && loop.every((s) => s.k === 'b' && s.ell && Math.abs(s.ell.rx - first.ell!.rx) < 1e-9 && Math.abs(s.ell.ry - first.ell!.ry) < 1e-9)) {
+    const { c, rx, ry, rot } = first.ell
+    const ccw = isCcw(loop)
+    const a = first.a, opp: Vec2 = [2 * c[0] - a[0], 2 * c[1] - a[1]]
+    return draw(a).ellipseTo(opp, rx, ry, rot, false, ccw).ellipseTo(a, rx, ry, rot, false, ccw).close()
+  }
   let pen = draw(start(loop[0]))
   for (const s of loop) {
     if (s.k === 'l') pen = pen.lineTo(s.b)

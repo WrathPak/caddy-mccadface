@@ -120,4 +120,25 @@ describe('inference', () => {
     const s = inferSnap([10, 7], ctx(m, [0, 0], [], { lock: { dir: [1, 0] } }))
     expect(s.pos[1]).toBeCloseTo(0, 9)
   })
+
+  it('perpendicular to a circle is radial: the line aims at the centre', () => {
+    const m = emptyModel()
+    const centre = addPoint(m, 50, 30)
+    const c = addCircle(m, centre, 10)
+    // from (0, 0) the centre lies along (50, 30)
+    const s = inferSnap([80, 48.6], ctx(m, [0, 0], [c.id]))
+    expect(s.rel?.[0]).toEqual({ type: 'radial', ref: c.id, center: centre })
+    expect(s.pos[1] / s.pos[0]).toBeCloseTo(0.6, 6)
+    expect(s.hint).toContain('radial')
+  })
+
+  it('tangent points only count where the arc really is', () => {
+    const m = emptyModel()
+    // a quarter arc in the upper right of a circle at (50, 0): the lower tangent point from the origin is not on it
+    const arc = addArc(m, addPoint(m, 50, 0), addPoint(m, 60, 0), addPoint(m, 50, 10))
+    const d = 50, r = 10, a = Math.acos(r / d)
+    const lower: Vec2 = [50 + r * Math.cos(Math.PI + a), r * Math.sin(Math.PI + a)]
+    const s = inferSnap([lower[0] + 0.3, lower[1] - 0.2], ctx(m, [0, 0], [arc.id]))
+    expect(s.rel?.some((r) => r.type === 'tangent') ?? false).toBe(false)
+  })
 })

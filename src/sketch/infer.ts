@@ -16,6 +16,8 @@ export type Rel =
   | { type: 'parallel' | 'perpendicular' | 'collinear' | 'equal'; ref: string }
   /** the new line is tangent to the arc / circle `ref`, either leaving its end `at` or touching it */
   | { type: 'tangent'; ref: string; at?: string }
+  /** perpendicular to a circle or arc: the line runs through its centre point `center` */
+  | { type: 'radial'; ref: string; center: string }
   | { type: 'horizontal' | 'vertical' }
 
 export interface InferCtx extends SnapCtx {
@@ -28,10 +30,10 @@ export interface InferCtx extends SnapCtx {
   lock?: { dir: Vec2 } | null
 }
 
-const GLYPH: Record<string, string> = { parallel: '∥', perpendicular: '⊥', collinear: '/', tangent: 'T', equal: '=', horizontal: 'H', vertical: 'V' }
+const GLYPH: Record<string, string> = { parallel: '∥', perpendicular: '⊥', collinear: '/', tangent: 'T', equal: '=', horizontal: 'H', vertical: 'V', radial: '⊥' }
 export const relGlyph = (r: Rel) => GLYPH[r.type]
 export const RELATION_TEXT: Record<string, string> = {
-  parallel: 'Parallel', perpendicular: 'Perpendicular', collinear: 'Extension', tangent: 'Tangent', equal: 'Equal length', horizontal: 'Horizontal', vertical: 'Vertical',
+  parallel: 'Parallel', perpendicular: 'Perpendicular', radial: 'Perpendicular (radial)', collinear: 'Extension', tangent: 'Tangent', equal: 'Equal length', horizontal: 'Horizontal', vertical: 'Vertical',
 }
 
 function lineRefs(m: SketchModel, ctx: InferCtx): { id: string; a: Vec2; b: Vec2 }[] {
@@ -158,6 +160,15 @@ function relationsFrom(raw: Vec2, A: Vec2, ctx: InferCtx): Snap | null {
       if (Math.abs(cross(d, sub(A, l.a))) < 1e-6) cands.push({ dir: d, rel: { type: 'collinear', ref: l.id } })
     }
   }
+  // perpendicular to a circle or an arc is radial: the line runs through its centre
+  if (flags.perpendicular) {
+    for (const id of ctx.woken) {
+      const e = entityById(m, id)
+      if (!e || (e.type !== 'circle' && e.type !== 'arc') || ex(ctx, id)) continue
+      const { c } = circleOf(m, e)
+      if (dist(c, A) > 1e-6) cands.push({ dir: norm(sub(c, A)), rel: { type: 'radial', ref: id, center: e.c } })
+    }
+  }
   if (flags.perpendicular) for (const l of refs) cands.push({ dir: perp(norm(sub(l.b, l.a))), rel: { type: 'perpendicular', ref: l.id } })
   if (flags.parallel) for (const l of refs) cands.push({ dir: norm(sub(l.b, l.a)), rel: { type: 'parallel', ref: l.id } })
   if (flags.horizontalVertical) {
@@ -174,6 +185,7 @@ function relationsFrom(raw: Vec2, A: Vec2, ctx: InferCtx): Snap | null {
       if (!e || (e.type !== 'circle' && e.type !== 'arc') || ex(ctx, id)) continue
       const { c, r } = circleOf(m, e)
       for (const t of tangentPoints(A, c, r)) {
+        if (e.type === 'arc' && !onArc(m, e, t)) continue
         if (dist(t, raw) < 10 * wpp) {
           return { pos: t, kind: 'infer', rel: [{ type: 'tangent', ref: id }], refs: [id], guides: [{ from: A, to: t }], hint: "Tangent" }
         }
@@ -195,6 +207,14 @@ function relationsFrom(raw: Vec2, A: Vec2, ctx: InferCtx): Snap | null {
     }
   }
   return null
+}
+
+/** Is the point on the arc's angular range? */
+function onArc(m: SketchModel, e: { c: string; s: string; e: string }, p: Vec2): boolean {
+  const c = pos(m, e.c), s = pos(m, e.s), t = pos(m, e.e)
+  const rel = (v: number, o: number) => ((v - o) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI)
+  const a0 = Math.atan2(s[1] - c[1], s[0] - c[0])
+  return rel(Math.atan2(p[1] - c[1], p[0] - c[0]), a0) <= rel(Math.atan2(t[1] - c[1], t[0] - c[0]), a0) + 1e-9
 }
 
 const ex = (ctx: InferCtx, id: string) => !!ctx.exclude?.has(id)

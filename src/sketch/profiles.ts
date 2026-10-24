@@ -20,7 +20,7 @@ export type Curve =
   | { k: 'l'; a: Vec2; b: Vec2; src?: string }
   | { k: 'a'; c: Vec2; r: number; a0: number; span: number; src?: string }
   | { k: 'c'; c: Vec2; r: number; src?: string }
-  | { k: 'b'; p: Bez; src?: string }
+  | { k: 'b'; p: Bez; src?: string; ell?: Extract<Seg, { k: 'b' }>['ell'] }
 
 /** Parameter of a point on a curve (line t in [0,1], arc/circle angle offset from a0 / 0). */
 export function paramOn(cv: Curve, p: Vec2): number {
@@ -127,7 +127,7 @@ export function detectProfiles(m: SketchModel): Profile[] {
       for (const chain of derivedSegs(m, e)) {
         for (const s of chain) {
           if (s.k === 'l') { if (dist(s.a, s.b) > EPS) curves.push({ k: 'l', a: s.a, b: s.b, src: s.id }) }
-          else if (s.k === 'b') curves.push({ k: 'b', p: [s.a, s.c1, s.c2, s.b], src: s.id })
+          else if (s.k === 'b') curves.push({ k: 'b', p: [s.a, s.c1, s.c2, s.b], src: s.id, ell: s.ell })
         }
       }
     }
@@ -176,7 +176,7 @@ export function detectProfiles(m: SketchModel): Profile[] {
     const bounds = [0, ...ts, max]
     for (let k = 0; k + 1 < bounds.length; k++) {
       const t0 = bounds[k], t1 = bounds[k + 1]
-      if (cv.k === 'b') pushEdge(pointAt(cv, t0), pointAt(cv, t1), { k: 'b', p: bezSub(cv.p, t0, t1), src: cv.src })
+      if (cv.k === 'b') pushEdge(pointAt(cv, t0), pointAt(cv, t1), { k: 'b', p: bezSub(cv.p, t0, t1), src: cv.src, ell: t0 <= 0 && t1 >= 1 ? cv.ell : undefined })
       else if (cv.k === 'l') pushEdge(pointAt(cv, t0), pointAt(cv, t1), { k: 'l', a: pointAt(cv, t0), b: pointAt(cv, t1), src: cv.src })
       else pushEdge(pointAt(cv, t0), pointAt(cv, t1), { k: 'a', c: cv.c, r: cv.r, a0: cv.a0 + t0, span: t1 - t0, src: cv.src })
     }
@@ -226,7 +226,7 @@ export function detectProfiles(m: SketchModel): Profile[] {
     const s = h.edge.seg
     const a = verts[h.from], b = verts[h.to]
     if (s.k === 'l') return { k: 'l', a, b, id: s.src }
-    if (s.k === 'b') return h.fwd ? { k: 'b', a, c1: s.p[1], c2: s.p[2], b, id: s.src } : { k: 'b', a, c1: s.p[2], c2: s.p[1], b, id: s.src }
+    if (s.k === 'b') return h.fwd ? { k: 'b', a, c1: s.p[1], c2: s.p[2], b, id: s.src, ell: s.ell } : { k: 'b', a, c1: s.p[2], c2: s.p[1], b, id: s.src, ell: s.ell }
     if (s.k === 'a') return { k: 'a', a, b, m: polar(s.c, s.r, s.a0 + s.span / 2), c: s.c, r: s.r, ccw: h.fwd, id: s.src }
     return { k: 'c', c: s.c, r: s.r, id: s.src }
   }

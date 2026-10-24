@@ -24,8 +24,15 @@ function ConfigDialog() {
   const shown = (c: Config, name: string) => {
     const scope = setUserParams(effectiveParams(params, [c], c.name))
     setUserParams(effectiveParams(params, configs, active))
-    return scope.errors[name] ? 'error' : formatParam(scope.values[name])
+    return scope.errors[name] ?? formatParam(scope.values[name])
   }
+  const failing = (c: Config, name: string) => !!c.values[name]?.trim() && !!bad(c, name)
+  const bad = (c: Config, name: string) => {
+    const scope = setUserParams(effectiveParams(params, [c], c.name))
+    setUserParams(effectiveParams(params, configs, active))
+    return scope.errors[name]
+  }
+  const broken = rows.some((r) => params.some((p) => failing(r, p.name)))
   const apply = () => {
     useDoc.getState().setConfigs(rows.map((r) => ({ name: r.name.trim(), values: Object.fromEntries(Object.entries(r.values).filter(([, v]) => v.trim())) })))
     close()
@@ -38,7 +45,7 @@ function ConfigDialog() {
       footer={
         <>
           <button type="button" className="btn" onClick={close}>Cancel</button>
-          <button type="button" className="btn primary" disabled={dupe} title={dupe ? 'Every configuration needs its own name' : undefined} data-testid="config-ok" onClick={apply}>OK</button>
+          <button type="button" className="btn primary" disabled={dupe || broken} title={dupe ? 'Every configuration needs its own name' : broken ? 'Fix the cells marked in red first' : undefined} data-testid="config-ok" onClick={apply}>OK</button>
         </>
       }
     >
@@ -57,7 +64,7 @@ function ConfigDialog() {
               <Fragment key={i}>
                 <div className="inp"><input data-testid={`config-name-${i}`} value={r.name} spellCheck={false} onChange={(e) => upd(i, (c) => ({ ...c, name: e.target.value }))} /></div>
                 {params.map((p) => (
-                  <div key={p.name} className="inp" title={`= ${shown(r, p.name)}`}>
+                  <div key={p.name} className="inp" data-invalid={failing(r, p.name) || undefined} style={failing(r, p.name) ? { outline: '1px solid var(--danger, #d33)' } : undefined} title={failing(r, p.name) ? bad(r, p.name) : `= ${shown(r, p.name)}`}>
                     <input data-testid={`config-${i}-${p.name}`} value={r.values[p.name] ?? ''} placeholder={p.expr} spellCheck={false}
                       onChange={(e) => upd(i, (c) => ({ ...c, values: { ...c.values, [p.name]: e.target.value } }))} />
                   </div>

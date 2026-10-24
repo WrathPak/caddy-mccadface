@@ -25,7 +25,7 @@ import { circumcircle, cross, dist, norm, sub } from './geom'
 import { applyOffset, collectChain, sideOf, type Chain } from './offsetTool'
 import { encodeRef, refFromSelection } from '@/doc/refs'
 import { addProjected, reprojectModel } from './project'
-import { applyTrim, trimSpan } from './trim'
+import { applyTrim, prepareTrim, trimSpan } from './trim'
 import {
   arcThrough, fieldsFor, hasText, resolveEnd, valuesOf, wrapDeg, type DrawTool, type Typed, type Values,
 } from './typed'
@@ -382,6 +382,9 @@ function doSnap(raw: Vec2, mods: Mods, anchor?: Vec2, exclude?: Set<string>, anc
   const flags = useSnapFlags.getState().flags
   const r = inferSnap(raw, { ...ctx, flags, anchorId, woken, lock: mods.shift && lastDir ? { dir: lastDir } : null })
   if (!(mods.shift && lastDir)) lastDir = r.dir ?? null
+  // starting a circle or arc on the centre of another one makes them concentric (the new centre is bound to the old)
+  const t = get().tool
+  if (r.kind === 'center' && (t === 'circle' || t === 'arc') && !get().draft && flags.coincident) return { ...r, hint: 'Concentric' }
   return r
 }
 
@@ -390,6 +393,7 @@ function applyRelations(m: SketchModel, line: string, p1: string, p2: string, re
   for (const r of rel ?? []) {
     if (r.type === 'horizontal' || r.type === 'vertical') continue // placed by the caller
     if (r.type === 'parallel' || r.type === 'perpendicular' || r.type === 'equal') addConstraint(m, { type: r.type, refs: [line, r.ref] })
+    else if (r.type === 'radial') addConstraint(m, { type: 'pointOnLine', refs: [r.center, line] })
     else if (r.type === 'collinear') {
       addConstraint(m, { type: 'parallel', refs: [line, r.ref] })
       addConstraint(m, { type: 'pointOnLine', refs: [p1, r.ref] })
@@ -752,7 +756,8 @@ function downTrim(raw: Vec2) {
   const h = hitTest(s.model, raw, tolPx * wppNow, curvesOnly)
   if (!h) return
   const ok = commit((m) => {
-    const span = trimSpan(m, h, raw)
+    const target = prepareTrim(m, h, raw)
+    const span = trimSpan(m, target, raw)
     return span ? applyTrim(m, span) ?? undefined : 'Nothing to trim here'
   })
   if (ok) set({ trimHover: null, hover: null })

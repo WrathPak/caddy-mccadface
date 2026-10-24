@@ -81,7 +81,8 @@ function directPreview(d: Direct, { values, setValues }: PreviewCtx): PreviewHan
       }
       const r = await d.build(p, env, new RefReport())
       if (stale()) return
-      setPreview(r.bodies.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), [...r.bodies.map((b) => b.id), ...(r.remove ?? [])])
+      // the original stays in the scene, faint but pickable, so faces and edges can still be added or removed
+      setPreview(r.bodies.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), [], [...r.bodies.map((b) => b.id), ...(r.remove ?? [])])
     } catch { clearPreview() }
   })
   runner.schedule()

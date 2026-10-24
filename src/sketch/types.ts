@@ -100,7 +100,8 @@ export type Seg =
   | { k: 'a'; a: Vec2; m: Vec2; b: Vec2; c: Vec2; r: number; ccw: boolean; id?: string }
   | { k: 'c'; c: Vec2; r: number; id?: string }
   /** cubic Bezier from a to b with controls c1, c2 (spline, ellipse and text pieces) */
-  | { k: 'b'; a: Vec2; c1: Vec2; c2: Vec2; b: Vec2; id?: string }
+  /** `ell`: the piece is part of an untouched ellipse (the kernel then draws the true ellipse); rot in degrees */
+  | { k: 'b'; a: Vec2; c1: Vec2; c2: Vec2; b: Vec2; id?: string; ell?: { c: Vec2; rx: number; ry: number; rot: number } }
 export type Loop = Seg[]
 export interface Profile {
   /** stable-ish key: centroid + area (see profileKey) */

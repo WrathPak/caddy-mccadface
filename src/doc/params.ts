@@ -23,6 +23,16 @@ export function setUserParams(params: UserParam[]): Scope {
   const errors: Record<string, string> = {}
   for (const p of params) {
     if (!/^[A-Za-z_]\w*$/.test(p.name)) { errors[p.name] = 'Invalid name'; continue }
+    const words: string[] = p.expr.match(/[A-Za-z_]\w*/g) ?? ([] as string[])
+    if (words.includes(p.name)) {
+      errors[p.name] = `"${p.name}" is defined in terms of itself, which is circular. Use a plain number or another parameter instead.`
+      continue
+    }
+    const later = params.slice(params.indexOf(p) + 1).find((q) => words.includes(q.name) && !(q.name in values))
+    if (later) {
+      errors[p.name] = `"${p.name}" uses "${later.name}", which is listed after it. Move "${later.name}" above "${p.name}" (a parameter can only use ones above it).`
+      continue
+    }
     try {
       values[p.name] = evaluate(p.expr, { ...values })
     } catch (e) {

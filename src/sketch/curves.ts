@@ -168,7 +168,8 @@ export function textSegs(m: SketchModel, e: TextE): Seg[][] {
 export function derivedSegs(m: SketchModel, e: DerivedEntity): Seg[][] {
   if (e.type === 'text') return textSegs(m, e)
   const bz = e.type === 'spline' ? splineBeziers(m, e) : ellipseBeziers(pos(m, e.c), pos(m, e.m), e.r)
-  return bz.length ? [bz.map((b): Seg => ({ k: 'b', a: b[0], c1: b[1], c2: b[2], b: b[3], id: e.id }))] : []
+  const ell = e.type === 'ellipse' ? (() => { const c = pos(m, e.c), mp = pos(m, e.m); return { c, rx: dist(c, mp), ry: e.r, rot: (Math.atan2(mp[1] - c[1], mp[0] - c[0]) * 180) / Math.PI } })() : undefined
+  return bz.length ? [bz.map((b): Seg => ({ k: 'b', a: b[0], c1: b[1], c2: b[2], b: b[3], id: e.id, ...(ell ? { ell } : {}) }))] : []
 }
 
 const segBez = (s: Seg): Bez | null => (s.k === 'b' ? [s.a, s.c1, s.c2, s.b] : s.k === 'l' ? bezLine(s.a, s.b) : null)
