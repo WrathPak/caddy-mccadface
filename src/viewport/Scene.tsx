@@ -84,11 +84,13 @@ function AoLayer() {
   const active = wanted && idle
   useEffect(() => { setAoActive(active); return () => setAoActive(false) }, [active, setAoActive])
   useAoOverlayMask(active)
-  if (!active) return null
+  if (!wanted) return null
+  // the composer stays mounted while AO is wanted and is only switched off during camera motion (a disabled composer hands
+  // rendering back to the plain pipeline), so settling does not rebuild the render targets every time
   return (
     <>
-      <HairOverlayPass />
-      <EffectComposer multisampling={4}>
+      {active && <HairOverlayPass />}
+      <EffectComposer multisampling={4} enabled={active}>
         <N8AO halfRes depthAwareUpsampling quality={AO_LOW ? 'performance' : 'medium'} aoRadius={14} screenSpaceRadius={false} distanceFalloff={1} intensity={1.6} aoSamples={16} denoiseSamples={8} denoiseRadius={12} />
       </EffectComposer>
     </>
