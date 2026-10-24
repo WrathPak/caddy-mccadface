@@ -38,6 +38,8 @@ export function parseProject(bytes: Uint8Array): { data: DocData; blobs: Record<
     rollback: j.rollback ?? (j.features ?? []).length,
     userParams: j.userParams ?? [],
     bodyNames: j.bodyNames ?? {},
+    configs: j.configs ?? [],
+    activeConfig: j.activeConfig ?? null,
   }
   return { data, blobs }
 }

@@ -22,6 +22,8 @@ export interface Feature {
 }
 
 export interface UserParam { name: string; expr: string }
+/** A named set of values for user parameters (sizes S / M / L): `values` maps a parameter name to its expression in that configuration. */
+export interface Config { name: string; values: Record<string, string> }
 
 /** Everything undo/redo and save/load care about. */
 export interface DocData {
@@ -30,6 +32,9 @@ export interface DocData {
   rollback: number
   userParams: UserParam[]
   bodyNames: Record<string, string>
+  /** configurations (table of parameter sets) and the one in effect (null: the parameters as they are) */
+  configs: Config[]
+  activeConfig: string | null
 }
 
 export interface FeatureCtx {

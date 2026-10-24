@@ -128,7 +128,7 @@ export const dimCount = (m: SketchModel) => m.constraints.filter(isDim).length
 
 /** End point ids of a line / arc (empty for other entities). */
 export function endPointsOf(e: Entity | undefined): string[] {
-  return e?.type === 'line' ? [e.p1, e.p2] : e?.type === 'arc' ? [e.s, e.e] : []
+  return e?.type === 'line' ? [e.p1, e.p2] : e?.type === 'arc' ? [e.s, e.e] : e?.type === 'spline' && !e.closed ? [e.pts[0], e.pts[e.pts.length - 1]] : []
 }
 
 /** Point id (taken from curve `a`) where curves `a` and `b` meet end to end, or null. */

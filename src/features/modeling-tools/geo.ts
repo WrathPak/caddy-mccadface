@@ -20,14 +20,21 @@ import { toWorld } from '@/sketch/plane'
 export interface AxisDef { origin: Vec3; dir: Vec3 }
 
 /** Main-thread mirror of the construction axes and points (planes live in `usePlanes`). */
+/** A cosmetic thread: drawn as the major circle at the mouth of the hole and along its length. */
+export interface CosmeticThread { origin: Vec3; dir: Vec3; major: number; length: number; label: string }
+
 export const useConstruct = create<{
   axes: Record<string, AxisDef>
   points: Record<string, Vec3>
+  threads: Record<string, CosmeticThread[]>
   setAxis: (id: string, a: AxisDef | null) => void
   setPoint: (id: string, p: Vec3 | null) => void
+  setThreads: (id: string, t: CosmeticThread[] | null) => void
 }>((set) => ({
   axes: {},
   points: {},
+  threads: {},
+  setThreads: (id, t) => set((s) => { const threads = { ...s.threads }; if (t && t.length) threads[id] = t; else delete threads[id]; return { threads } }),
   setAxis: (id, a) => set((s) => { const axes = { ...s.axes }; if (a) axes[id] = a; else delete axes[id]; return { axes } }),
   setPoint: (id, p) => set((s) => { const points = { ...s.points }; if (p) points[id] = p; else delete points[id]; return { points } }),
 }))

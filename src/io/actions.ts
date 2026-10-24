@@ -114,6 +114,7 @@ export const exportSchema: ParamSchema = {
       options: [{ value: 'stl', label: 'STL' }, { value: '3mf', label: '3MF' }, { value: 'step', label: 'STEP' }],
     },
     { type: 'enum', key: 'scope', help: 'Export only the selected bodies, or every visible body.', label: 'Bodies', display: 'segmented', default: 'all', options: [{ value: 'selection', label: 'Selection' }, { value: 'all', label: 'All visible' }] },
+    { type: 'enum', key: 'configs', help: 'The model as it is now, or one file per configuration (sizes) of the document.', label: 'Configurations', display: 'segmented', default: 'active', options: [{ value: 'active', label: 'Current' }, { value: 'all', label: 'Every configuration' }], visibleWhen: () => useDoc.getState().configs.length > 0 },
   ],
 }
 
@@ -128,12 +129,29 @@ export function exportDialog() {
     onCancel: close,
     onOk: (v) => {
       close()
-      void exportBodies(v.format as 'stl' | '3mf' | 'step', v.scope as 'selection' | 'all')
+      if (v.configs === 'all' && useDoc.getState().configs.length) void exportAllConfigs(v.format as 'stl' | '3mf' | 'step', v.scope as 'selection' | 'all')
+      else void exportBodies(v.format as 'stl' | '3mf' | 'step', v.scope as 'selection' | 'all')
     },
   })
 }
 
-export async function exportBodies(format: 'stl' | '3mf' | 'step', scope: 'selection' | 'all') {
+/** One file per configuration: each is switched on, rebuilt and exported; the document ends up as it was. */
+export async function exportAllConfigs(format: 'stl' | '3mf' | 'step', scope: 'selection' | 'all') {
+  const d = useDoc.getState()
+  const keep = d.activeConfig
+  try {
+    for (const c of d.configs) {
+      useDoc.getState().setActiveConfig(c.name)
+      await regenerate()
+      await exportBodies(format, scope, '-' + c.name.replace(/[^\w.-]+/g, '_'))
+    }
+  } finally {
+    useDoc.getState().setActiveConfig(keep)
+    await regenerate()
+  }
+}
+
+export async function exportBodies(format: 'stl' | '3mf' | 'step', scope: 'selection' | 'all', suffix = '') {
   const s = useDoc.getState()
   const ui = useUi.getState()
   const selIds = new Set(ui.selection.map((r) => r.id))
@@ -141,7 +159,7 @@ export async function exportBodies(format: 'stl' | '3mf' | 'step', scope: 'selec
   if (scope === 'selection') bodies = bodies.filter((b) => selIds.has(b.id))
   if (format === 'step') bodies = bodies.filter((b) => b.kind === 'brep')
   if (!bodies.length) return toast(format === 'step' ? 'STEP export needs at least one B-rep body' : 'Nothing to export', 'error')
-  const name = s.name || 'Untitled'
+  const name = (s.name || 'Untitled') + suffix
   const label = (b: { id: string; name: string }) => s.bodyNames[b.id] ?? b.name
   try {
     const k = getKernel()

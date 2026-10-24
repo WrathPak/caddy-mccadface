@@ -6,7 +6,7 @@
 import { bezAt, bezFlatten, bezFromQuad, bezLine, bezClosest, type Bez } from './bezier'
 import { dist, sub, add, mul, perp, norm, TAU } from './geom'
 import { entityById, pos } from './model'
-import { fontNow, layoutText } from './font'
+import { fontNow, layoutText, loadFont } from './font'
 import type { Entity, EllipseE, Seg, SketchModel, SplineE, TextE, Vec2 } from './types'
 
 export type DerivedEntity = SplineE | EllipseE | TextE
@@ -231,6 +231,12 @@ export function entityPolyline(m: SketchModel, e: Entity): Vec2[] {
   }
   if (e.type === 'point') return [[e.x, e.y]]
   return derivedPolys(m, e).flat()
+}
+
+/** Load the fonts the text of a sketch uses (profile detection is synchronous, so they must be there first). */
+export async function ensureFonts(m: SketchModel): Promise<void> {
+  const names = new Set(m.entities.filter((e): e is TextE => e.type === 'text').map((e) => e.font ?? 'Inter'))
+  await Promise.all([...names].map((n) => loadFont(n)))
 }
 
 export { entityById }

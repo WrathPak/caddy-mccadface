@@ -1,7 +1,7 @@
 /** User parameters (name = expression with units, via mathjs) and parameter resolution. */
 import { evaluate } from 'mathjs'
 import { schemaDefaults, type ParamDef, type ParamSchema, type ParamValues } from '@/ui/schema'
-import type { UserParam } from './types'
+import type { Config, UserParam } from './types'
 
 export interface Scope {
   values: Record<string, unknown>
@@ -11,6 +11,12 @@ export interface Scope {
 let current: Scope = { values: {}, errors: {} }
 
 export const getScope = () => current
+/** The user parameters with the values of the active configuration put in. */
+export function effectiveParams(params: UserParam[], configs: Config[] | undefined, active: string | null | undefined): UserParam[] {
+  const c = active ? configs?.find((x) => x.name === active) : undefined
+  return c ? params.map((p) => (c.values[p.name]?.trim() ? { ...p, expr: c.values[p.name] } : p)) : params
+}
+
 /** Evaluate user parameters in order (later ones may reference earlier ones). */
 export function setUserParams(params: UserParam[]): Scope {
   const values: Record<string, unknown> = {}

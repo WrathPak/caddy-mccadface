@@ -14,6 +14,7 @@ import { curvePoints, entityPolylines, profileGeometry } from './draw'
 import { circumcircle, arcInfo, cross, dist, perp, polar, sampleArc, sub, TAU } from './geom'
 import { circleOf, entityById, lineEnds, pos } from './model'
 import { splineMid } from './curves'
+import { ToolsOverlay } from './ToolsOverlay'
 import { previewPolys } from './offsetTool'
 import { fieldsFor, liveValues, resolveEnd, valuesOf, hasText, arcThrough, type DrawTool, type Typed } from './typed'
 import { planeQuaternion, toLocal } from './plane'
@@ -624,6 +625,7 @@ export function SketchOverlay() {
       <Draft wpp={wpp} />
       <TrimPreview wpp={wpp} />
       <OffsetPreview wpp={wpp} />
+      <ToolsOverlay wpp={wpp} />
       <SelectionBox />
       {cursor && <Marker snap={cursor} wpp={wpp} />}
       <InputController />

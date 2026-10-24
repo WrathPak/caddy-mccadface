@@ -459,7 +459,7 @@ registerOp<SplitBodyArgs>('splitBody', (a, h) => {
     const bodies = pieces.map((p, n) => {
       const ft = topoOf(p.s as unknown as AnyShape)
       const names = ft.faces.map((f) => { const j = find(f.wrapped as never); return j >= 0 ? claims[j] : [] })
-      const id = n === 0 ? a.id : `${a.id}.${n}`
+      const id = n === 0 ? a.id : `${a.fid}.${a.id}.${n}`
       return h.bodyFromShape(id, n === 0 ? a.name : `${a.name} ${n + 1}`, p.s, finalize(p.s as unknown as AnyShape, names, a.fid, 'piece' + n))
     })
     return h.sendBodies(bodies)

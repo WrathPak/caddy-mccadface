@@ -18,6 +18,7 @@ import { boxSelect, hitTest } from './hit'
 import { detectProfiles } from './profiles'
 import { snap as snapAt, gridStep, type Snap } from './snap'
 import { inferSnap, type Rel } from './infer'
+import { ensureFonts } from './curves'
 import { useSnapFlags } from './snapSettings'
 import { analyze, ensureSolver, solveModel, solvePruned, type DragSpec, type SolveInfo } from './solver'
 import { circumcircle, cross, dist, norm, sub } from './geom'
@@ -209,6 +210,7 @@ export const sketchActive = () => get().active
 
 export async function beginSketch(o: { plane: PlaneDef; face?: string | null; model?: SketchModel; editing?: string | null; onClose?: () => void }) {
   await ensureSolver()
+  if (o.model) await ensureFonts(o.model)
   onClose = o.onClose ?? null
   const model = o.model ?? emptyModel()
   // projected geometry follows its source: refresh it against the bodies as they are now (a broken source is flagged, never fatal)

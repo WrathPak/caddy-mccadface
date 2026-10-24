@@ -309,7 +309,7 @@ describe('direct face edits', () => {
   it('split body cuts a body in two along a plane, with stable ids', async () => {
     const b = mkBox('b', [20, 20, 10])
     const pieces = await run<Body[]>('splitBody', { id: 'b', name: 'b', key: b.key, tool: { kind: 'plane', origin: [0, 0, 0], normal: [1, 0, 0] }, fid: 'f9' })
-    expect(pieces.map((p) => p.id)).toEqual(['b', 'b.1'])
+    expect(pieces.map((p) => p.id)).toEqual(['b', 'f9.b.1'])
     near(vol(pieces[0]), 2000)
     near(vol(pieces[1]), 2000)
     expect(bbox(pieces[0]).max[0]).toBeLessThan(0.001)

@@ -1,6 +1,7 @@
 /** Applying geometric constraints to a model from a set of picked entity ids. */
 import { ORIGIN, type Constraint, type SketchModel } from './types'
 import { addCoincident, addConstraint, deps, entityById, lineEnds, pos, sharedEnd, tangentValue } from './model'
+import { tangentSpline } from './shapes'
 
 export type CKind = 'hv' | 'horizontal' | 'vertical' | 'parallel' | 'perpendicular' | 'tangent' | 'equal' | 'coincident' | 'midpoint' | 'fix'
 
@@ -11,6 +12,8 @@ export const CKIND_LABEL: Record<CKind, string> = {
 
 const kindOf = (m: SketchModel, id: string) => (id === ORIGIN ? 'point' : entityById(m, id)?.type)
 const isCurve = (t?: string) => t === 'circle' || t === 'arc'
+/** things with a direction: lines, and ellipses by their major axis */
+const isLineLike = (t?: string) => t === 'line' || t === 'ellipse'
 
 /** True when `ids` is a complete input for `kind`. */
 export function ready(m: SketchModel, kind: CKind, ids: string[]): boolean {
@@ -18,11 +21,13 @@ export function ready(m: SketchModel, kind: CKind, ids: string[]): boolean {
   switch (kind) {
     case 'hv':
     case 'horizontal':
-    case 'vertical': return (ids.length === 1 && t[0] === 'line') || (ids.length === 2 && t[0] === 'point' && t[1] === 'point')
+    case 'vertical': return (ids.length === 1 && (t[0] === 'line' || t[0] === 'ellipse')) || (ids.length === 2 && t[0] === 'point' && t[1] === 'point')
     case 'parallel':
-    case 'perpendicular': return ids.length === 2 && t[0] === 'line' && t[1] === 'line'
-    case 'equal': return ids.length === 2 && ((t[0] === 'line' && t[1] === 'line') || (isCurve(t[0]) && isCurve(t[1])))
-    case 'tangent': return ids.length === 2 && (t[0] === 'line' ? isCurve(t[1]) : isCurve(t[0]) && (t[1] === 'line' || isCurve(t[1])))
+    case 'perpendicular': return ids.length === 2 && isLineLike(t[0]) && isLineLike(t[1])
+    case 'equal': return ids.length === 2 && ((t[0] === 'line' && t[1] === 'line') || ((isCurve(t[0]) || t[0] === 'ellipse') && (isCurve(t[1]) || t[1] === 'ellipse')))
+    case 'tangent':
+      if (t[0] === 'spline' || t[1] === 'spline') return ids.length === 2 && (t[0] === 'spline' ? t[1] === 'line' || isCurve(t[1]) || t[1] === 'spline' : t[0] === 'line' || isCurve(t[0]))
+      return ids.length === 2 && (t[0] === 'line' ? isCurve(t[1]) : isCurve(t[0]) && (t[1] === 'line' || isCurve(t[1])))
     case 'coincident': return ids.length === 2 && ((t[0] === 'point' && t[1] === 'point') || (t[0] === 'point' && (t[1] === 'line' || isCurve(t[1]))))
     case 'midpoint': return ids.length === 2 && t[0] === 'point' && t[1] === 'line'
     case 'fix': return ids.length >= 1 && t.every((x) => x !== undefined)
@@ -49,19 +54,28 @@ export function applyConstraint(m: SketchModel, kind: CKind, idsIn: string[]): s
     case 'horizontal':
     case 'vertical': {
       let a: [number, number], b: [number, number]
+      let refs = ids
       if (ids.length === 1) {
         const l = entityById(m, ids[0])
-        if (l?.type !== 'line') return 'Select a line'
-        ;[a, b] = lineEnds(m, l)
+        if (l?.type === 'ellipse') { refs = [l.c, l.m]; a = pos(m, l.c); b = pos(m, l.m) } // the major axis
+        else if (l?.type !== 'line') return 'Select a line'
+        else [a, b] = lineEnds(m, l)
       } else [a, b] = [pos(m, ids[0]), pos(m, ids[1])]
       const horiz = kind === 'hv' ? Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]) : kind === 'horizontal'
-      add(horiz ? 'horizontal' : 'vertical', ids)
+      add(horiz ? 'horizontal' : 'vertical', refs)
       return null
     }
     case 'parallel': add('parallel', ids); return null
     case 'perpendicular': add('perpendicular', ids); return null
     case 'equal': add('equal', ids); return null
     case 'tangent': {
+      const sp = [ids[0], ids[1]].map((i) => entityById(m, i)).find((e) => e?.type === 'spline')
+      if (sp?.type === 'spline') {
+        const other = entityById(m, sp.id === ids[0] ? ids[1] : ids[0])!
+        const at = sharedEnd(m, sp.id, other.id)
+        if (!at) return 'A spline is made tangent where it meets another curve: bring their ends together first'
+        return tangentSpline(m, sp, other, at) ?? null
+      }
       // curves that meet end to end are made tangent AT that point (well conditioned); otherwise by distance
       const at = sharedEnd(m, ids[0], ids[1])
       const t0 = kindOf(m, ids[0]), t1 = kindOf(m, ids[1])
