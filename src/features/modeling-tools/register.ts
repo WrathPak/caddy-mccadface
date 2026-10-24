@@ -110,6 +110,6 @@ group('solid', 'Document').items.push({ cmd: 'doc.configs' })
 }
 
 // ---- handles for the Playwright specs (dev builds only read them)
-;(window as unknown as { __caddyExtra?: object }).__caddyExtra = {
+if (typeof window !== 'undefined') (window as unknown as { __caddyExtra?: object }).__caddyExtra = {
   construct: useConstruct, markers: useMarkers, snapFlags: useSnapFlags, sketchOpts: useSketchOpts, lastPick: useLastPick,
 }
