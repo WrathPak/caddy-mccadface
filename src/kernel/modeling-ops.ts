@@ -11,7 +11,7 @@ import { topoOf, type Shape } from './occ'
 import { boolNamed, finalize, indexer, inherit, rootNames, type NShape } from './naming'
 import { applyPoint, axisAngle, cross3, dot3, norm3, sub3, add3, mul3, rotationBetween, type Xf } from './xform'
 import type { Vec3 } from './types'
-import { thread as threadCutter, boreDia, type ThreadSpec } from './thread'
+import { tapCutter as threadCutter, boreDia, type ThreadSpec } from './threads'
 
 type Sh = Shape
 const any = (s: NShape) => s.shape as unknown as AnyShape

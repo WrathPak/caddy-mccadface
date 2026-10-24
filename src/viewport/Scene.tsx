@@ -21,6 +21,7 @@ import { SketchDisplay } from '@/sketch/SketchDisplay'
 import { PlanePicker } from '@/sketch/PlanePicker'
 import { HairPaintTool, HairRegionOverlay } from '@/features/hair/PaintTool'
 import { HairDirectionOverlay, HairOverlayPass, HairPreviewLayer } from '@/features/hair/layer'
+import { DetailOverlay } from '@/features/detail/overlay'
 import { PrintCanvas } from '@/features/print/PrintCanvas'
 
 /**
@@ -134,6 +135,7 @@ export function Scene() {
       <HairPreviewLayer />
       <HairDirectionOverlay />
       <HairPaintTool />
+      <DetailOverlay />
       <PrintCanvas />
       <CaptureRegistrar />
       {import.meta.env.DEV && <DebugProbe />}

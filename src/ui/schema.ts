@@ -61,6 +61,21 @@ export interface SelectionRefParam extends Base {
   pick?: boolean
   default: string[]
 }
+/** A text box (a line, or several with `multiline`). */
+export interface TextParam extends Base {
+  type: 'text'
+  multiline?: boolean
+  placeholder?: string
+  default: string
+}
+/** A file stored in the document: the value is the blob id. `nameKey` is another (hidden) text value that remembers the file name. */
+export interface FileParam extends Base {
+  type: 'file'
+  /** what the file picker offers, e.g. '.svg,.png,.jpg' */
+  accept: string
+  nameKey: string
+  default: string
+}
 /** Read-only text computed from the current values (e.g. the Measure results). */
 export interface InfoParam extends Base {
   type: 'info'
@@ -90,6 +105,8 @@ export type ParamDef =
   | Vector3Param
   | SelectionRefParam
   | InfoParam
+  | TextParam
+  | FileParam
   | PresetParam
   | GroupParam
 
