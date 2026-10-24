@@ -4,6 +4,7 @@
  * `Metadata/project_settings.config`. Plain 3MF readers still see ordinary mesh objects.
  */
 import { strToU8, zipSync } from 'fflate'
+import { FILAMENT_DEFAULTS } from './filamentDefaults'
 import { colorById } from './palette'
 import type { PrintSettings } from './settings'
 
@@ -74,6 +75,7 @@ export function projectConfig(s: PrintSettings, filaments: number): Record<strin
   const n = Math.max(filaments, 1)
   const per = (v: string) => Array.from({ length: n }, () => v)
   return {
+    ...Object.fromEntries(Object.entries(FILAMENT_DEFAULTS).map(([k, v]) => [k, per(v)])),
     from: 'project',
     print_settings_id: '',
     printer_settings_id: '',
@@ -92,7 +94,10 @@ export function projectConfig(s: PrintSettings, filaments: number): Record<strin
     support_type: s.support === 'tree' ? 'tree(auto)' : 'normal(auto)',
     support_threshold_angle: String(Math.round(90 - s.overhang)),
     brim_type: s.brim === 'none' ? 'no_brim' : s.brim === 'outer' ? 'outer_only' : 'auto_brim',
-    filament_type: per(s.material),
+    filament_type: per('PLA'),
+    filament_ids: per(''),
+    different_settings_to_system: Array.from({ length: n + 2 }, () => ''),
+    inherits_group: Array.from({ length: n + 2 }, () => ''),
     filament_colour: Array.from({ length: n }, (_, i) => colorById(s.slotColors[i] ?? 'white').hex.toUpperCase()),
     filament_map: per('1'),
     filament_self_index: Array.from({ length: n }, (_, i) => String(i + 1)),

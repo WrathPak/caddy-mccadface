@@ -96,7 +96,7 @@ test('paint a body and a face: colors show in the viewport and go into the 3MF a
   expect(cfg.filament_colour).toEqual(['#F4F4F1', '#1C1C1E', '#D63A31'])
 })
 
-test('send to Bambu Studio / OrcaSlicer: saves through the file picker and opens the slicer link; without a picker it downloads with a hint', async ({ app, page }) => {
+test('send to Bambu Studio / OrcaSlicer: saves through the file picker with a hint; without a picker it downloads with a hint', async ({ app, page }) => {
   await app.open()
   await addBox(app, [30, 30, 12], [0, 0, 0])
   await app.tab('Print')
@@ -105,7 +105,7 @@ test('send to Bambu Studio / OrcaSlicer: saves through the file picker and opens
   expect(name).toBe('Untitled.3mf')
   await expect(page.getByText(/File > Open/)).toBeVisible()
 
-  // with a file picker: the file is written, then the slicer is asked to open it
+  // with a file picker: the file is written where the user chose, and the hint names the slicer
   await page.evaluate(() => {
     const w = window as any // eslint-disable-line
     w.__written = []
@@ -113,19 +113,13 @@ test('send to Bambu Studio / OrcaSlicer: saves through the file picker and opens
       name: o.suggestedName,
       createWritable: async () => ({ write: async (d: Uint8Array) => { w.__written.push(d.length) }, close: async () => {} }),
     })
-    w.__launched = []
-    w.__caddy.print.launcher.open = (u: string) => { w.__launched.push(u) }
   })
-  page.once('dialog', (d) => void d.accept('C:\\Users\\me\\Prints'))
   await app.ribbon('Bambu Studio').click()
-  await expect.poll(() => page.evaluate(() => (window as any).__launched.length)).toBe(1) // eslint-disable-line
-  const url = await page.evaluate(() => (window as any).__launched[0] as string) // eslint-disable-line
-  expect(url).toBe('bambustudio://open?file=' + encodeURIComponent('file:///C:/Users/me/Prints/Untitled.3mf'))
+  await expect(page.getByText(/Saved Untitled.3mf.*Open it in Bambu Studio with File > Open/)).toBeVisible()
   expect(await page.evaluate(() => (window as any).__written[0] as number)).toBeGreaterThan(1000) // eslint-disable-line
-  // the folder is remembered, so Orca opens without asking again
   await app.ribbon('OrcaSlicer').click()
-  await expect.poll(() => page.evaluate(() => (window as any).__launched.length)).toBe(2) // eslint-disable-line
-  expect(await page.evaluate(() => (window as any).__launched[1] as string)).toBe('orcaslicer://open?file=' + encodeURIComponent('file:///C:/Users/me/Prints/Untitled.3mf')) // eslint-disable-line
+  await expect(page.getByText(/Open it in OrcaSlicer with File > Open/)).toBeVisible()
+  expect(await page.evaluate(() => (window as any).__written.length as number)).toBe(2) // eslint-disable-line
 })
 
 test('overhang, thin wall and small feature maps with legends', async ({ app, page }) => {

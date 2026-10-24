@@ -6,7 +6,6 @@ import { Tip } from '@/ui/Tooltip'
 import { colorById } from './palette'
 import { computePaintMap, usedSlots } from './paint'
 import { settingsOf } from './settings'
-import { launcher } from './slicer'
 import { useDrains } from './hollow'
 import { runMap, showMap, usePrintView, type MapKind } from './view'
 import './print.css'
@@ -102,9 +101,9 @@ function DrainBar() {
 /** Mounted once in the viewport. */
 export function PrintHud() {
   useEffect(() => {
-    // test handle: the stores and the protocol launcher
+    // test handle: the stores
     const w = window as unknown as { __caddy?: Record<string, unknown> }
-    if (import.meta.env.DEV && w.__caddy) w.__caddy.print = { view: usePrintView, drains: useDrains, launcher, showMap }
+    if (import.meta.env.DEV && w.__caddy) w.__caddy.print = { view: usePrintView, drains: useDrains, showMap }
   }, [])
   return (
     <>

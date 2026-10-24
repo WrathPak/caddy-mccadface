@@ -19,8 +19,6 @@ export const PRINTERS: PrinterModel[] = [
   { id: 'h2d', label: 'Bambu Lab H2D', bed: [350, 320], preset: 'Bambu Lab H2D' },
 ]
 
-export const FILAMENT_TYPES = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU', 'PA', 'PC'] as const
-
 const colorOptions = FILAMENT_COLORS.map((c) => ({ value: c.id, label: c.label }))
 
 const slotParams = (): ParamDef[] =>
@@ -75,12 +73,8 @@ export const printSettingsSchema: ParamSchema = {
     },
     {
       type: 'group',
-      label: 'Filament',
+      label: 'Plate',
       children: [
-        {
-          type: 'enum', key: 'material', label: 'Material', display: 'select', default: 'PLA', options: FILAMENT_TYPES.map((m) => ({ value: m, label: m })),
-          help: 'The kind of filament in every slot.',
-        },
         {
           type: 'enum', key: 'placement', label: 'Plate layout', display: 'segmented', default: 'arrange', options: [{ value: 'arrange', label: 'Arrange' }, { value: 'keep', label: 'Keep' }],
           help: 'Arrange lays every body out side by side on the plate. Keep centers them on the plate where they sit relative to each other.',
@@ -104,7 +98,6 @@ export interface PrintSettings {
   support: 'none' | 'normal' | 'tree'
   overhang: number
   brim: 'none' | 'auto' | 'outer'
-  material: string
   placement: 'arrange' | 'keep'
   /** palette ids per filament slot (index 0 = slot 1) */
   slotColors: string[]
@@ -125,7 +118,6 @@ export function settingsFromValues(v: ParamValues): PrintSettings {
     support: v.support as PrintSettings['support'],
     overhang: v.overhang as number,
     brim: v.brim as PrintSettings['brim'],
-    material: v.material as string,
     placement: v.placement as PrintSettings['placement'],
     slotColors: Array.from({ length: SLOT_COUNT }, (_, i) => v[`slot${i + 1}`] as string),
   }

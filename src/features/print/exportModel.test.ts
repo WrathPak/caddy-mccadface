@@ -30,7 +30,7 @@ describe.skipIf(!out)('export the slicer check plate', () => {
     const meshy = bodyFromTopo('meshy', 'Mesh slab', getTopo(bodyFromShape('tmp', 'tmp', box([24, 24, 8], [0, 0, 0])).key))
     const bodies: Body[] = [block, cube, meshy]
     // the +Z face of the block goes to filament 2, the whole cube to filament 3, the mesh slab stays on filament 1
-    const topFace = block.mesh.faceIds[Array.from({ length: block.mesh.indices.length / 3 }, (_, t) => t).find((t) => block.mesh.normals[block.mesh.indices[t * 3] * 3 + 2] > 0.99)!]
+    const topFace = block.mesh.faceIds[Array.from({ length: block.mesh.indices.length / 3 }, (_, t) => t).find((t) => block.mesh.normals[block.mesh.indices[t * 3] * 3 + (process.env.PAINT_AXIS === 'x' ? 0 : 2)] > 0.99)!]
     const paint: PaintMap = new Map()
     applyPaint(paint, bodies, [encodeRef(refFromSelection({ kind: 'face', id: 'block', index: topFace }, bodies)!)], 2)
     applyPaint(paint, bodies, ['cube'], 3)
