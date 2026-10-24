@@ -1,0 +1,33 @@
+name: bug report
+description: something is broken or looks wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: what happened
+      description: and what you expected instead
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: how to reproduce
+      description: the clicks that get you there. a screenshot or a .caddy file helps a lot
+      placeholder: |
+        1. make a box
+        2. fillet an edge
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: browser and os
+      placeholder: chrome 130 on windows 11
+  - type: textarea
+    id: console
+    attributes:
+      label: console errors
+      description: open devtools, check the console, paste anything red
+      render: text

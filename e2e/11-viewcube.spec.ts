@@ -225,12 +225,16 @@ test('ViewCube: dragging the cube orbits the view; transitions are animated', as
   // animated: sample the camera right after a click, it must pass through intermediate directions
   await app.ev((c) => c.runCommand('view.home'))
   await app.cameraStable()
+  // the nav clock is frozen and stepped by hand, so a slow renderer can't skip frames of the animation
+  await app.ev((c) => c.nav.freeze())
   await page.locator('.vc-face', { hasText: 'Top' }).first().click({ force: true })
   const samples: number[] = []
   for (let i = 0; i < 6; i++) {
     samples.push(dot((await basis(app)).b, [0, 0, 1]))
-    await page.waitForTimeout(60)
+    await app.ev((c) => c.nav.step(60))
   }
+  await app.ev((c) => c.nav.step(1000, 100))
+  await app.ev((c) => c.nav.unfreeze())
   await app.cameraStable()
   samples.push(dot((await basis(app)).b, [0, 0, 1]))
   expect(samples[0], 'not there instantly').toBeLessThan(0.95)
