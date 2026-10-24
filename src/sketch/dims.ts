@@ -279,9 +279,14 @@ export function defaultOff(m: SketchModel, type: Constraint['type'], refs: strin
     }
     case 'hdist': return [(pos(m, a)[0] + pos(m, b)[0]) / 2, Math.max(pos(m, a)[1], pos(m, b)[1]) + gap]
     case 'vdist': return [Math.max(pos(m, a)[0], pos(m, b)[0]) + gap, (pos(m, a)[1] + pos(m, b)[1]) / 2]
+    case 'majorRadius': {
+      const e = entityById(m, a)
+      return e?.type === 'ellipse' ? defaultOff(m, 'distance', [e.c, e.m], k) : [0, 0]
+    }
     case 'radius':
     case 'diameter': {
       const e = entityById(m, a)
+      if (e?.type === 'ellipse') { const c = pos(m, e.c), u = norm(sub(pos(m, e.m), c)); return add(c, [-u[1] * e.r * 1.4, u[0] * e.r * 1.4]) }
       if (!e || (e.type !== 'circle' && e.type !== 'arc')) return [0, 0]
       const { c, r } = circleOf(m, e)
       return polar(c, r * 1.4, Math.PI / 4)
