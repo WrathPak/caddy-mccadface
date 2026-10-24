@@ -138,6 +138,11 @@ registerCommand({
   },
 })
 
+// leaving the Move Component tool another way (Escape, starting another tool) ends the drag mode too
+useUi.subscribe((s, p) => {
+  if (p.activeTool === 'assembly.drag' && s.activeTool !== 'assembly.drag' && useAssemblyRuntime.getState().tool === 'drag') useAssemblyRuntime.getState().setTool(null)
+})
+
 const at = RIBBON_TABS.findIndex((t) => t.id === 'surface')
 RIBBON_TABS.splice(at < 0 ? 1 : at, 0, {
   id: 'assemble',

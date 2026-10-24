@@ -9,6 +9,7 @@ import { DEFAULT_HIDDEN, useUi } from '@/store/ui'
 import { getFeature } from './registry'
 import { effectiveParams, setUserParams as applyUserParams } from './params'
 import { emptyAssembly, normalizeAssembly, ROOT } from '@/assembly/types'
+import { resetAssemblyRuntime } from '@/assembly/runtime'
 import type { Config, DocData, Feature, FeatureState, UserParam } from './types'
 
 export type { Feature, FeatureState } from './types'
@@ -200,12 +201,14 @@ export const useDoc = create<DocState>((set, get) => {
       past.length = 0
       future.length = 0
       useUi.setState({ selection: [], hover: null, hiddenIds: { ...DEFAULT_HIDDEN } })
+      resetAssemblyRuntime()
       apply(empty(), { blobs: {}, selectedFeatureId: null, dirty: false, activeOcc: null })
     },
     loadDocument: (data, blobs) => {
       past.length = 0
       future.length = 0
       useUi.setState({ selection: [], hover: null, hiddenIds: { ...DEFAULT_HIDDEN } })
+      resetAssemblyRuntime()
       apply({ ...empty(), ...data, assembly: normalizeAssembly(data.assembly) }, { blobs, selectedFeatureId: null, dirty: false, activeOcc: null })
     },
     setActiveOcc: (activeOcc) => set({ activeOcc }),

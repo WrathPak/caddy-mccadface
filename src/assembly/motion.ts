@@ -54,6 +54,7 @@ const raf = (fn: () => void) => (typeof requestAnimationFrame === 'function' ? r
 export function tickAnimations(): boolean {
   const rt = useAssemblyRuntime.getState()
   const now = navClock.now()
+  if (anim.motion && !rt.playing) anim.motion = null // the document was replaced while it played
   if (anim.motion) {
     const { start, study } = anim.motion
     const len = studyLength(study)

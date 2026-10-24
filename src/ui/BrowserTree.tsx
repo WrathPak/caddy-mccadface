@@ -23,9 +23,11 @@ interface RowProps {
   eye?: boolean
   /** the component instance the entity is shown under (selections carry it) */
   path?: string
+  /** picking this row first makes that instance the active component (the origin planes of a component) */
+  activate?: string
 }
 
-function Row({ id, name, depth, kind, icon, open, onToggle, coll, eye = true, path }: RowProps) {
+function Row({ id, name, depth, kind, icon, open, onToggle, coll, eye = true, path, activate }: RowProps) {
   const hidden = useUi((s) => !!s.hiddenIds[id])
   const toggleHidden = useUi((s) => s.toggleHidden)
   const selected = useUi((s) => !!kind && s.selection.some((r) => r.id === id && r.kind === kind && (r.path === undefined || r.path === (path ?? ''))))
@@ -49,7 +51,7 @@ function Row({ id, name, depth, kind, icon, open, onToggle, coll, eye = true, pa
       className={'tree-row' + (isGroup ? ' group' : '')}
       data-selected={selected}
       style={{ paddingLeft: 4 + depth * 12 }}
-      onClick={(e) => (isGroup ? onToggle!() : kind && setSelection([{ kind, id, path }], e.ctrlKey || e.shiftKey))}
+      onClick={(e) => (isGroup ? onToggle!() : kind && (activate && useDoc.getState().setActiveOcc(activate), setSelection([{ kind, id, path }], e.ctrlKey || e.shiftKey)))}
       onDoubleClick={() => coll && setEditing(true)}
     >
       <span className="caret">{isGroup ? open ? <CaretDown size={9} weight="bold" /> : <CaretRight size={9} weight="bold" /> : null}</span>
@@ -124,6 +126,12 @@ export function BrowserTree() {
     const bodies = bodiesOf(def), sketches = sketchesOf(def), meshes = meshesOf(def)
     return (
       <>
+        {def !== ROOT && (
+          <Group label="Origin" depth={depth} icon={<Planet size={13} />} defaultOpen={false}>
+            {['XY', 'XZ', 'YZ'].map((p) => <Row key={p} id={'plane' + p} name={p + ' plane'} depth={depth + 1} kind="plane" icon={<Parallelogram size={13} />} activate={path} />)}
+            {['X', 'Y', 'Z'].map((a) => <Row key={a} id={'axis' + a} name={a + ' axis'} depth={depth + 1} kind="axis" icon={<LineSegment size={13} />} activate={path} />)}
+          </Group>
+        )}
         {(planes.length + axes.length + points.length > 0) && (
           <Group label="Construction" depth={depth} icon={<Folder size={13} />} defaultOpen={false}>
             {planes.map((f) => <Row key={f.id} id={f.id} name={f.name} depth={depth + 1} kind="plane" coll="sketches" icon={<Parallelogram size={13} />} />)}

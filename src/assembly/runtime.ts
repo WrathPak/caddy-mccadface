@@ -79,6 +79,14 @@ export interface AssemblyRuntime {
   setSnapHover: (h: AssemblyRuntime['snapHover']) => void
 }
 
+const fresh = () => ({
+  drive: {}, explode: 0, explodeStep: null, extErrors: {}, extChanged: {}, interference: null, clearance: null, tool: null,
+  playing: false, playTime: 0, previewJoint: null, selectedJoint: null, freeMove: null, snapHover: null,
+})
+
+/** Back to nothing driven, exploded, checked or playing: a different document is shown. */
+export const resetAssemblyRuntime = () => useAssemblyRuntime.setState(fresh())
+
 export const useAssemblyRuntime = create<AssemblyRuntime>((set) => ({
   drive: {},
   setDrive: (joint, key, value) => set((s) => ({ drive: { ...s.drive, [joint]: { ...s.drive[joint], [key]: value } } })),
