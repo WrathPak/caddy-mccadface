@@ -1,7 +1,7 @@
 /** User parameters (name = expression with units, via mathjs) and parameter resolution. */
 import { evaluate } from 'mathjs'
 import { schemaDefaults, type ParamDef, type ParamSchema, type ParamValues } from '@/ui/schema'
-import type { UserParam } from './types'
+import type { Config, UserParam } from './types'
 
 export interface Scope {
   values: Record<string, unknown>
@@ -11,12 +11,28 @@ export interface Scope {
 let current: Scope = { values: {}, errors: {} }
 
 export const getScope = () => current
+/** The user parameters with the values of the active configuration put in. */
+export function effectiveParams(params: UserParam[], configs: Config[] | undefined, active: string | null | undefined): UserParam[] {
+  const c = active ? configs?.find((x) => x.name === active) : undefined
+  return c ? params.map((p) => (c.values[p.name]?.trim() ? { ...p, expr: c.values[p.name] } : p)) : params
+}
+
 /** Evaluate user parameters in order (later ones may reference earlier ones). */
 export function setUserParams(params: UserParam[]): Scope {
   const values: Record<string, unknown> = {}
   const errors: Record<string, string> = {}
   for (const p of params) {
     if (!/^[A-Za-z_]\w*$/.test(p.name)) { errors[p.name] = 'Invalid name'; continue }
+    const words: string[] = p.expr.match(/[A-Za-z_]\w*/g) ?? ([] as string[])
+    if (words.includes(p.name)) {
+      errors[p.name] = `"${p.name}" is defined in terms of itself, which is circular. Use a plain number or another parameter instead.`
+      continue
+    }
+    const later = params.slice(params.indexOf(p) + 1).find((q) => words.includes(q.name) && !(q.name in values))
+    if (later) {
+      errors[p.name] = `"${p.name}" uses "${later.name}", which is listed after it. Move "${later.name}" above "${p.name}" (a parameter can only use ones above it).`
+      continue
+    }
     try {
       values[p.name] = evaluate(p.expr, { ...values })
     } catch (e) {

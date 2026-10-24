@@ -11,6 +11,7 @@ import { useHairPaint } from '@/features/hair/paint'
 import { composeTransform, type Body } from '@/kernel/types'
 import { buildBvh } from './bvh'
 import { usePreview } from './preview'
+import { useLastPick } from './lastPick'
 import { useVpColors } from './colors'
 import { useSketch } from '@/sketch/store'
 import { sectionPlane } from './section'
@@ -46,7 +47,7 @@ function faceSubset(b: Body, geo: BufferGeometry, faces: Set<number>): BufferGeo
 /** Cap tints, one per body (cycled), so overlapping bodies stay distinguishable in a section. */
 const CAP_COLORS = ['#5aa9c4', '#c4905a', '#7fb36a', '#b27fc4', '#c4c05a']
 
-interface Mats { base: Material; hi: Material }
+interface Mats { base: Material; hi: Material; dim: Material }
 
 /** Renders the document's bodies (kernel output) with hover pre-highlight and filter-aware picking. */
 export function Bodies() {
@@ -55,6 +56,7 @@ export function Bodies() {
   const displayMode = useUi((s) => s.displayMode)
   const hiddenUi = useUi((s) => s.hiddenIds)
   const previewHidden = usePreview((s) => s.hidden)
+  const previewDim = usePreview((s) => s.dim)
   const hidden = useMemo(() => (previewHidden.length ? { ...hiddenUi, ...Object.fromEntries(previewHidden.map((i) => [i, true as const])) } : hiddenUi), [hiddenUi, previewHidden])
   const setStats = useUi((s) => s.setStats)
   const section = useUi((s) => s.section)
@@ -74,17 +76,18 @@ export function Bodies() {
       clippingPlanes: clip,
     })
     const hi = new MeshBasicMaterial({ color: colors.accent, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: DoubleSide, clippingPlanes: clip })
-    return { base, hi }
+    const dim = new MeshStandardMaterial({ color: colors.body, roughness: 0.62, metalness: 0.05, side: DoubleSide, transparent: true, opacity: 0.28, depthWrite: false, clippingPlanes: clip })
+    return { base, hi, dim }
   }, [displayMode, colors, clip])
 
   return (
     <group name="bodies">
-      {geometry.map((b, i) => (hidden[b.id] ? null : <BodyView key={b.key} body={b} mats={mats} colors={colors} index={i} clip={clip[0]} />))}
+      {geometry.map((b, i) => (hidden[b.id] ? null : <BodyView key={b.key} body={b} mats={mats} colors={colors} index={i} clip={clip[0]} dimmed={previewDim.includes(b.id)} />))}
     </group>
   )
 }
 
-function BodyView({ body, mats, colors, index, clip }: { body: Body; mats: Mats; colors: ReturnType<typeof useVpColors>; index: number; clip?: Plane }) {
+function BodyView({ body, mats, colors, index, clip, dimmed }: { body: Body; mats: Mats; colors: ReturnType<typeof useVpColors>; index: number; clip?: Plane; dimmed?: boolean }) {
   const capSize = useSceneHalfSize() * 2
   const geo = useMemo(() => buildGeometry(body), [body])
   useEffect(() => () => geo.dispose(), [geo])
@@ -122,10 +125,10 @@ function BodyView({ body, mats, colors, index, clip }: { body: Body; mats: Mats;
     <group matrixAutoUpdate={matrix === null} matrix={matrix ?? undefined}>
       <mesh
         geometry={geo}
-        material={mats.base}
+        material={dimmed ? mats.dim : mats.base}
         onPointerMove={pickFaces ? (e) => { e.stopPropagation(); const r = refFor(e); if (!sameRef(useUi.getState().hover, r)) setHover(r) } : undefined}
         onPointerOut={() => setHover(null)}
-        onClick={pickFaces ? (e) => { e.stopPropagation(); setSelection([refFor(e)], e.shiftKey || e.ctrlKey) } : undefined}
+        onClick={pickFaces ? (e) => { e.stopPropagation(); const r = refFor(e); useLastPick.setState((s) => ({ point: [e.point.x, e.point.y, e.point.z], ref: r, seq: s.seq + 1 })); setSelection([r], e.shiftKey || e.ctrlKey) } : undefined}
       />
       {clip && <SectionCap geometry={geo} plane={clip} color={CAP_COLORS[index % CAP_COLORS.length]} order={20 + index * 4} size={capSize} />}
       {wholeBody && <mesh geometry={geo} material={mats.hi} raycast={() => null} renderOrder={2} />}

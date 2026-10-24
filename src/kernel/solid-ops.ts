@@ -1,5 +1,5 @@
 /** Worker ops for the primitive and advanced solid tools: cylinder, sweep, loft and shell. */
-import { assembleWire, cast, getOC, isShape3D, makeCylinder, makeLine, makeThreePointArc, measureVolume, type AnyShape, type Wire } from 'replicad'
+import { assembleWire, cast, getOC, isShape3D, makeCylinder, makeLine, makeThreePointArc, measureVolume, type AnyShape, type Wire, makeBezierCurve } from 'replicad'
 import { registerOp } from './store'
 import { boolNamed, eachInList, finalize, fuseNamed, indexer, shellNamed, type NShape } from './naming'
 import { topoOf, type Shape } from './occ'
@@ -23,13 +23,14 @@ registerOp<CylinderArgs>('cylinderTool', (a, h) => {
 })
 
 /** A world-space path segment (lines and three-point arcs). */
-export type PathSeg = ({ k: 'l'; a: Vec3; b: Vec3 } | { k: 'a'; a: Vec3; m: Vec3; b: Vec3 }) & { /** the sketch entity the segment came from (names the walls swept along it) */ id?: string }
+export type PathSeg = ({ k: 'l'; a: Vec3; b: Vec3 } | { k: 'a'; a: Vec3; m: Vec3; b: Vec3 } | { k: 'b'; a: Vec3; c1: Vec3; c2: Vec3; b: Vec3 }) & { /** the sketch entity the segment came from (names the walls swept along it) */ id?: string }
 
 export interface SweepArgs { id: string; name: string; groups: ProfileGroup[]; path: PathSeg[] }
 
 function pathWire(path: PathSeg[]): Wire {
   if (!path.length) throw new Error('The sweep path is empty')
-  return assembleWire(path.map((s) => (s.k === 'l' ? makeLine(s.a, s.b) : makeThreePointArc(s.a, s.m, s.b))))
+  // lines, arcs and splines each become their own exact edge (a spline piece is a true cubic Bezier curve, not a polyline)
+  return assembleWire(path.map((s) => (s.k === 'l' ? makeLine(s.a, s.b) : s.k === 'b' ? makeBezierCurve([s.a, s.c1, s.c2, s.b]) : makeThreePointArc(s.a, s.m, s.b))))
 }
 
 const valid = (s: Sh) => Math.abs(measureVolume(s as never)) > 1e-9

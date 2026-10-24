@@ -15,6 +15,11 @@ export interface FaceIn { key: string; index: number }
 type Sh = Shape
 
 const start = (s: Seg): Vec2 => (s.k === 'c' ? [s.c[0] + s.r, s.c[1]] : s.a)
+/** A point on a segment at parameter t (0..1), for splines and text; used to find which sketch entity a face edge came from. */
+const bezPoint = (s: Extract<Seg, { k: 'b' }>, t: number): Vec2 => {
+  const u = 1 - t
+  return [u * u * u * s.a[0] + 3 * u * u * t * s.c1[0] + 3 * u * t * t * s.c2[0] + t * t * t * s.b[0], u * u * u * s.a[1] + 3 * u * u * t * s.c1[1] + 3 * u * t * t * s.c2[1] + t * t * t * s.b[1]]
+}
 
 /** Closed replicad Drawing from a loop of segments. */
 function loopDrawing(loop: Loop) {
@@ -22,10 +27,19 @@ function loopDrawing(loop: Loop) {
     const { c, r } = loop[0]
     return draw([c[0] + r, c[1]]).threePointsArcTo([c[0] - r, c[1]], [c[0], c[1] + r]).threePointsArcTo([c[0] + r, c[1]], [c[0], c[1] - r]).close()
   }
+  // an untouched ellipse is drawn as the true ellipse (two half ellipses), not as its cubic approximation
+  const first = loop[0]
+  if (loop.length === 8 && first.k === 'b' && first.ell && loop.every((s) => s.k === 'b' && s.ell && Math.abs(s.ell.rx - first.ell!.rx) < 1e-9 && Math.abs(s.ell.ry - first.ell!.ry) < 1e-9)) {
+    const { c, rx, ry, rot } = first.ell
+    const ccw = isCcw(loop)
+    const a = first.a, opp: Vec2 = [2 * c[0] - a[0], 2 * c[1] - a[1]]
+    return draw(a).ellipseTo(opp, rx, ry, rot, false, ccw).ellipseTo(a, rx, ry, rot, false, ccw).close()
+  }
   let pen = draw(start(loop[0]))
   for (const s of loop) {
     if (s.k === 'l') pen = pen.lineTo(s.b)
     else if (s.k === 'a') pen = pen.threePointsArcTo(s.b, s.m)
+    else if (s.k === 'b') pen = pen.cubicBezierCurveTo(s.b, s.c1, s.c2)
   }
   return pen.close()
 }
@@ -104,6 +118,7 @@ const TOO_BIG = 'The taper is too large for this profile (part of it collapses)'
 
 /** One boundary ring offset by `d` towards the material (outer rings are counter-clockwise, holes clockwise). */
 function taperRing(loop: Loop, hole: boolean, d: number): Loop {
+  if (loop.some((s) => s.k === 'b')) throw new Error('A taper is not possible on a profile that has a spline, an ellipse or text in it')
   const ring = oriented(loop, !hole)
   if (ring.length === 1 && ring[0].k === 'c') {
     const r = offsetCircle(ring[0].r, hole ? d : -d)
@@ -249,6 +264,11 @@ export function labelEdges(pl: PlaneDef, edges: { pointAt(t: number): { x: numbe
       const t = Math.max(0, Math.min(1, ((p[0] - s.a[0]) * dx + (p[1] - s.a[1]) * dy) / (dx * dx + dy * dy || 1)))
       return Math.hypot(p[0] - s.a[0] - dx * t, p[1] - s.a[1] - dy * t)
     }
+    if (s.k === 'b') {
+      let d = Infinity
+      for (let i = 0; i <= 24; i++) { const q = bezPoint(s, i / 24); d = Math.min(d, Math.hypot(p[0] - q[0], p[1] - q[1])) }
+      return d
+    }
     return Math.abs(Math.hypot(p[0] - s.c[0], p[1] - s.c[1]) - s.r)
   }
   return edges.map((e) => {
@@ -286,7 +306,7 @@ function profilePrism(g: ProfileGroup, pr: ProfileIn, from: number, to: number, 
   const segs = [pr.outer, ...pr.holes].flat().filter((s) => s.id)
   const lab: Labels = {
     edges: segs.map((s) => s.id!), start: pid, end: pid,
-    pts: segs.map((s) => w(s.k === 'l' ? [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2] : s.k === 'a' ? s.m : [s.c[0] + s.r, s.c[1]])),
+    pts: segs.map((s) => w(s.k === 'l' ? [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2] : s.k === 'a' ? s.m : s.k === 'b' ? bezPoint(s, 0.5) : [s.c[0] + s.r, s.c[1]])),
   }
   const faces = capClaims(shape, g.plane.normal, lab, fid)
   wallClaims(shape, g.plane.normal, lab, fid, faces)

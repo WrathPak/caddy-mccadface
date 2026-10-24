@@ -1,6 +1,7 @@
 /** Hit testing and box selection against a SketchModel. */
 import { closestOnArc, closestOnCircle, closestOnSegment, dist } from './geom'
-import { circleOf, lineEnds, pos } from './model'
+import { circleOf, deps, lineEnds, pos } from './model'
+import { closestOnDerived, isDerived } from './curves'
 import { ORIGIN, type Entity, type SketchModel, type Vec2 } from './types'
 
 /** Nearest entity under `p` within `tol` (points win over curves). Returns null for none. */
@@ -25,6 +26,8 @@ export function hitTest(m: SketchModel, p: Vec2, tol: number, filter?: (e: Entit
       consider(e.id, dist(p, closestOnCircle(p, c, r)), 0)
     } else if (e.type === 'arc') {
       consider(e.id, dist(p, closestOnArc(p, pos(m, e.c), pos(m, e.s), pos(m, e.e))), 0)
+    } else if (isDerived(e)) {
+      consider(e.id, closestOnDerived(m, e, p).d, 0)
     }
   }
   return best ? (best as { id: string }).id : null
@@ -41,7 +44,9 @@ export function boxSelect(m: SketchModel, a: Vec2, b: Vec2): string[] {
     else if (e.type === 'circle') {
       const { c, r } = circleOf(m, e)
       if (inside([c[0] - r, c[1] - r]) && inside([c[0] + r, c[1] + r])) ids.push(e.id)
-    } else if (inside(pos(m, e.c)) && inside(pos(m, e.s)) && inside(pos(m, e.e))) ids.push(e.id)
+    } else if (e.type === 'arc') {
+      if (inside(pos(m, e.c)) && inside(pos(m, e.s)) && inside(pos(m, e.e))) ids.push(e.id)
+    } else if (deps(e).every((d) => inside(pos(m, d)))) ids.push(e.id)
   }
   return ids
 }

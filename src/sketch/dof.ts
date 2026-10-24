@@ -11,7 +11,7 @@
  * The sum of the free directions equals the DOF reported by planegcs (checked by the tests).
  */
 import { ORIGIN, type SketchModel, type Vec2 } from './types'
-import { entityById } from './model'
+import { deps, entityById } from './model'
 
 type Fn = () => number[]
 interface Eq { f: Fn; vars: number[] }
@@ -37,7 +37,7 @@ function build(m: SketchModel): System {
   const fixedByConstraint = new Set(m.constraints.filter((c) => c.type === 'fix').map((c) => c.refs[0]))
   for (const e of m.entities) {
     if (e.type === 'point' && !e.ref && !fixedByConstraint.has(e.id)) { idx.set(e.id, x.length); x.push(e.x, e.y); owner.push(e.id, e.id) }
-    else if (e.type === 'circle' && !e.ref) { idx.set(e.id, x.length); x.push(e.r); owner.push(e.id) }
+    else if ((e.type === 'circle' || e.type === 'ellipse') && !e.ref) { idx.set(e.id, x.length); x.push(e.r); owner.push(e.id) }
   }
   const P = (id: string): Vec2 => {
     const i = idx.get(id)
@@ -54,7 +54,7 @@ function build(m: SketchModel): System {
       const i = idx.get(id)
       if (i === undefined) return
       const e = ent(id)
-      if (e?.type === 'circle') out.push(i)
+      if (e?.type === 'circle' || e?.type === 'ellipse') out.push(i)
       else out.push(i, i + 1)
     }
     for (const id of ids) {
@@ -63,12 +63,15 @@ function build(m: SketchModel): System {
       if (e.type === 'point') add(id)
       else if (e.type === 'line') { add(e.p1); add(e.p2) }
       else if (e.type === 'circle') { add(e.c); add(e.id) }
-      else { add(e.c); add(e.s); add(e.e) }
+      else if (e.type === 'ellipse') { add(e.c); add(e.m); add(e.id) }
+      else if (e.type === 'arc') { add(e.c); add(e.s); add(e.e) }
+      else for (const d of deps(e)) add(d)
     }
     return out
   }
   const L = (id: string): [Vec2, Vec2] => {
     const e = ent(id)
+    if (e?.type === 'ellipse') return [P(e.c), P(e.m)]
     return e && e.type === 'line' ? [P(e.p1), P(e.p2)] : [[0, 0], [1, 0]]
   }
   const dir = (id: string): Vec2 => { const [a, b] = L(id); return [b[0] - a[0], b[1] - a[1]] }
@@ -78,7 +81,7 @@ function build(m: SketchModel): System {
   const rad = (id: string): number => {
     const e = ent(id)
     if (!e) return 0
-    if (e.type === 'circle') { const i = idx.get(e.id); return i !== undefined ? x[i] : e.r }
+    if (e.type === 'circle' || e.type === 'ellipse') { const i = idx.get(e.id); return i !== undefined ? x[i] : e.r }
     if (e.type === 'arc') return dist(P(e.c), P(e.s))
     return 0
   }
@@ -144,6 +147,38 @@ function build(m: SketchModel): System {
       case 'hdist': push([a, b], () => [P(b)[0] - P(a)[0] - v * sg]); break
       case 'vdist': push([a, b], () => [P(b)[1] - P(a)[1] - v * sg]); break
       case 'radius': push([a], () => [rad(a) - v]); break
+      case 'majorRadius': { const e = ent(a) as { c: string; m: string }; push([a], () => [dist(P(e.c), P(e.m)) - v]); break }
+      case 'mirror':
+        push([a, b, c.refs[2]], () => {
+          const [p, q] = L(c.refs[2]), A = P(a), B = P(b)
+          const d: Vec2 = [q[0] - p[0], q[1] - p[1]], l2 = dot(d, d) || 1
+          const t = dot([A[0] - p[0], A[1] - p[1]], d) / l2
+          const foot: Vec2 = [p[0] + d[0] * t, p[1] + d[1] * t]
+          return [2 * foot[0] - A[0] - B[0], 2 * foot[1] - A[1] - B[1]]
+        })
+        break
+      case 'rotated':
+        push([a, b, c.refs[2]], () => {
+          const O = P(a), A: Vec2 = [P(b)[0] - O[0], P(b)[1] - O[1]], B: Vec2 = [P(c.refs[2])[0] - O[0], P(c.refs[2])[1] - O[1]]
+          return [Math.hypot(...A) - Math.hypot(...B), wrap(Math.atan2(cross(A, B), dot(A, B)) - (v * Math.PI) / 180)]
+        })
+        break
+      case 'splineTangent': {
+        const sp = ent(a) as { pts: string[]; t0?: string; t1?: string }
+        const at = c.refs[2]
+        const h = at === sp.pts[0] ? sp.t0 : sp.t1
+        if (!h) break
+        const tb = ent(b)?.type
+        const hv = (): Vec2 => [P(h)[0] - P(at)[0], P(h)[1] - P(at)[1]]
+        if (tb === 'line') push([a, b, at], () => { const d1 = hv(), d2 = dir(b); return [cross(d1, d2) / ((Math.hypot(...d1) * Math.hypot(...d2)) || 1)] })
+        else if (tb === 'arc' || tb === 'circle') push([a, b, at], () => { const d1 = hv(), r: Vec2 = [P(at)[0] - center(b)[0], P(at)[1] - center(b)[1]]; return [dot(d1, r) / ((Math.hypot(...d1) * Math.hypot(...r)) || 1)] })
+        else if (tb === 'spline') {
+          const o = ent(b) as { pts: string[]; t0?: string; t1?: string }
+          const h2 = at === o.pts[0] ? o.t0 : o.t1
+          if (h2) push([a, b, at], () => { const d1 = hv(), d2: Vec2 = [P(h2)[0] - P(at)[0], P(h2)[1] - P(at)[1]]; return [cross(d1, d2) / ((Math.hypot(...d1) * Math.hypot(...d2)) || 1)] })
+        }
+        break
+      }
       case 'diameter': push([a], () => [2 * rad(a) - v]); break
       case 'angle':
         if (b && isLine(a) && isLine(b)) push([a, b], () => { const d1 = dir(a), d2 = dir(b); return [wrap(Math.atan2(cross(d1, d2), dot(d1, d2)) - (v * sg * Math.PI) / 180)] })
