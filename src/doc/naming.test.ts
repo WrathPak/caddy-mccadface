@@ -16,19 +16,21 @@ import { initOcc } from '@/kernel/occ'
 import { getBrep } from '@/kernel/store'
 import { bbox, type Body } from '@/kernel/types'
 import { clearCache, regenerate } from '@/doc/engine'
-import { decodeRef, edgeSigs, encodeRef, faceSigs, refFromSelection, resolveEdge, resolveFace, type EdgeRef, type FaceRef } from '@/doc/refs'
+import { RefReport, decodeRef, edgeSigs, encodeRef, faceSigs, refFromSelection, resolveEdge, resolveFace, resolveVertex, vertexRef, vertexSigs, type EdgeRef, type FaceRef } from '@/doc/refs'
 import { useDoc, type Feature } from '@/doc/store'
 import { useSketchData } from '@/sketch/draw'
 import { usePlanes } from '@/sketch/planes'
 import { ensureSolver } from '@/sketch/solver'
 import { addCircle, addConstraint, addCoincident, addLine, addPoint } from '@/sketch/model'
 import { ORIGIN, emptyModel, type PlaneDef, type SketchModel } from '@/sketch/types'
+import { profileRef } from '@/features/modeling'
 import '@/features/basic'
 import '@/features/sketch'
 import '@/features/extrude'
 import '@/features/fillet'
 import '@/features/solids'
 import '@/features/offsetPlane'
+import '@/features/revolve'
 
 const XY: PlaneDef = { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] }
 
@@ -102,7 +104,7 @@ function rectModel(w: number, h: number): { model: SketchModel; corner: string }
   return { model: m, corner: p[2] }
 }
 const sketchParams = (model: SketchModel, plane = XY, face: string | null = null) => ({ sketch: JSON.stringify({ plane, face, model }) })
-const profileOf = (sketchId: string) => `prof:${sketchId}:${useSketchData.getState().data[sketchId].profiles[0].key}`
+const profileOf = (sketchId: string) => { const p = useSketchData.getState().data[sketchId].profiles[0]; return profileRef(sketchId, p.key, p.id) }
 
 describe('persistent names on bodies', () => {
   it('a box names its faces by direction and its edges by the faces they join', async () => {
@@ -289,5 +291,133 @@ describe('references that cannot survive', () => {
     expect(resolveFace(gone, [b])).toBeNull()
     const goneEdge: EdgeRef = { kind: 'edge', bodyId: b.id, index: 0, name: 'f9:a&f9:b', sig: { midpoint: [500, 500, 500], direction: [0, 0, 1], length: 3 } }
     expect(resolveEdge(goneEdge, [b])).toBeNull()
+  })
+})
+
+describe('tapered walls, sweeps and lofts', () => {
+  it('a fillet on a tapered extrude wall follows the wall when the sketch is edited', async () => {
+    const { model } = rectModel(40, 20)
+    const sk = await add('sketch', sketchParams(model))
+    const ex = await add('extrude', { profiles: [profileOf(sk)], distance: 12, taper: 5, operation: 'join' })
+    expect(feat(ex).state).toBe('ok')
+    const b0 = body()
+    expect(namedFaces(b0, ':side:')).toHaveLength(4)
+    // the slanted edge where the +X wall meets the +Y wall
+    const e = edgeSigs(b0).findIndex((s) => s.midpoint[0] > 30 && s.midpoint[1] > 12 && Math.abs(s.direction[2]) > 0.9)
+    expect(e).toBeGreaterThanOrEqual(0)
+    const fl = await add('fillet', { edges: [refEdge(b0, e)], size: 1 })
+    expect(feat(fl).state).toBe('ok')
+    const m2 = JSON.parse(JSON.stringify(model)) as SketchModel
+    const dim = m2.constraints.find((c) => c.type === 'hdist')!
+    dim.expr = '80'; dim.value = 80
+    await edit(sk, sketchParams(m2))
+    expect(feat(ex).state).toBe('ok')
+    expect(feat(fl).state).toBe('ok')
+    expect(feat(fl).warning).toBeUndefined()
+    const f = namedFaces(body(), ':fillet:')
+    expect(f).toHaveLength(1)
+    expect(faceSigs(body())[f[0]].centroid[0]).toBeGreaterThan(65)
+  })
+
+  it('sweep: side faces are keyed by profile edge and path segment; a ref survives a path edit; the profile ref is name based', async () => {
+    const prof = emptyModel()
+    const pp = [addPoint(prof, -2, -2), addPoint(prof, 2, -2), addPoint(prof, 2, 2), addPoint(prof, -2, 2)]
+    pp.forEach((id, i) => addLine(prof, id, pp[(i + 1) % 4]))
+    const skP = await add('sketch', sketchParams(prof))
+    const path = emptyModel()
+    const a = addPoint(path, 0, 0), b = addPoint(path, 0, 20), c = addPoint(path, 10, 20)
+    const seg1 = addLine(path, a, b), seg2 = addLine(path, b, c)
+    const XZ: PlaneDef = { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, -1, 0] }
+    const skPath = await add('sketch', sketchParams(path, XZ))
+    const profRef = profileOf(skP)
+    expect(profRef).toMatch(/@l\d+\+l\d+\+l\d+\+l\d+$/)
+    const sw = await add('sweep', { profiles: [profRef], path: [skPath], operation: 'join' })
+    expect(feat(sw).error).toBeUndefined()
+    expect(feat(sw).state).toBe('ok')
+    const n = body().mesh.faceNames!.map((x) => x[0])
+    expect(n.filter((x) => x.endsWith(':' + seg1.id))).toHaveLength(4)
+    expect(n.filter((x) => x.endsWith(':' + seg2.id))).toHaveLength(4)
+    const wall = body().mesh.faceNames!.findIndex((x) => x[0].endsWith(':' + seg2.id))
+    const op = await add('offsetPlane', { base: 'face', face: [refFace(body(), wall)], distance: 1 })
+    expect(feat(op).state).toBe('ok')
+    const z0 = usePlanes.getState().data[op].origin[2]
+
+    // lengthen the vertical leg by 15: the horizontal leg's walls move up with it
+    const p2 = JSON.parse(JSON.stringify(path)) as SketchModel
+    for (const e of p2.entities) if (e.type === 'point' && e.y === 20) e.y = 35
+    await edit(skPath, sketchParams(p2, XZ))
+    expect(feat(sw).state).toBe('ok')
+    expect(feat(op).state).toBe('ok')
+    expect(feat(op).warning).toBeUndefined()
+    expect(usePlanes.getState().data[op].origin[2] - z0).toBeCloseTo(15, 0)
+  })
+
+  it('loft: walls are keyed by the first profile edges and caps by the profile ids', async () => {
+    const mk = (r: number) => {
+      const m = emptyModel()
+      const p = [addPoint(m, -r, -r), addPoint(m, r, -r), addPoint(m, r, r), addPoint(m, -r, r)]
+      p.forEach((id, i) => addLine(m, id, p[(i + 1) % 4]))
+      return m
+    }
+    const s1 = await add('sketch', sketchParams(mk(10)))
+    const s2 = await add('sketch', sketchParams(mk(5), { origin: [0, 0, 20], xDir: [1, 0, 0], normal: [0, 0, 1] }))
+    const lf = await add('loft', { profiles: [profileOf(s1), profileOf(s2)], ruled: true, operation: 'join' })
+    expect(feat(lf).error).toBeUndefined()
+    expect(feat(lf).state).toBe('ok')
+    const n = body().mesh.faceNames!.map((x) => x[0])
+    expect(n.filter((x) => x.includes(':side:'))).toHaveLength(4)
+    expect(n.filter((x) => x.includes(':start:') || x.includes(':end:'))).toHaveLength(2)
+    expect(n.some((x) => x.includes(':new:') || x.includes(':face:'))).toBe(false)
+  })
+})
+
+describe('vertex names', () => {
+  it('a box corner is named by the three faces meeting there and a vertex ref follows it through a resize', async () => {
+    const boxId = await add('box', box(20, 20, 10))
+    const b = body()
+    expect(b.mesh.vertexNames).toHaveLength(8)
+    const names = b.mesh.vertexNames!.map((n) => n[0])
+    expect(names).toContain('f1:xmax&f1:ymax&f1:zmax')
+    expect(new Set(names).size).toBe(8)
+    const i = names.indexOf('f1:xmax&f1:ymax&f1:zmax')
+    const ref = vertexRef(b, i)!
+    expect(ref.sig.pos).toEqual([10, 10, 10])
+    await edit(boxId, box(40, 30, 25, [100, 0, 0]))
+    const report = new RefReport()
+    const hit = resolveVertex(ref, bodies(), report)!
+    expect(vertexSigs(hit.body)[hit.index].pos).toEqual([120, 15, 25])
+    expect(report.flagged).toBeUndefined()
+  })
+})
+
+describe('legacy documents are upgraded on load', () => {
+  it('signature-only face / edge / profile refs resolve once and get their names written back', async () => {
+    const { model } = rectModel(40, 20)
+    const sk = await add('sketch', sketchParams(model))
+    // a profile ref as old versions wrote it: no profile id
+    const legacyProfile = profileOf(sk).split('@')[0]
+    const ex = await add('extrude', { profiles: [legacyProfile], distance: 10, operation: 'join' })
+    expect(feat(ex).state).toBe('ok')
+    const b0 = body()
+    const legacy = (r: string) => { const o = JSON.parse(r) as Record<string, unknown>; delete o.name; return JSON.stringify(o) }
+    const edgeRef = legacy(refEdge(b0, edgeAt(b0, [40, 20, 5], 2)))
+    expect(edgeRef).not.toContain('"name"')
+    const fl = await add('fillet', { edges: [edgeRef], size: 2 })
+    const sk2 = await add('sketch', sketchParams(rectModel(5, 5).model, XY, legacy(refFace(b0, faceAt(b0, [0, 0, 1], [20, 10, 10])))))
+    await regenerate()
+    expect(feat(fl).state).toBe('ok')
+    expect(feat(fl).warning).toBeUndefined()
+    // everything was rewritten with names (and no warning appeared on the way)
+    expect(feat(ex).params.profiles).toEqual([expect.stringMatching(/@l\d/)])
+    const edges = feat(fl).params.edges as string[]
+    expect((JSON.parse(edges[0]) as EdgeRef).name).toMatch(/^f2:side:l\d+&f2:side:l\d+$/)
+    expect(String(feat(sk2).params.sketch)).toContain('end:')
+    // and now the fillet really is name based: it follows a resize that would have defeated the signature
+    const m2 = JSON.parse(JSON.stringify(model)) as SketchModel
+    const dim = m2.constraints.find((c) => c.type === 'hdist')!
+    dim.expr = '90'; dim.value = 90
+    await edit(sk, sketchParams(m2))
+    expect(feat(fl).state).toBe('ok')
+    expect(feat(fl).warning).toBeUndefined()
   })
 })

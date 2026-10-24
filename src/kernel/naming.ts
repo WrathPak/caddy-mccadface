@@ -20,10 +20,10 @@
  *
  * A face name list is `string[]`: the primary name first, then aliases. All lists are indexed like `topoOf(shape).faces`.
  */
-import { HASH_CODE_MAX, cast, getOC, isShape3D, type AnyShape } from 'replicad'
+import { HASH_CODE_MAX, Vertex, cast, getOC, isShape3D, iterTopo, type AnyShape } from 'replicad'
 import { topoOf, type Shape } from './occ'
 
-export interface Names { faces: string[][]; edges: string[][] }
+export interface Names { faces: string[][]; edges: string[][]; /** vertices, named from the faces that meet there */ vertices: string[][]; /** xyz of every vertex, 3 numbers each */ vertexPos: number[] }
 /** A shape together with the face names of its topology. */
 export interface NShape { shape: Shape; faces: string[][] }
 
@@ -144,8 +144,36 @@ export function deriveEdgeNames(shape: AnyShape, faceNames: string[][]): string[
   })
 }
 
+/**
+ * Vertex names: the faces meeting at the vertex, e.g. `f1:xmax&f1:ymax&f1:zmax` (all alias combinations, primary first).
+ * Also returns the vertex positions (xyz triples) so refs can carry a signature.
+ */
+export function deriveVertexNames(shape: AnyShape, faceNames: string[][]): { names: string[][]; pos: number[] } {
+  const topo = topoOf(shape)
+  const verts = Array.from(iterTopo((shape as unknown as { wrapped: unknown }).wrapped as never, 'vertex')) as unknown as Raw[]
+  const find = indexer(verts.map((v) => ({ wrapped: v })), verts.map((v) => hashOf(v)))
+  const adj: number[][] = verts.map(() => [])
+  topo.faces.forEach((f, fi) => {
+    for (const v of iterTopo((f as unknown as { wrapped: unknown }).wrapped as never, 'vertex') as Iterable<Raw>) {
+      const vi = find(v)
+      if (vi >= 0 && !adj[vi].includes(fi)) adj[vi].push(fi)
+    }
+  })
+  const pos: number[] = []
+  const names = verts.map((v, vi) => {
+    pos.push(...new Vertex(v as never).asTuple())
+    const lists = adj[vi].map((f) => faceNames[f]?.slice(0, 3) ?? [`?${f}`]).slice(0, 4)
+    if (!lists.length) return [`free:${vi}`]
+    let combos: string[][] = [[]]
+    for (const l of lists) combos = combos.flatMap((c) => l.map((n) => [...c, n])).slice(0, 12)
+    return [...new Set(combos.map((c) => [...new Set(c)].sort().join('&')))]
+  })
+  return { names, pos }
+}
+
 export function namesOf(shape: AnyShape, faces: string[][]): Names {
-  return { faces, edges: deriveEdgeNames(shape, faces) }
+  const v = deriveVertexNames(shape, faces)
+  return { faces, edges: deriveEdgeNames(shape, faces), vertices: v.names, vertexPos: v.pos }
 }
 
 /** Root names for a freshly imported / otherwise anonymous shape. */

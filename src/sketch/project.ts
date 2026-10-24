@@ -116,6 +116,7 @@ function resolveTarget(refStr: string, bodies: Body[], report?: RefReport): Targ
     const body = bodies.find((b) => b.id === ref.bodyId)
     return body ? { body, faces: [], edges: [], all: true } : null
   }
+  if (ref.kind === 'vertex') return null // projecting a lone point is not supported yet
   const r = ref.kind === 'face' ? resolveFace(ref, bodies, report) : resolveEdge(ref, bodies, report)
   if (!r) return null
   return ref.kind === 'face' ? { body: r.body, faces: [r.index], edges: [], all: false } : { body: r.body, faces: [], edges: [r.index], all: false }

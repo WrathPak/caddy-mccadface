@@ -5,7 +5,7 @@ import { bodyFromShape, getOp, helpers } from './store'
 import { api } from './api'
 import { type Body } from './types'
 import type { Loop, PlaneDef } from '../sketch/types'
-import { RefReport, edgeSigs, faceSigs, refFromSelection, resolveFace, type FaceRef } from '../doc/refs'
+import { RefReport, edgeSigs, faceSigs, nameOf, refFromSelection, resolveFace, type FaceRef } from '../doc/refs'
 
 const XY: PlaneDef = { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] }
 const run = async <T = Body>(name: string, args: unknown) => (await getOp(name)!(args as never, helpers)) as T
@@ -78,6 +78,18 @@ describe('worker op names', () => {
     expect(names(r).filter((x) => x.startsWith('f5:rev:')).length).toBeGreaterThanOrEqual(3)
   })
 
+  it('taper: side walls keep the sketch entity names, in either taper direction and after editing the sketch', async () => {
+    const ids = ['l1', 'l2', 'l3', 'l4']
+    const a = await run('extrudeTool', extrudeArgs('f1', rect(10, 5, ids), 8, { taper: 5 }))
+    expect(names(a)).toEqual(['f1:end:l1+l2+l3+l4', 'f1:side:l1', 'f1:side:l2', 'f1:side:l3', 'f1:side:l4', 'f1:start:l1+l2+l3+l4'])
+    const b = await run('extrudeTool', extrudeArgs('f1', rect(14, 6, ids), 12, { taper: -4 }))
+    expect(names(b)).toEqual(names(a))
+    // each wall is the one that grows out of its own edge: side:l2 is the wall at x = width
+    const f = (b2: Body, n: string) => faceSigs(b2)[b2.mesh.faceNames!.findIndex((x) => x[0] === n)].centroid
+    expect(f(a, 'f1:side:l2')[0]).toBeGreaterThan(4)
+    expect(f(a, 'f1:side:l4')[0]).toBeLessThan(6)
+  })
+
   it('shell: walls are named from the faces they mirror, the open rim keeps the removed face name', async () => {
     const b = await api.makeBox({ id: 'b0', name: 'b0', size: [20, 20, 20], position: [0, 0, 0] })
     const top = faceSigs(b).findIndex((s) => s.normal[2] > 0.99)
@@ -89,21 +101,38 @@ describe('worker op names', () => {
 })
 
 describe('mesh bodies', () => {
-  it('names are (feature, segment index); a re-cut mesh is re-bound by signature with a warning', async () => {
-    const pos = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 1, 0, 5, 0, 1, 5])
-    const idx = new Uint32Array([0, 1, 2, 3, 4, 5])
-    const m = await api.createMesh({ id: 'm1', name: 'm1', positions: pos, indices: idx, creaseDeg: 30 })
-    const body: Body = { ...m, featureId: 'f3' }
-    const sigs = faceSigs(body)
-    expect(sigs.length).toBeGreaterThan(1)
-    const ref = refFromSelection({ kind: 'face', id: 'm1', index: 1 }, [body])!
-    expect((ref as FaceRef).name).toBe('seg:1')
-    const same = resolveFace(ref as FaceRef, [body], new RefReport())
-    expect(same!.index).toBe(1)
-    // the segmentation changed under the ref: segment 1 is now somewhere else entirely
-    const moved = { ...(ref as FaceRef), sig: { ...(ref as FaceRef).sig, normal: [1, 0, 0] as [number, number, number], centroid: [0, 0, 5] as [number, number, number] } }
+  // a unit cube as a triangle soup, with the triangle order / winding start shuffled when asked
+  const cube = (shuffle: boolean) => {
+    const v = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]]
+    let tris = [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]]
+    if (shuffle) tris = tris.map((t) => [t[1], t[2], t[0]]).reverse()
+    return { positions: new Float32Array(v.flat()), indices: new Uint32Array(tris.flat()) }
+  }
+  const make = async (id: string, shuffle: boolean, creaseDeg = 30): Promise<Body> => ({ ...(await api.createMesh({ id, name: id, ...cube(shuffle), creaseDeg })), featureId: 'f3' })
+  const topFace = (b: Body) => faceSigs(b).findIndex((s) => s.normal[2] > 0.99)
+
+  it('segment names come from what the segment is, so a re-imported mesh with a different triangle order keeps its refs', async () => {
+    const a = await make('m1', false)
+    const b = await make('m1', true)
+    expect(a.mesh.faceNames).toBeUndefined() // mesh names are derived on the main thread from the segment geometry
+    const ia = topFace(a), ib = topFace(b)
+    const ref = refFromSelection({ kind: 'face', id: 'm1', index: ia }, [a])! as FaceRef
+    expect(ref.name).toMatch(/^f3:seg:/)
+    expect(nameOf(b, 'face', ib)).toBe(ref.name)
     const report = new RefReport()
-    const r = resolveFace(moved, [body], report)
-    expect(r === null || report.rebound.size === 1).toBe(true)
+    expect(resolveFace(ref, [b], report)!.index).toBe(ib)
+    expect(report.flagged).toBeUndefined()
+    // the indices really did get scrambled, otherwise this proves nothing
+    expect(faceSigs(b).map((s) => s.normal.join())).not.toEqual(faceSigs(a).map((s) => s.normal.join()))
+  })
+
+  it('a ref whose segment no longer exists after a re-segmentation is re-bound by signature with a flag, or reported lost', async () => {
+    const a = await make('m1', false)
+    const ref = refFromSelection({ kind: 'face', id: 'm1', index: topFace(a) }, [a])! as FaceRef
+    const moved: FaceRef = { ...ref, name: ref.name!.replace(/:seg:.*/, ':seg:gone') }
+    const report = new RefReport()
+    const r = resolveFace(moved, [a], report)
+    expect(r!.index).toBe(topFace(a)) // the signature still points at the top
+    expect(report.rebound.size).toBe(1)
   })
 })

@@ -1,5 +1,5 @@
 /** Worker ops for solid modelling: profile extrusion (with taper) / revolution, face extrusion, fillet / chamfer, edge frames. */
-import { Plane, asDir, basicFaceExtrusion, cast, isShape3D, draw, getOC, loft, makeAx1, makeFace, makePln, measureVolume, Vector, DEG2RAD, type AnyShape, type Face } from 'replicad'
+import { Plane, asDir, basicFaceExtrusion, cast, isShape3D, makeVertex, measureDistanceBetween, draw, getOC, loft, makeAx1, makeFace, makePln, measureVolume, Vector, DEG2RAD, type AnyShape, type Face } from 'replicad'
 import { registerOp, type OpHelpers } from './store'
 import { topoOf, type Shape } from './occ'
 import { edgeModNamed, eachInList, finalize, fuseNamed, indexer, type NShape } from './naming'
@@ -151,7 +151,13 @@ function bothSides(from: number, to: number, side: Spanned): Sh {
 }
 
 /** Labels that name the faces of a swept solid: the source edges (side walls) and the profile / face (caps). */
-interface Labels { edges: string[]; start: string; end: string }
+interface Labels {
+  edges: string[]
+  start: string
+  end: string
+  /** a point on each source edge (aligned with `edges`): used to find the wall a tapered solid grows from it */
+  pts?: Vec3[]
+}
 
 /** Prism of `face` along `n * d` with persistent names: caps from First / LastShape, walls Generated from the face's edges. */
 function sweepNamed(face: Face, n: Vec3, d: number, lab: Labels | undefined, fid: string): NShape {
@@ -193,6 +199,27 @@ function capClaims(shape: Sh, n: Vec3, lab: Labels | undefined, fid: string): st
   return claims
 }
 
+/**
+ * Names for the walls of a tapered solid. OCC's draft / ruled loft give no usable history, so each wall is found
+ * geometrically: a point on a source edge lies on the wall that grows out of it (distance 0), which is deterministic.
+ */
+function wallClaims(shape: Sh, n: Vec3, lab: Labels | undefined, fid: string, claims: string[][]) {
+  if (!lab?.pts) return
+  const topo = topoOf(shape as unknown as AnyShape)
+  const walls = topo.faces.map((f, i) => ({ f, i })).filter(({ f }) => !(f.geomType === 'PLANE' && Math.abs(dot3(norm3(vec(f.normalAt())), n)) > 1 - 1e-9))
+  lab.pts.forEach((p, k) => {
+    const label = lab.edges[k]
+    if (!label) return
+    const v = makeVertex(p)
+    let best = -1, bd = Infinity
+    for (const { f, i } of walls) {
+      const d = measureDistanceBetween(f as never, v as never)
+      if (d < bd - 1e-9) { bd = d; best = i }
+    }
+    if (best >= 0 && bd < 1e-4) claims[best].push(`${fid}:side:${label}`)
+  })
+}
+
 /** Solid swept from `face` between the signed offsets [from, to] (0 lies inside the span) along `n`, optionally tapered. */
 function prism(face: Face, n: Vec3, from: number, to: number, taper = 0, lab?: Labels, fid = ''): NShape {
   if (!taper) {
@@ -200,13 +227,20 @@ function prism(face: Face, n: Vec3, from: number, to: number, taper = 0, lab?: L
     return sweepNamed(f, n, to - from, lab, fid)
   }
   const shape = bothSides(from, to, (h) => draftedFacePrism(face, n, h, taper))
-  return { shape, faces: capClaims(shape, n, lab, fid) }
+  const faces = capClaims(shape, n, lab, fid)
+  wallClaims(shape, n, lab, fid, faces)
+  return { shape, faces }
 }
 
 const cross3 = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 
 /** The sketch entity id of every edge of a profile face (aligned with `face.edges`), found by proximity in the sketch plane. */
 function edgeSegIds(pl: PlaneDef, face: Face, pr: ProfileIn): string[] {
+  return labelEdges(pl, face.edges, pr)
+}
+
+/** Same for any list of edges lying on the sketch plane (e.g. the edges of a profile wire). */
+export function labelEdges(pl: PlaneDef, edges: { pointAt(t: number): { x: number; y: number; z: number } }[], pr: ProfileIn): string[] {
   const segs = [pr.outer, ...pr.holes].flat()
   const ex = pl.xDir, ey = cross3(pl.normal, pl.xDir)
   const near = (p: Vec2, s: Seg) => {
@@ -217,7 +251,7 @@ function edgeSegIds(pl: PlaneDef, face: Face, pr: ProfileIn): string[] {
     }
     return Math.abs(Math.hypot(p[0] - s.c[0], p[1] - s.c[1]) - s.r)
   }
-  return face.edges.map((e) => {
+  return edges.map((e) => {
     const m = e.pointAt(0.5)
     const d: Vec3 = [m.x - pl.origin[0], m.y - pl.origin[1], m.z - pl.origin[2]]
     const p: Vec2 = [dot3(d, ex), dot3(d, ey)]
@@ -246,7 +280,17 @@ function profilePrism(g: ProfileGroup, pr: ProfileIn, from: number, to: number, 
     return bothSides(from, to, (u) => taperedProfileSide(plane, g.plane, pr, u, taper))
   }
   const shape = solid()
-  return { shape, faces: capClaims(shape, g.plane.normal, { edges: [], start: pid, end: pid }, fid) }
+  // one label + a point on the edge per loop segment, in world space
+  const ey = cross3(g.plane.normal, g.plane.xDir)
+  const w = (p: Vec2): Vec3 => [g.plane.origin[0] + g.plane.xDir[0] * p[0] + ey[0] * p[1], g.plane.origin[1] + g.plane.xDir[1] * p[0] + ey[1] * p[1], g.plane.origin[2] + g.plane.xDir[2] * p[0] + ey[2] * p[1]]
+  const segs = [pr.outer, ...pr.holes].flat().filter((s) => s.id)
+  const lab: Labels = {
+    edges: segs.map((s) => s.id!), start: pid, end: pid,
+    pts: segs.map((s) => w(s.k === 'l' ? [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2] : s.k === 'a' ? s.m : [s.c[0] + s.r, s.c[1]])),
+  }
+  const faces = capClaims(shape, g.plane.normal, lab, fid)
+  wallClaims(shape, g.plane.normal, lab, fid, faces)
+  return { shape, faces }
 }
 
 export interface ExtrudeArgs {
@@ -287,13 +331,15 @@ registerOp<ExtrudeArgs>('extrudeTool', (a, h: OpHelpers) => {
     const src = topo.faces[f.index]
     if (!src) throw new Error('Face not found')
     const eIdx = indexer(topo.edges, topo.edgeHashes)
-    const edgeLabels = src.edges.map((e) => names.edges[eIdx(e.wrapped as never)]?.[0] ?? '')
+    const srcEdges = src.edges
+    const edgeLabels = srcEdges.map((e) => names.edges[eIdx(e.wrapped as never)]?.[0] ?? '')
+    const edgePts = srcEdges.map((e): Vec3 => { const m = e.pointAt(0.5); return [m.x, m.y, m.z] })
     const fn = names.faces[f.index]?.[0] ?? 'f' + f.index
     // topology faces are cached and shared: work on a clone, because replicad's translate() / innerWires() consume their receiver
     const face = src.clone()
     const nv = face.normalAt()
     const n: Vec3 = [nv.x * a.faceDir, nv.y * a.faceDir, nv.z * a.faceDir]
-    parts.push(named(prism(face, n, from, to, taper, { edges: edgeLabels, start: fn, end: fn }, a.id), 'f' + parts.length))
+    parts.push(named(prism(face, n, from, to, taper, { edges: edgeLabels, start: fn, end: fn, pts: edgePts }, a.id), 'f' + parts.length))
   }
   if (!parts.length) throw new Error('Nothing to extrude')
   const r = fuseNamed(parts, a.id)

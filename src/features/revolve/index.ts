@@ -93,7 +93,7 @@ registerFeature({
     if (!inp.groups.length || !inp.sketch) throw new Error(inp.missing ? 'The profile no longer exists' : 'Select a profile to revolve')
     const tool = (await ctx.kernel.call('revolveTool', args(p, inp, env, ctx.newBodyId(), ctx.feature.name))) as Body
     const res = await combine(ctx, tool, p.operation, p.targets)
-    return { ...res, warning: inp.report.warning ?? res.warning, reboundRefs: inp.report.flagged }
+    return { ...res, warning: inp.report.warning ?? res.warning, reboundRefs: inp.report.flagged, upgrades: inp.report.upgradeMap }
   },
   preview: (ctx) => revolvePreview(ctx),
 })
@@ -150,7 +150,7 @@ export function startRevolve() {
   const visible = doc.features.filter((f, i) => f.type === 'sketch' && i < doc.rollback && !f.suppressed && data[f.id])
   const chosen = useUi.getState().selection.filter((r) => r.kind === 'sketch').map((r) => r.id)
   const pool = chosen.length ? visible.filter((f) => chosen.includes(f.id)) : visible
-  const all = pool.flatMap((f) => data[f.id].profiles.map((p) => profileRef(f.id, p.key)))
+  const all = pool.flatMap((f) => data[f.id].profiles.map((p) => profileRef(f.id, p.key, p.id)))
   const has = (id: string) => pool.some((f) => f.id === id && data[f.id].entities.some((e) => e.type === 'line' && e.construction))
   const sketchId = pool.length === 1 ? pool[0].id : ''
   createFeature('revolve', { profiles: chosen.length || all.length === 1 ? all : [], axis: sketchId && has(sketchId) ? 'line' : 'sketchX' }, 'solid.revolve')

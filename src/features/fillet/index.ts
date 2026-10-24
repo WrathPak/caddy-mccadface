@@ -57,7 +57,7 @@ function register(mode: Mode, icon: Icon) {
       for (const g of groups) {
         bodies.push((await ctx.kernel.call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size: p.size as number, mode, fid: ctx.feature.id })) as Body)
       }
-      return { bodies, warning: report.warning, reboundRefs: report.flagged }
+      return { bodies, warning: report.warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
     },
     preview: (ctx) => edgePreview(mode, schema, ctx),
   })

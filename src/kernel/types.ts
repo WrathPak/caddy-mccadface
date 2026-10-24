@@ -27,6 +27,9 @@ export interface MeshData {
    */
   faceNames?: string[][]
   edgeNames?: string[][]
+  /** vertices named from the faces meeting there, and their xyz positions (3 numbers per vertex) */
+  vertexNames?: string[][]
+  vertexPos?: Float32Array
 }
 
 const maxOf = (a: ArrayLike<number>) => {

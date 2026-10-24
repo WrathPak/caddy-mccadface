@@ -49,7 +49,7 @@ registerFeature({
     const report = new RefReport()
     const plane = offsetPlaneDef(p, ctx.bodies, report)
     usePlanes.getState().set(ctx.feature.id, plane)
-    return { data: { plane }, warning: report.warning, reboundRefs: report.flagged }
+    return { data: { plane }, warning: report.warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
   },
   preview({ values }) {
     const show = (v: ParamValues) => {

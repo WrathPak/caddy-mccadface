@@ -54,7 +54,7 @@ registerFeature({
       ? `${proj.broken} projected reference${proj.broken === 1 ? '' : 's'} lost the source geometry (curves shown in red); delete them or re-project`
       : undefined
     const warning = [report.warning, lost].filter(Boolean).join('; ') || undefined
-    return { data, warning, reboundRefs: report.flagged }
+    return { data, warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
   },
   edit(id, params) {
     const d = useDoc.getState()

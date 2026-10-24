@@ -60,6 +60,8 @@ export interface FeatureResult {
   warning?: string
   /** the stored refs behind `warning` that were re-bound by position (highlighted in the Inspector) */
   reboundRefs?: string[]
+  /** legacy refs that resolved, with the named version of each (the engine writes these back into the feature params) */
+  upgrades?: Record<string, string>
 }
 
 export interface PreviewCtx {

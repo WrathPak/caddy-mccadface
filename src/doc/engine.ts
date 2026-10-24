@@ -11,7 +11,10 @@ import { RefError } from './refs'
 import { setRegenHandler, useDoc, type FeatureStatus } from './store'
 import type { FeatureCtx, FeatureResult, FeatureState } from './types'
 
-interface CacheEntry { hash: string; bodies: Body[]; data?: unknown; error?: string; warning?: string; rebound?: string[]; lost?: string[] }
+interface CacheEntry { hash: string; bodies: Body[]; data?: unknown; error?: string; warning?: string; rebound?: string[]; lost?: string[]; upgrades?: Record<string, string> }
+
+/** Names written back into legacy (signature-only) refs; applied after the pass. */
+type Upgrades = Record<string, string>
 const cache = new Map<string, CacheEntry>()
 
 function hash(s: string): string {
@@ -68,6 +71,7 @@ async function pass() {
   const stat = (e: CacheEntry | undefined): FeatureStatus =>
     e?.error ? { state: 'error', error: e.error, lostRefs: e.lost } : e?.warning ? { state: 'warning', warning: e.warning, reboundRefs: e.rebound } : { state: 'ok' }
   let state: Body[] = []
+  const upgrades: Upgrades = {}
   let chain = ''
   const seen = new Set<string>()
 
@@ -109,7 +113,7 @@ async function pass() {
       }
       try {
         const r = await def.compute(ctx, params)
-        entry = { hash: h, bodies: merge(state, r, f.id), data: r.data, warning: r.warning, rebound: r.reboundRefs }
+        entry = { hash: h, bodies: merge(state, r, f.id), data: r.data, warning: r.warning, rebound: r.reboundRefs, upgrades: r.upgrades }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         console.warn(`[regen] ${f.name}:`, e)
@@ -132,6 +136,38 @@ async function pass() {
   const d = useDoc.getState()
   d.applyStatus(status)
   d.setGeometry(state)
+  for (const e of cache.values()) Object.assign(upgrades, e.upgrades)
+  if (Object.keys(upgrades).length && writeUpgrades(upgrades)) again = true // the upgraded features re-run once with their names
+}
+
+/** Rewrite legacy refs in the feature params (plain strings, string lists, and inside a sketch's JSON) with their named versions. */
+function writeUpgrades(map: Upgrades): boolean {
+  const pairs = Object.entries(map).map(([from, to]) => ({ from, to, esc: [JSON.stringify(from).slice(1, -1), JSON.stringify(to).slice(1, -1)] }))
+  const fix = (v: string): string => {
+    let out = v
+    for (const p of pairs) {
+      if (out === p.from) return p.to
+      if (out.includes(p.esc[0])) out = out.split(p.esc[0]).join(p.esc[1])
+    }
+    return out
+  }
+  let changed = false
+  const features = useDoc.getState().features.map((f) => {
+    let touched = false
+    const params = Object.fromEntries(
+      Object.entries(f.params).map(([k, v]) => {
+        const n = typeof v === 'string' ? fix(v) : Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]).map(fix) : v
+        if (JSON.stringify(n) !== JSON.stringify(v)) touched = true
+        return [k, n]
+      }),
+    )
+    if (!touched) return f
+    changed = true
+    return { ...f, params }
+  })
+  // silent: not an edit of the user's, so no undo step and the document is not marked dirty
+  if (changed) useDoc.setState({ features })
+  return changed
 }
 
 /** Forget cached results (e.g. after loading a document). */

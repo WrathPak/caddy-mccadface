@@ -20,7 +20,8 @@ export function liveEnv(): Env {
 }
 export const ctxEnv = (ctx: FeatureCtx): Env => ({ bodies: ctx.bodies, dataOf: ctx.dataOf })
 
-export const profileRef = (featureId: string, key: string) => `prof:${featureId}:${key}`
+/** `prof:<sketch>:<centroid,area>@<profile id>`: the id (entity ids of the outer loop) is what finds the profile again, the key is the fallback. */
+export const profileRef = (featureId: string, key: string, id?: string) => `prof:${featureId}:${key}${id ? '@' + id : ''}`
 
 export interface Inputs {
   groups: ProfileGroup[]
@@ -35,15 +36,18 @@ export interface Inputs {
   report: RefReport
 }
 
-function nearestProfile(data: SketchData, key: string) {
+function nearestProfile(data: SketchData, key: string, id?: string) {
   const [cx, cy, area] = key.split(',').map(Number)
   let best = -1, bestScore = Infinity
+  const among = id ? data.profiles.map((p, i) => ({ p, i })).filter((x) => x.p.id === id) : []
+  if (among.length === 1) return { prof: among[0].p, byId: true }
   data.profiles.forEach((p, i) => {
+    if (among.length && p.id !== id) return
     const scale = Math.max(1, Math.sqrt(Math.abs(area)))
     const score = Math.hypot(p.centroid[0] - cx, p.centroid[1] - cy) / scale + Math.abs(p.area - area) / Math.max(Math.abs(area), 1e-6)
     if (score < bestScore) { bestScore = score; best = i }
   })
-  return best >= 0 && bestScore < 4 ? data.profiles[best] : null
+  return best >= 0 && bestScore < 4 ? { prof: data.profiles[best], byId: false } : null
 }
 
 /** Resolve profile refs ("prof:<sketch>:<key>") and face refs (JSON) against the current environment. */
@@ -57,8 +61,12 @@ export function resolveInputs(refs: string[], env: Env): Inputs {
     if (r.startsWith('prof:')) {
       const [, fid, ...rest] = r.split(':')
       const data = env.dataOf(fid) as SketchData | undefined
-      const prof = data && nearestProfile(data, rest.join(':'))
-      if (!data || !prof) { missing++; continue }
+      const [key, pid] = rest.join(':').split('@')
+      const hit = data && nearestProfile(data, key, pid)
+      const prof = hit?.prof
+      if (!data || !hit || !prof) { missing++; report.lost.set(r, 'The profile no longer exists'); continue }
+      if (pid && !hit.byId) report.rebound.set(r, 'A profile reference was re-bound by position, check it')
+      else if (!pid && prof.id) report.upgrades.set(r, r + '@' + prof.id)
       let g = groups.get(fid)
       if (!g) groups.set(fid, (g = { plane: data.plane as PlaneDef, profiles: [] }))
       g.profiles.push({ outer: prof.outer, holes: prof.holes })
