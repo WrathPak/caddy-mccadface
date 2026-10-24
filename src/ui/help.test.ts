@@ -17,7 +17,7 @@ describe('every setting explains itself', () => {
   it('has a help text on every parameter of every feature dialog', async () => {
     // some feature modules touch `window` at import time (file pickers); a bare global is enough in node
     ;(globalThis as unknown as { window: unknown }).window ??= globalThis
-    await Promise.all([import('@/features/basic'), import('@/features/solids'), import('@/features/meshTools'), import('@/features/offsetPlane'), import('@/features/extrude'), import('@/features/fillet'), import('@/features/revolve'), import('@/features/hair'), import('@/features/measure'), import('@/features/section'), import('@/features/move')])
+    await Promise.all([import('@/features/basic'), import('@/features/solids'), import('@/features/meshTools'), import('@/features/offsetPlane'), import('@/features/extrude'), import('@/features/fillet'), import('@/features/revolve'), import('@/features/hair'), import('@/features/measure'), import('@/features/section'), import('@/features/move'), import('@/features/modeling-tools/register')])
     const { allFeatures } = await import('@/doc/registry')
     const { exportSchema } = await import('@/io/actions')
     const { measureSchema } = await import('@/features/measure')

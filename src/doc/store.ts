@@ -7,8 +7,8 @@ import type { Body } from '@/kernel/types'
 import type { ParamValues } from '@/ui/schema'
 import { DEFAULT_HIDDEN, useUi } from '@/store/ui'
 import { getFeature } from './registry'
-import { setUserParams as applyUserParams } from './params'
-import type { DocData, Feature, FeatureState, UserParam } from './types'
+import { effectiveParams, setUserParams as applyUserParams } from './params'
+import type { Config, DocData, Feature, FeatureState, UserParam } from './types'
 
 export type { Feature, FeatureState } from './types'
 /** What the engine reports per feature after a pass. */
@@ -44,6 +44,8 @@ interface DocState extends DocData {
   deleteEntity: (kind: Coll, id: string) => void
   // params
   setUserParams: (p: UserParam[]) => void
+  setConfigs: (c: Config[]) => void
+  setActiveConfig: (name: string | null) => void
   // history
   commit: (label: string, fn: (d: DocData) => DocData) => void
   undo: () => void
@@ -66,7 +68,7 @@ export const setRegenHandler = (fn: () => void) => { regenHandler = fn }
 const past: HistoryItem[] = []
 const future: HistoryItem[] = []
 
-const empty = (): DocData => ({ name: 'Untitled', features: [], rollback: 0, userParams: [], bodyNames: {} })
+const empty = (): DocData => ({ name: 'Untitled', features: [], rollback: 0, userParams: [], bodyNames: {}, configs: [], activeConfig: null })
 
 function derive(s: Pick<DocState, 'geometry' | 'bodyNames' | 'features'>) {
   const name = (b: Body) => s.bodyNames[b.id] ?? b.name
@@ -83,10 +85,10 @@ const nextId = (features: Feature[]) =>
 export const useDoc = create<DocState>((set, get) => {
   const pick = (): DocData => {
     const s = get()
-    return { name: s.name, features: s.features, rollback: s.rollback, userParams: s.userParams, bodyNames: s.bodyNames }
+    return { name: s.name, features: s.features, rollback: s.rollback, userParams: s.userParams, bodyNames: s.bodyNames, configs: s.configs, activeConfig: s.activeConfig }
   }
   const apply = (d: DocData, extra: Partial<DocState> = {}) => {
-    applyUserParams(d.userParams)
+    applyUserParams(effectiveParams(d.userParams, d.configs, d.activeConfig))
     set((s) => ({
       ...d,
       ...derive({ geometry: s.geometry, bodyNames: d.bodyNames, features: d.features }),
@@ -151,6 +153,8 @@ export const useDoc = create<DocState>((set, get) => {
     },
 
     setUserParams: (userParams) => get().commit('Edit parameters', (d) => ({ ...d, userParams })),
+    setConfigs: (configs) => get().commit('Edit configurations', (d) => ({ ...d, configs, activeConfig: configs.some((c) => c.name === d.activeConfig) ? d.activeConfig : null })),
+    setActiveConfig: (name) => get().commit(name ? `Switch to ${name}` : 'Switch to base parameters', (d) => (d.activeConfig === name ? d : { ...d, activeConfig: name })),
 
     commit: (label, fn) => {
       const before = pick()

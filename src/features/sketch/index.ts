@@ -9,6 +9,7 @@ import { reprojectModel } from '@/sketch/project'
 import { useSketchData } from '@/sketch/draw'
 import { planeFromNormal, reanchor } from '@/sketch/plane'
 import { detectProfiles } from '@/sketch/profiles'
+import { ensureFonts } from '@/sketch/curves'
 import { ensureSolver, solveModel } from '@/sketch/solver'
 import { beginSketch } from '@/sketch/store'
 import type { PlaneDef, SketchData, SketchModel } from '@/sketch/types'
@@ -25,6 +26,7 @@ registerFeature({
   async compute(ctx, p) {
     const st = parse(p.sketch)
     await ensureSolver()
+    await ensureFonts(st.model)
     let plane = st.plane
     const report = new RefReport()
     if (st.face) {

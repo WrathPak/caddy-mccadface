@@ -6,7 +6,7 @@ import { useVpColors } from '@/viewport/colors'
 import { useSketchPick } from './create'
 import { useDoc } from '@/doc/store'
 import { originPlane, planeQuaternion, originPlaneId, type OriginPlaneName } from './plane'
-import { usePlanes } from './planes'
+import { PLANE_FEATURES, usePlanes } from './planes'
 import { useSceneHalfSize } from '@/viewport/Origin'
 import type { PlaneDef } from './types'
 
@@ -23,7 +23,7 @@ export function PlanePicker() {
   if (!picking) return null
   const choices: { id: string; plane: PlaneDef }[] = [
     ...NAMES.map((n) => ({ id: originPlaneId(n), plane: originPlane(n) })),
-    ...features.filter((f, i) => f.type === 'offsetPlane' && i < rollback && !f.suppressed && cdata[f.id]).map((f) => ({ id: f.id, plane: cdata[f.id] })),
+    ...features.filter((f, i) => PLANE_FEATURES.has(f.type) && i < rollback && !f.suppressed && cdata[f.id]).map((f) => ({ id: f.id, plane: cdata[f.id] })),
   ]
   return (
     <group>

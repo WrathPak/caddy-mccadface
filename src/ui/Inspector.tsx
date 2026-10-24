@@ -133,7 +133,7 @@ function SelectionRef({ def, value, onChange, active, onActivate }: { def: Selec
   )
 }
 
-const KIND_OF: Record<string, string> = { body: 'body', mesh: 'body', face: 'face', edge: 'edge', sketch: 'sketch' }
+const KIND_OF: Record<string, string> = { body: 'body', mesh: 'body', face: 'face', edge: 'edge', sketch: 'sketch', plane: 'plane', axis: 'axis', point: 'point', vertex: 'vertex', feature: 'feature' }
 
 /** Schema-driven feature dialog. Renders `ui.inspector` (any ParamSchema) with OK / Cancel. */
 export function Inspector() {
@@ -164,7 +164,7 @@ function InspectorForm({ session }: { session: InspectorSession }) {
     activeRef.current = key
     setActive(key)
     const d = picks().find((p) => p.key === key)
-    useUi.setState({ pickSketches: !!d?.accepts.includes('sketch') })
+    useUi.setState({ pickSketches: !!d?.accepts.includes('sketch'), pickKinds: (d?.accepts ?? []) as never })
     const f = d?.accepts.find((k) => k === 'body' || k === 'face' || k === 'edge')
     if (f) { touchedFilter.current = true; useUi.getState().setSelectionFilter(f) }
   }
@@ -174,7 +174,7 @@ function InspectorForm({ session }: { session: InspectorSession }) {
     if (ps.length && !activeRef.current) activate((ps.find((p) => !(latest.current[p.key] as string[])?.length) ?? ps[0]).key)
     const restore = prevFilter.current
     return () => {
-      useUi.setState({ pickSketches: false })
+      useUi.setState({ pickSketches: false, pickKinds: [] })
       if (touchedFilter.current) useUi.getState().setSelectionFilter(restore)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -121,6 +121,14 @@ export function loopPoly(loop: Loop, maxStep = Math.PI / 36): Vec2[] {
       for (let i = 0; i < n; i++) out.push(polar(s.c, s.r, (i / n) * TAU))
     } else if (s.k === 'l') {
       out.push(s.a)
+    } else if (s.k === 'b') {
+      // sampled finely enough that a flattened outline stays within about a micron of the curve
+      const n = Math.max(8, Math.min(48, Math.ceil((Math.hypot(s.c1[0] - s.a[0], s.c1[1] - s.a[1]) + Math.hypot(s.c2[0] - s.c1[0], s.c2[1] - s.c1[1]) + Math.hypot(s.b[0] - s.c2[0], s.b[1] - s.c2[1])) / 0.5)))
+      for (let i = 0; i < n; i++) {
+        const t = i / n, u = 1 - t
+        const w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t
+        out.push([w0 * s.a[0] + w1 * s.c1[0] + w2 * s.c2[0] + w3 * s.b[0], w0 * s.a[1] + w1 * s.c1[1] + w2 * s.c2[1] + w3 * s.b[1]])
+      }
     } else {
       out.push(s.a)
       const a0 = Math.atan2(s.a[1] - s.c[1], s.a[0] - s.c[0])
@@ -167,6 +175,6 @@ export function pointInPoly(pt: Vec2, p: Vec2[]): boolean {
 /** Reverse a loop's direction (segments reversed and each flipped). */
 export function reverseLoop(loop: Loop): Loop {
   return loop
-    .map((s): Seg => (s.k === 'l' ? { ...s, a: s.b, b: s.a } : s.k === 'a' ? { ...s, a: s.b, b: s.a, ccw: !s.ccw } : { ...s }))
+    .map((s): Seg => (s.k === 'l' ? { ...s, a: s.b, b: s.a } : s.k === 'a' ? { ...s, a: s.b, b: s.a, ccw: !s.ccw } : s.k === 'b' ? { ...s, a: s.b, b: s.a, c1: s.c2, c2: s.c1 } : { ...s }))
     .reverse()
 }
