@@ -1,0 +1,18 @@
+.print-cards { position: absolute; left: 8px; bottom: 40px; z-index: 6; display: flex; flex-direction: column; gap: 6px; max-width: 280px; pointer-events: none; }
+.print-card { pointer-events: auto; background: var(--bg-1); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 8px 8px; box-shadow: var(--shadow-float); font-size: var(--fs-sm); color: var(--text); }
+.print-card-head { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: var(--fs-md); margin-bottom: 4px; }
+.print-card-head button { background: transparent; border: none; color: var(--text-dim); padding: 2px; border-radius: var(--radius-sm); display: inline-flex; }
+.print-card-head button:hover { background: var(--bg-hover); color: var(--text); }
+.print-field { display: flex; align-items: center; gap: 6px; margin: 4px 0; color: var(--text-dim); }
+.print-field input { width: 64px; height: 20px; background: var(--bg-input); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 0 4px; font-family: var(--font-mono); font-size: var(--fs-sm); }
+.print-field input:focus { outline: none; border-color: var(--accent-line); }
+.print-field .unit { color: var(--text-faint); }
+.print-legend { margin: 6px 0 4px; }
+.print-legend .ramp { height: 8px; border-radius: 4px; border: 1px solid var(--line); }
+.print-legend .ends { display: flex; justify-content: space-between; gap: 8px; margin-top: 2px; color: var(--text-faint); font-size: var(--fs-xs); }
+.print-result { color: var(--text-dim); line-height: 1.35; }
+.print-chip { display: flex; align-items: center; gap: 6px; margin: 2px 0; color: var(--text-dim); }
+.print-chip .sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line-strong); display: inline-block; }
+.print-drain-bar { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); z-index: 6; }
+.print-count { padding: 0 6px; color: var(--text-dim); font-size: var(--fs-sm); }
+.print-drain-bar .vp-bar button:disabled { opacity: 0.4; }
