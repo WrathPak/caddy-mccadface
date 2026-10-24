@@ -1,5 +1,9 @@
 # CADdy McCADFace
 
+[![ci](https://github.com/WrathPak/caddy-mccadface/actions/workflows/ci.yml/badge.svg)](https://github.com/WrathPak/caddy-mccadface/actions/workflows/ci.yml)
+
+live version: https://wrathpak.github.io/caddy-mccadface/
+
 browser cad that runs 100% on your machine. no accounts, no cloud, nothing gets uploaded. you can host it anywhere static and your files still never leave your computer.
 
 i got tired of fighting fusion 360 for 3d printing stuff (especially hair on figures) so i'm building my own.
@@ -21,7 +25,7 @@ pnpm install
 pnpm dev
 ```
 
-tests: `pnpm test` (unit) and `pnpm exec playwright test` (browser)
+tests: `pnpm test` (unit) and `pnpm exec playwright test` (browser). see CONTRIBUTING.md if you want to help out
 
 ## under the hood
 
