@@ -28,7 +28,7 @@ export interface InferCtx extends SnapCtx {
   lock?: { dir: Vec2 } | null
 }
 
-const GLYPH: Record<string, string> = { parallel: '∥', perpendicular: '⊥', collinear: '—', tangent: 'T', equal: '=', horizontal: 'H', vertical: 'V' }
+const GLYPH: Record<string, string> = { parallel: '∥', perpendicular: '⊥', collinear: '/', tangent: 'T', equal: '=', horizontal: 'H', vertical: 'V' }
 export const relGlyph = (r: Rel) => GLYPH[r.type]
 export const RELATION_TEXT: Record<string, string> = {
   parallel: 'Parallel', perpendicular: 'Perpendicular', collinear: 'Extension', tangent: 'Tangent', equal: 'Equal length', horizontal: 'Horizontal', vertical: 'Vertical',
