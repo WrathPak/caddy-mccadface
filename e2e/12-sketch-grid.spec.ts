@@ -6,20 +6,21 @@ interface Line { x: number; peak: number; green: number }
 async function rowLines(app: App, rowFrac: number): Promise<Line[]> {
   const row: number[] = await app.page.evaluate(async (frac) => {
     const t = (window as any).__caddy.three // eslint-disable-line
-    t.gl.render(t.scene, t.camera) // read the canvas in the same task as the render
-    const img = new Image()
-    img.src = t.gl.domElement.toDataURL()
-    await img.decode()
-    const cv = document.createElement('canvas')
-    cv.width = img.width
-    cv.height = img.height
-    const ctx = cv.getContext('2d')!
-    ctx.drawImage(img, 0, 0)
-    // a row that happens to run along a horizontal grid line would light up entirely: take the quietest row of a band
-    const ref = ctx.getImageData(2, 2, 1, 1).data // the far corner is outside the faded grid: pure background
+    t.gl.render(t.scene, t.camera) // read the framebuffer in the same task as the render
+    const gl: WebGLRenderingContext = t.gl.getContext()
+    const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight
+    // only the 40 row band is read (readPixels is bottom-up); encoding the whole canvas is far too slow on software GL
+    const top = Math.min(Math.floor(H * frac), H - 40)
+    const buf = new Uint8Array(W * 40 * 4)
+    gl.readPixels(0, H - top - 40, W, 40, gl.RGBA, gl.UNSIGNED_BYTE, buf)
+    const refPx = new Uint8Array(4)
+    gl.readPixels(2, H - 3, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, refPx) // the far corner is outside the faded grid: pure background
+    const ref = refPx
+    // a row that happens to run along a horizontal grid line would light up entirely: take the quietest row of the band
     let best: number[] = [], bestSum = Infinity
     for (let k = 0; k < 40; k++) {
-      const row = Array.from(ctx.getImageData(0, Math.floor(img.height * frac) + k, img.width, 1).data)
+      const off = (39 - k) * W * 4 // band row k counted from the top
+      const row = Array.from(buf.subarray(off, off + W * 4))
       let sum = 0
       for (let i = 0; i < row.length; i += 4) sum += Math.abs(row[i] - ref[0]) + Math.abs(row[i + 1] - ref[1]) + Math.abs(row[i + 2] - ref[2])
       if (sum < bestSum) { bestSum = sum; best = row }

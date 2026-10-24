@@ -1,0 +1,20 @@
+name: feature request
+description: something you wish it could do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: what do you want to be able to do
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: what are you making
+      description: the actual use case helps me figure out the right way to build it
+  - type: textarea
+    id: other
+    attributes:
+      label: how other cad programs do it
+      description: optional, fusion 360 / onshape / freecad etc

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Box3, MathUtils, Matrix4, Mesh, OrthographicCamera, PerspectiveCamera, Plane, Quaternion, Raycaster, Sphere, Vector2, Vector3 } from 'three'
+import { navClock } from './navClock'
 import { viewportBus, type StepKind, type ViewDir } from './bus'
 import { dragAction, useNavSettings, wheelAction } from './navSettings'
 
@@ -138,17 +139,22 @@ export function NavControls() {
 
   const getBounds = (state: { scene: Parameters<typeof sceneBox>[0] }) => {
     const c = boundsCache.current
-    const now = performance.now()
+    const now = navClock.now()
     if (now - c.at > 120) { c.box = sceneBox(state.scene); c.at = now }
     return c.box
   }
 
-  useFrame((state, dt) => {
+  const lastFrame = useRef<number | null>(null)
+  useFrame((state, realDt) => {
+    // frame time comes from the nav clock so specs can freeze and step it (it equals the real frame delta otherwise)
+    const frameNow = navClock.now()
+    const dt = lastFrame.current === null ? realDt : Math.max(0, (frameNow - lastFrame.current) / 1000)
+    lastFrame.current = frameNow
     const st = s.current
     const cam = state.camera
     const a = anim.current
     if (a) {
-      const t = Math.min(1, (performance.now() - a.t0) / a.ms)
+      const t = Math.min(1, (navClock.now() - a.t0) / a.ms)
       const e = ease(t)
       st.q.slerpQuaternions(a.q0, a.q1, e)
       st.dist = MathUtils.lerp(a.dist0, a.dist1, e)
@@ -212,14 +218,14 @@ export function NavControls() {
     // pivot marker
     const m = marker.current
     if (m) {
-      const visible = m.on || performance.now() < m.until
+      const visible = m.on || navClock.now() < m.until
       if (visible && navDebug.pivot) {
         const p = navDebug.pivot.clone().project(cam)
         const w = sizeRef.current.width, h = sizeRef.current.height
         m.el.style.display = 'block'
         m.el.style.left = `${((p.x + 1) / 2) * w}px`
         m.el.style.top = `${((1 - p.y) / 2) * h}px`
-        m.el.style.opacity = m.on ? '1' : String(Math.max(0, (m.until - performance.now()) / 450))
+        m.el.style.opacity = m.on ? '1' : String(Math.max(0, (m.until - navClock.now()) / 450))
         if (!m.on) invalidate()
       } else m.el.style.display = 'none'
     }
@@ -295,7 +301,7 @@ export function NavControls() {
       zoom.current = null
       glide.current = null
       anim.current = {
-        t0: performance.now(), ms,
+        t0: navClock.now(), ms,
         q0: st.q.clone(), q1: g.q ?? prev?.q1.clone() ?? st.q.clone(),
         dist0: st.dist, dist1: g.dist ?? prev?.dist1 ?? st.dist,
         target0: st.target.clone(), target1: g.target ?? prev?.target1.clone() ?? st.target.clone(),
@@ -313,7 +319,7 @@ export function NavControls() {
     const goalQ = () => anim.current?.q1.clone() ?? s.current.q.clone()
     const setPivot = (p: Vector3 | null, on: boolean) => {
       navDebug.pivot = p
-      if (mk) { mk.on = on; if (!on) mk.until = performance.now() + 450 }
+      if (mk) { mk.on = on; if (!on) mk.until = navClock.now() + 450 }
       invalidate()
     }
     /** Orbit by a pixel delta about a pivot (default: the view centre). */
@@ -366,7 +372,7 @@ export function NavControls() {
       e.preventDefault()
       // double-click of the middle button fits everything (a further click right after it is swallowed, it must not stop the fit)
       if (e.button === 1) {
-        const now = performance.now()
+        const now = navClock.now()
         if (now - lastMiddle.t < 350 && Math.hypot(e.clientX - lastMiddle.x, e.clientY - lastMiddle.y) < 6) {
           if (!lastMiddle.fit) frame()
           lastMiddle = { t: now, x: e.clientX, y: e.clientY, fit: true }
@@ -379,7 +385,7 @@ export function NavControls() {
       zoom.current = null
       const pivot = pivotAt(e)
       el.setPointerCapture(e.pointerId)
-      drag = { kind, id: e.pointerId, pivot, x: e.clientX, y: e.clientY, vx: 0, vy: 0, t: performance.now(), moved: 0 }
+      drag = { kind, id: e.pointerId, pivot, x: e.clientX, y: e.clientY, vx: 0, vy: 0, t: navClock.now(), moved: 0 }
       if (kind === 'pan') {
         const cam0 = c.clone() as PerspectiveCamera | OrthographicCamera
         cam0.updateMatrixWorld()
@@ -394,7 +400,7 @@ export function NavControls() {
       const d = drag
       if (!d || e.pointerId !== d.id) return
       const dx = e.clientX - d.x, dy = e.clientY - d.y
-      const now = performance.now()
+      const now = navClock.now()
       const dt = Math.max(1, now - d.t) / 1000
       d.vx = 0.6 * d.vx + 0.4 * (dx / dt)
       d.vy = 0.6 * d.vy + 0.4 * (dy / dt)
@@ -424,7 +430,7 @@ export function NavControls() {
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
       if (d.kind === 'orbit') setPivot(d.pivot, false)
       // optional inertia: keep going with the release velocity
-      if (useNavSettings.getState().inertia && performance.now() - d.t < 90 && d.moved > 6 && (d.kind === 'orbit' || d.kind === 'pan')) {
+      if (useNavSettings.getState().inertia && navClock.now() - d.t < 90 && d.moved > 6 && (d.kind === 'orbit' || d.kind === 'pan')) {
         if (d.kind === 'orbit') glide.current = { kind: 'orbit', vx: d.vx, vy: d.vy, pivot: d.pivot }
         else {
           const c = cameraOf()
@@ -451,7 +457,7 @@ export function NavControls() {
       const dX = e.deltaX * px, dY = e.deltaY * px
       const act = wheelAction(useNavSettings.getState().preset, e)
       if (act === 'zoom') {
-        const now = performance.now()
+        const now = navClock.now()
         const z = zoom.current
         // one pivot per burst of events, so the point under the cursor stays under it
         const pivot = z && now - z.last < 180 ? z.pivot : (pivotAtWheel(e) ?? s.current.target)
