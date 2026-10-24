@@ -4,7 +4,11 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
 
+// BASE_PATH is set for the github pages build (/caddy-mccadface/), local dev stays at /
+const base = process.env.BASE_PATH || '/'
+
 export default defineConfig({
+  base,
   resolve: { alias: { '@': path.resolve(import.meta.dirname, "src") } },
   plugins: [
     react(),
