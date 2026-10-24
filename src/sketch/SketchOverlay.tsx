@@ -17,7 +17,7 @@ import { previewPolys } from './offsetTool'
 import { fieldsFor, liveValues, resolveEnd, valuesOf, hasText, arcThrough, type DrawTool, type Typed } from './typed'
 import { planeQuaternion, toLocal } from './plane'
 import { type Snap } from './snap'
-import { GRID_GLSL, gridLevels } from '@/viewport/gridMath'
+import { GRID_GLSL, gridFadeRange, gridLevels } from '@/viewport/gridMath'
 import {
   applyDimEdit, cancelDimEdit, doubleClick, editDim, pointerDown, pointerMove, pointerUp, select, setWpp, typedKey, useSketch, type SketchState,
 } from './store'
@@ -66,18 +66,25 @@ const v3 = (p: Vec2, z = Z): [number, number, number] => [p[0], p[1], z]
 
 const gridVert = /* glsl */ `
 varying vec2 vLocal;
+varying vec3 vEye;
 uniform vec2 uCenter;
 uniform float uHalf;
 void main() {
   vLocal = position.xy * uHalf + uCenter;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(vLocal, 0.0, 1.0);
+  vec4 mv = modelViewMatrix * vec4(vLocal, 0.0, 1.0);
+  vEye = mv.xyz;
+  gl_Position = projectionMatrix * mv;
 }`
 const gridFrag = /* glsl */ `
 varying vec2 vLocal;
+varying vec3 vEye;
 uniform float uStep;
 uniform float uBlend;
 uniform vec2 uCenter;
 uniform float uHalf;
+uniform float uOrtho;
+uniform float uFadeA;
+uniform float uFadeB;
 uniform vec3 uMinor;
 uniform vec3 uMajor;
 uniform vec3 uAxisX;
@@ -85,15 +92,17 @@ uniform vec3 uAxisY;
 ${GRID_GLSL}
 void main() {
   vec2 p = vLocal;
-  float k = gridStrength(p, uStep, uBlend);
+  // fade with distance from the camera (depth when orthographic), so a tilted sketch plane never ends in a visible edge
+  float d = uOrtho > 0.5 ? -vEye.z : length(vEye);
+  float f = (1.0 - smoothstep(uFadeA, uFadeB, d)) * (1.0 - smoothstep(uHalf * 0.55, uHalf, length(p - uCenter)));
+  float k = gridStrength(p, uStep, uBlend, f);
   vec3 col = gridColor(k, uMinor, uMajor);
   float a = 0.85 * k;
   vec2 ad = fwidth(p) * 1.2;
   float ax = 1.0 - min(abs(p.y) / max(ad.y, 1e-6), 1.0);
   float ay = 1.0 - min(abs(p.x) / max(ad.x, 1e-6), 1.0);
-  if (ax > 0.0) { col = uAxisX; a = max(a, ax * 0.95); }
-  if (ay > 0.0) { col = uAxisY; a = max(a, ay * 0.95); }
-  a *= 1.0 - smoothstep(uHalf * 0.55, uHalf, length(p - uCenter));
+  if (ax > 0.0) { col = uAxisX; a = max(a, ax * 0.95 * f); }
+  if (ay > 0.0) { col = uAxisY; a = max(a, ay * 0.95 * f); }
   if (a < 0.004) discard;
   gl_FragColor = vec4(col, a);
 }`
@@ -103,7 +112,7 @@ function SketchGrid() {
   const mesh = useRef<Mesh>(null)
   const mat = useRef<ShaderMaterial>(null)
   const uniforms = useMemo(
-    () => ({ uStep: { value: 10 }, uBlend: { value: 0 }, uHalf: { value: 500 }, uCenter: { value: new Vector2() }, uMinor: { value: new Color() }, uMajor: { value: new Color() }, uAxisX: { value: new Color() }, uAxisY: { value: new Color() } }),
+    () => ({ uStep: { value: 10 }, uBlend: { value: 0 }, uHalf: { value: 500 }, uOrtho: { value: 0 }, uFadeA: { value: 1e5 }, uFadeB: { value: 2e5 }, uCenter: { value: new Vector2() }, uMinor: { value: new Color() }, uMajor: { value: new Color() }, uAxisX: { value: new Color() }, uAxisY: { value: new Color() } }),
     [],
   )
   const ray = useMemo(() => new Raycaster(), [])
@@ -119,7 +128,16 @@ function SketchGrid() {
     const { step, blend } = gridLevels(wpp)
     u.uStep.value = step
     u.uBlend.value = blend
-    u.uHalf.value = Math.max(state.size.width, state.size.height) * wpp * 1.1
+    // a tilted plane shows more of itself: widen the quad by how obliquely we look at it, up to where the grid has faded anyway
+    const cam = state.camera as PerspectiveCamera & OrthographicCamera
+    const ortho = !!cam.isOrthographicCamera
+    const dir = cam.getWorldDirection(new Vector3())
+    const tilt = Math.max(Math.abs(dir.x * plane.normal[0] + dir.y * plane.normal[1] + dir.z * plane.normal[2]), 0.1)
+    u.uHalf.value = (Math.max(state.size.width, state.size.height) * wpp * 1.1) / tilt
+    const range = gridFadeRange(cam.far || 50000, ortho)
+    u.uFadeA.value = range.start
+    u.uFadeB.value = range.end
+    u.uOrtho.value = ortho ? 1 : 0
     // the quad follows the view; the lines themselves are fixed to the sketch origin (multiples of the step), so nothing swims
     ray.setFromCamera(new Vector2(0, 0), state.camera)
     const hit = new Vector3()
