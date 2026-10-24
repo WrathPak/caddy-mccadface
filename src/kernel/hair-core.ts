@@ -6,6 +6,7 @@ import type { HairParams, V3 } from '../features/hair/schema'
 import { attachStrands, makeFit, planStrands, rawStrands, type Strand } from '../features/hair/strands'
 import { sweepStrands, type Tubes } from '../features/hair/sweep'
 import { buildWall, makeCaster, selfIntersects, wallField, type Axis, type Mesh3, type WallResult } from '../features/hair/wall'
+import { instanceManifolds, solidOf } from './generators/solids'
 import type { TopoMesh } from './types'
 
 export interface HairInput {
@@ -91,20 +92,6 @@ export interface HairSolids {
   badTubes: number
 }
 
-const friendly = (what: string, status: string) =>
-  `${what} is not a valid closed solid (${status}). Repair the mesh${what.includes('target') ? ' or turn off "Merge into target body"' : ''} and try again`
-
-function solidOf(W: ManifoldToplevel, m3: Mesh3 | TopoMesh, what: string, own: (m: Manifold) => Manifold): Manifold {
-  let m: Manifold
-  try {
-    m = own(W.Manifold.ofMesh(new W.Mesh({ numProp: 3, vertProperties: m3.positions.slice(), triVerts: m3.indices.slice() })))
-  } catch (e) {
-    throw new Error(friendly(what, e instanceof Error ? e.message : String(e)))
-  }
-  if (m.status() !== 'NoError' || m.isEmpty() || m.volume() <= 0) throw new Error(friendly(what, m.status()))
-  return m
-}
-
 /** Upper bound on SDF samples for a repair; the grid spacing grows to stay within it. */
 const REPAIR_SAMPLES = 400_000
 
@@ -135,19 +122,7 @@ export function wallSolid(W: ManifoldToplevel, w: WallResult, own: (m: Manifold)
 
 /** Boolean stage. Every intermediate manifold is registered with `own` so the caller can free them. */
 export function buildSolids(W: ManifoldToplevel, g: HairGen, p: HairParams, target: TopoMesh | null, own: (m: Manifold) => Manifold): HairSolids {
-  const T = g.tubes
-  const tubes: Manifold[] = []
-  let badTubes = 0
-  for (let r = 0; r < T.strands; r++) {
-    const v0 = T.ranges[r * 4], vn = T.ranges[r * 4 + 1], i0 = T.ranges[r * 4 + 2], inn = T.ranges[r * 4 + 3]
-    const ix = new Uint32Array(inn)
-    for (let k = 0; k < inn; k++) ix[k] = T.indices[i0 + k] - v0
-    try {
-      const m = own(W.Manifold.ofMesh(new W.Mesh({ numProp: 3, vertProperties: T.positions.slice(v0 * 3, (v0 + vn) * 3), triVerts: ix })))
-      if (m.status() === 'NoError' && !m.isEmpty() && m.volume() > 0) tubes.push(m)
-      else badTubes++
-    } catch { badTubes++ }
-  }
+  const { solids: tubes, bad: badTubes } = instanceManifolds(W, { ...g.tubes, count: g.tubes.strands }, own)
   if (!tubes.length) throw new Error('Strand geometry was invalid (no strand formed a closed solid)')
   const hair = own(W.Manifold.union(tubes))
   let wall: Manifold | null = null

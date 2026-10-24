@@ -1,0 +1,70 @@
+import { test, expect } from './helpers'
+import { addCylinder, frame, selectFace } from './detail-kit'
+
+test('thread: an M8 bolt gets a modeled thread with the default printing clearance', async ({ app, page }) => {
+  test.setTimeout(240_000)
+  await app.open()
+  await addCylinder(app, 4, 16)
+  await frame(app)
+  const before = await app.volume()
+  await selectFace(app, 'side')
+  await app.ribbon(/^Thread$/).first().click()
+  await expect(app.inspector().locator('.panel-title')).toHaveText('Thread')
+  // the clearance defaults to a value tuned for FDM
+  const clearance = app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: 'Printing clearance' }) }).locator('input')
+  await expect(clearance).toHaveValue('0.2')
+  await expect(app.inspector().locator('.field-label', { hasText: 'Printing clearance' })).toHaveAttribute('title', /FDM/)
+  await expect(page.getByTestId('detail-readout')).toContainText('M8 x 1.25 outside thread', { timeout: 120_000 })
+  expect(await app.ev((c) => !!c.detail.getState().texture)).toBe(true)
+  // the mesh preview is quick; the exact thread is built on OK
+  await expect(page.locator('.field', { has: page.locator('.field-label', { hasText: 'Clearance goes to' }) }).locator('button.sel')).toContainText('This part')
+  await app.ev((c) => c.runCommand('view.frame'))
+  await app.cameraStable()
+  await app.shot('detail-thread-preview')
+  // the exact build shows progress and leaves the interface usable
+  await page.locator('.inspector-foot').getByRole('button', { name: 'OK' }).click()
+  await expect(page.getByTestId('detail-progress')).toContainText('building thread', { timeout: 30_000 })
+  await expect(page.locator('.tl-track .chip[data-busy="true"]')).toHaveCount(1)
+  await app.shot('detail-thread-building')
+  await app.idle()
+  await expect(page.getByTestId('detail-progress')).toHaveCount(0)
+  await expect(page.locator('.tl-track .chip[data-busy="true"]')).toHaveCount(0)
+  const feats = await app.features()
+  expect(feats.map((f) => [f.type, f.state]), JSON.stringify(feats.map((f) => f.error))).toEqual([['cylinder', 'ok'], ['thread', 'ok']])
+  const bodies = await app.bodies()
+  expect(bodies).toHaveLength(1)
+  expect(bodies[0].kind).toBe('brep') // still parametric
+  expect(await app.volume()).toBeLessThan(before)
+  expect(await app.volume()).toBeGreaterThan(before * 0.6)
+  await app.ev((c) => c.runCommand('view.frame'))
+  await app.shot('detail-thread-done')
+})
+
+test('thread: custom profile, left hand, and a hole gets an inside thread', async ({ app, page }) => {
+  test.setTimeout(300_000)
+  await app.open()
+  // a block with a 8 mm hole through it
+  await app.ev((c) => c.doc.getState().addFeature('box', { width: 14, depth: 14, height: 8, position: [0, 0, 0] }))
+  await app.ev((c) => c.doc.getState().addFeature('cylinder', { plane: 'XY', position: [0, 0, 0], radius: 4, height: 8 }))
+  await app.idle()
+  await app.ev((c) => {
+    const ids = c.doc.getState().geometry.map((b: any) => b.id) // eslint-disable-line
+    c.doc.getState().addFeature('combine', { target: [ids[0]], tools: [ids[1]], operation: 'cut', keepTools: false })
+  })
+  await app.idle()
+  await frame(app)
+  expect((await app.features()).map((f) => f.state)).toEqual(['ok', 'ok', 'ok'])
+  await selectFace(app, 'hole')
+  await app.ribbon(/^Thread$/).first().click()
+  await expect(page.getByTestId('detail-readout')).toContainText('inside thread', { timeout: 120_000 })
+  const dlg = app.inspector()
+  await dlg.locator('.seg button', { hasText: 'Custom' }).click()
+  await app.field('Pitch', '2')
+  await dlg.locator('.field', { has: page.locator('.field-label', { hasText: 'Left hand thread' }) }).locator('[role=checkbox]').click()
+  await expect(page.getByTestId('detail-readout')).toContainText('pitch 2 mm inside thread', { timeout: 120_000 })
+  await app.shot('detail-thread-inside-preview')
+  await app.ok()
+  const feats = await app.features()
+  expect(feats.map((f) => f.state), JSON.stringify(feats.map((f) => f.error))).toEqual(['ok', 'ok', 'ok', 'ok'])
+  expect(feats[3].params.leftHand).toBe(true)
+})

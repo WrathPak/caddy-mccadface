@@ -11,7 +11,7 @@ import { Segmented } from './Segmented'
 import { NUDGE_EVENT } from './accept'
 import { OptionList } from './OptionList'
 import { Section } from './Section'
-import { missingRequired, schemaDefaults, selectionParams, type ParamDef, type ParamValue, type ParamValues, type SelectionRefParam } from './schema'
+import { missingRequired, schemaDefaults, selectionParams, type FileParam, type ParamDef, type ParamValue, type ParamValues, type SelectionRefParam } from './schema'
 
 /** Stored refs of the feature being edited that the last regeneration re-bound by position / could not resolve. */
 interface RefFlags { rebound: Set<string>; lost: Set<string> }
@@ -89,6 +89,26 @@ function ParamInner({ def, values, set, pick }: { def: ParamDef; values: ParamVa
         </div>
       )
     }
+    case 'text':
+      return (
+        <div className="field stack">
+          <span className="field-label" title={def.help ?? def.label}>{def.label}</span>
+          <div className="inp" style={def.multiline ? { height: 'auto', alignItems: 'stretch' } : undefined}>
+            {def.multiline ? (
+              <textarea
+                className="text-area" data-testid={'text-' + def.key} rows={2} spellCheck={false} placeholder={def.placeholder} value={typeof v === 'string' ? v : ''}
+                onChange={(e) => set(def.key, e.target.value)}
+                // Enter makes a new line here, it must not accept the dialog
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') e.stopPropagation() }}
+              />
+            ) : (
+              <input data-testid={'text-' + def.key} spellCheck={false} placeholder={def.placeholder} value={typeof v === 'string' ? v : ''} onChange={(e) => set(def.key, e.target.value)} />
+            )}
+          </div>
+        </div>
+      )
+    case 'file':
+      return <FileField def={def} value={typeof v === 'string' ? v : ''} name={typeof values[def.nameKey] === 'string' ? (values[def.nameKey] as string) : ''} onPick={pick.many} />
     case 'info':
       return (
         <div className="field stack" data-testid={'info-' + def.key}>
@@ -99,6 +119,31 @@ function ParamInner({ def, values, set, pick }: { def: ParamDef; values: ParamVa
     case 'selection-ref':
       return <SelectionRef def={def} value={Array.isArray(v) ? (v as string[]) : []} onChange={(s) => set(def.key, s)} active={pick.active === def.key} onActivate={() => def.pick && pick.activate(def.key)} />
   }
+}
+
+/** A file stored in the document (logos, heightmaps): pick one, see its name, clear it. */
+function FileField({ def, value, name, onPick }: { def: FileParam; value: string; name: string; onPick: (v: ParamValues) => void }) {
+  const input = useRef<HTMLInputElement>(null)
+  return (
+    <div className="field" data-testid={'file-' + def.key}>
+      <span className="field-label" title={def.help ?? def.label}>{def.label}</span>
+      <div className="inp file-pick">
+        <span className="txt" title={name || undefined} style={{ color: value ? 'var(--text)' : 'var(--text-faint)' }}>{value ? name || 'File' : 'No file'}</span>
+        <button type="button" className="btn small" onClick={() => input.current?.click()}>Choose file...</button>
+        {value && <button type="button" className="icon-btn" title="Clear" aria-label="Clear file" onClick={() => onPick({ [def.key]: '', [def.nameKey]: '' })}><X size={12} /></button>}
+        <input
+          ref={input} type="file" hidden accept={def.accept} data-testid={'file-input-' + def.key}
+          onChange={async (e) => {
+            const f = e.target.files?.[0]
+            e.target.value = ''
+            if (!f) return
+            const id = useDoc.getState().addBlob(new Uint8Array(await f.arrayBuffer()))
+            onPick({ [def.key]: id, [def.nameKey]: f.name })
+          }}
+        />
+      </div>
+    </div>
+  )
 }
 
 function SelectionRef({ def, value, onChange, active, onActivate }: { def: SelectionRefParam; value: string[]; onChange: (s: string[]) => void; active: boolean; onActivate: () => void }) {

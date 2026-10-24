@@ -7,6 +7,11 @@ export const SHOTS = path.resolve(import.meta.dirname, 'screenshots')
 /** Every spec runs with: console.error / pageerror / external requests => test failure. */
 export const test = base.extend<{ app: App }>({
   app: async ({ page }, use) => {
+    // CPU_THROTTLE=4 reproduces a slow CI runner locally
+    if (process.env.CPU_THROTTLE) {
+      const cdp = await page.context().newCDPSession(page)
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CPU_THROTTLE) })
+    }
     const problems: string[] = []
     const external: string[] = []
     page.on('console', (m) => {
