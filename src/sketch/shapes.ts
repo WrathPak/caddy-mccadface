@@ -8,7 +8,7 @@ import { add, cross, dist, mul, norm, perp, polar, sub, TAU } from './geom'
 import { splineBeziers } from './curves'
 import { defaultOff } from './dims'
 import {
-  addArc, addCircle, addConstraint, addEllipse, addLine, addPoint, addSpline, addText, deps, entityById, lineEnds, newId, pos, removeIds, tangentValue,
+  addArc, addCircle, addConstraint, addEllipse, addLine, addPoint, addSpline, addText, deps, entityById, lineEnds, newId, pos, removeIds, tangentOf, tangentValue,
 } from './model'
 import { ORIGIN, type ArcE, type Entity, type LineE, type SketchModel, type SplineE, type Vec2 } from './types'
 
@@ -107,6 +107,39 @@ export function drawSlotArc(m: SketchModel, centre: Vec2, s: Vec2, e: Vec2, widt
     addConstraint(m, { type: 'tangentAt', refs: [a.id, b.id, p], value: tangentValue(m, a.id, b.id, p) })
   }
   return { centre: O, arcs: [mid.id, outer.id, inner.id, capE.id, capS.id] }
+}
+
+// ------------------------------------------------------------------------------------------------ tangent arc
+
+/** The curve (line or arc) that ends at `at`, with the direction it would carry on in beyond that end. */
+export function curveEndingAt(m: SketchModel, at: Vec2): { curve: LineE | ArcE; dir: Vec2 } | null {
+  for (const e of m.entities) {
+    if (e.type === 'line') {
+      const a = pos(m, e.p1), b = pos(m, e.p2)
+      if (dist(a, at) < 1e-6) return { curve: e, dir: norm(sub(a, b)) }
+      if (dist(b, at) < 1e-6) return { curve: e, dir: norm(sub(b, a)) }
+    } else if (e.type === 'arc') {
+      const s = pos(m, e.s), t = pos(m, e.e)
+      if (dist(t, at) < 1e-6) return { curve: e, dir: norm(tangentOf(m, e.id, t)) }
+      if (dist(s, at) < 1e-6) { const d = norm(tangentOf(m, e.id, s)); return { curve: e, dir: [-d[0], -d[1]] } }
+    }
+  }
+  return null
+}
+
+/** Arc that leaves the end of a line or arc tangentially and finishes at `end`; it is bound to that curve by a tangent constraint. */
+export function drawTangentArc(m: SketchModel, start: Vec2, end: Vec2): string | { arc: string } {
+  const c = curveEndingAt(m, start)
+  if (!c) return 'Start the tangent arc at the end of a line or an arc'
+  const n = perp(c.dir)
+  const h = (end[0] - start[0]) * n[0] + (end[1] - start[1]) * n[1]
+  if (Math.abs(h) < 1e-6 * Math.max(1, dist(start, end))) return 'The end point is on the line of the tangent: pick a point to one side'
+  const r = ((end[0] - start[0]) ** 2 + (end[1] - start[1]) ** 2) / (2 * h)
+  const centre: Vec2 = [start[0] + n[0] * r, start[1] + n[1] * r]
+  const S = addPoint(m, start[0], start[1]), E = addPoint(m, end[0], end[1]), C = addPoint(m, centre[0], centre[1])
+  const arc = h > 0 ? addArc(m, C, S, E) : addArc(m, C, E, S)
+  addConstraint(m, { type: 'tangentAt', refs: [c.curve.id, arc.id, S], value: tangentValue(m, c.curve.id, arc.id, S) })
+  return { arc: arc.id }
 }
 
 // ------------------------------------------------------------------------------------------------ polygon

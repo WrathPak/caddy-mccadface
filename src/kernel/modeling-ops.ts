@@ -563,7 +563,7 @@ export interface HoleSpec {
   thread?: ThreadSpec & { length: number }
 }
 export interface HolePlace { k: string; origin: Vec3; dir: Vec3 }
-export interface HoleArgs { id: string; name: string; key: string; holes: HolePlace[]; spec: HoleSpec; fid: string }
+export interface HoleArgs { id: string; name: string; key: string; holes: HolePlace[]; spec: HoleSpec; fid: string; /** return the volume the holes would remove instead of cutting it (for the live preview) */ toolOnly?: boolean }
 
 interface Seg2 { a: [number, number]; b: [number, number]; role: string }
 
@@ -633,6 +633,15 @@ registerOp<HoleArgs>('holes', (a, h) => {
   const t = a.spec.thread
   // with a modeled thread the bore is a hair under the minor diameter, so it never shares a surface with the cutter
   const spec: HoleSpec = t ? { ...a.spec, dia: boreDia(t) } : a.spec
+  if (a.toolOnly) {
+    // the drills only, joined: shown as the material that will go
+    let all: NShape | null = null
+    for (const p of a.holes) {
+      const tool = xformNamed(holeTool(spec, through, a.fid, p.k), frameXf(p.origin, norm3(p.dir)), '')
+      all = all ? boolNamed('fuse', all, tool, a.fid) : tool
+    }
+    return h.sendBody(h.bodyFromShape(a.id, a.name, all!.shape, all!.faces))
+  }
   for (const p of a.holes) {
     const frame = frameXf(p.origin, norm3(p.dir))
     if (t) {

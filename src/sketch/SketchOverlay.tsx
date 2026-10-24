@@ -14,6 +14,7 @@ import { curvePoints, entityPolylines, profileGeometry } from './draw'
 import { circumcircle, arcInfo, cross, dist, perp, polar, sampleArc, sub, TAU } from './geom'
 import { circleOf, entityById, lineEnds, pos } from './model'
 import { splineMid } from './curves'
+import { relGlyph } from './infer'
 import { ToolsOverlay } from './ToolsOverlay'
 import { previewPolys } from './offsetTool'
 import { fieldsFor, liveValues, resolveEnd, valuesOf, hasText, arcThrough, type DrawTool, type Typed } from './typed'
@@ -289,6 +290,7 @@ function snapHint(s: Snap): string | null {
 
 function Marker({ snap, wpp }: { snap: Snap; wpp: number }) {
   const c = useSketchColors()
+  const model = useSketch((s) => s.model)
   const r = wpp * 6
   const [x, y] = snap.pos
   const shapes: Vec2[][] = []
@@ -312,9 +314,20 @@ function Marker({ snap, wpp }: { snap: Snap; wpp: number }) {
       ))}
       {hint && (
         <Html position={v3(snap.pos)} zIndexRange={[30, 0]} style={{ pointerEvents: 'none' }}>
-          <div className="sk-hint">{hint}</div>
+          <div className="sk-hint" style={snap.kind === 'infer' ? { transform: 'translate(14px, -30px)', borderColor: c.sel } : undefined}>{hint}</div>
         </Html>
       )}
+      {/* the same glyph on the geometry the relation refers to, as the constraint will show once it is placed */}
+      {(snap.rel ?? []).map((r, i) => {
+        const ref = 'ref' in r ? r.ref : null
+        const at = ref ? anchorOf(model, ref) : null
+        if (!at) return null
+        return (
+          <Html key={'g' + i} position={v3(at)} zIndexRange={[28, 0]} style={{ pointerEvents: 'none' }}>
+            <div className="sk-glyphs"><span className="sk-glyph" data-sel="true" data-testid="infer-glyph">{relGlyph(r)}</span></div>
+          </Html>
+        )
+      })}
     </>
   )
 }

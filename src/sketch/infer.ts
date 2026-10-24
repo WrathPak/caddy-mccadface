@@ -175,7 +175,7 @@ function relationsFrom(raw: Vec2, A: Vec2, ctx: InferCtx): Snap | null {
       const { c, r } = circleOf(m, e)
       for (const t of tangentPoints(A, c, r)) {
         if (dist(t, raw) < 10 * wpp) {
-          return { pos: t, kind: 'infer', rel: [{ type: 'tangent', ref: id }], refs: [id], guides: [{ from: A, to: t }], hint: `${GLYPH.tangent} Tangent` }
+          return { pos: t, kind: 'infer', rel: [{ type: 'tangent', ref: id }], refs: [id], guides: [{ from: A, to: t }], hint: "Tangent" }
         }
       }
     }
@@ -206,11 +206,12 @@ function place(raw: Vec2, A: Vec2, c: Cand, ctx: InferCtx): Snap {
   let p = add(A, mul(c.dir, t))
   const rel: Rel[] = [c.rel]
   const refs: string[] = 'ref' in c.rel ? [c.rel.ref] : []
-  const guides: Guide[] = [{ from: A, to: p }]
+  // the dotted line runs a little past the point so it reads as a guide, not as the segment being drawn
+  const guides: Guide[] = [{ from: A, to: add(p, mul(c.dir, (t >= 0 ? 1 : -1) * 28 * wpp)) }]
   // an extension is drawn from the end of the line it continues
   if (c.rel.type === 'collinear') {
     const e = entityById(m, c.rel.ref)
-    if (e?.type === 'line') { const [a, b] = lineEnds(m, e); guides[0] = { from: dist(a, p) < dist(b, p) ? b : a, to: p } }
+    if (e?.type === 'line') { const [a, b] = lineEnds(m, e); guides[0] = { from: dist(a, p) < dist(b, p) ? b : a, to: add(p, mul(c.dir, (t >= 0 ? 1 : -1) * 28 * wpp)) } }
   }
   if (flags.equal) {
     const len = Math.abs(t)
@@ -229,7 +230,7 @@ function place(raw: Vec2, A: Vec2, c: Cand, ctx: InferCtx): Snap {
   return {
     pos: p, kind: 'infer', rel, refs, guides,
     h: c.rel.type === 'horizontal' ? true : undefined, v: c.rel.type === 'vertical' ? true : undefined,
-    hint: rel.map((r) => `${GLYPH[r.type]} ${RELATION_TEXT[r.type]}`).join('  '), dir: c.dir,
+    hint: rel.map((r) => RELATION_TEXT[r.type]).join(" + "), dir: c.dir,
   }
 }
 

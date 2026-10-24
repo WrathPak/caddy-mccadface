@@ -22,6 +22,8 @@ import { HOLE_PRESETS, tapDrill } from './holePresets'
 import { clearMarkers, setMarkers } from './markers'
 
 const tapped = (v: ParamValues) => v.tapType === 'tapped'
+/** holes that are not clicked onto a face (sketch points, construction points, vertices) need a direction */
+const offFace = (v: ParamValues) => ((v.places as string[]) ?? []).some((s) => !s.startsWith('{'))
 const through = (v: ParamValues) => v.depthMode === 'through'
 
 export const holeSchema: ParamSchema = {
@@ -29,8 +31,8 @@ export const holeSchema: ParamSchema = {
   title: 'Hole',
   params: [
     { type: 'selection-ref', key: 'places', help: 'Where the holes go. Click points on a flat face of the model (each click adds a hole; click its dot to remove it), or pick sketches (holes go at their points and circle centres), construction points or vertices.', label: 'Positions', accepts: ['sketch', 'point', 'vertex'], multiple: true, pick: true, required: true, default: [] },
-    { type: 'bool', key: 'flip', help: 'Drill from the other side of a sketch plane.', label: 'Flip direction', default: false },
-    { type: 'enum', key: 'pointDir', help: 'For holes at construction points or vertices: the direction the hole opens towards.', label: 'Opens towards', display: 'select', default: '+Z', options: ['+Z', '-Z', '+X', '-X', '+Y', '-Y'].map((v) => ({ value: v, label: v })) },
+    { type: 'bool', key: 'flip', help: 'Drill from the other side of a sketch plane.', label: 'Flip direction', default: false, visibleWhen: (v) => offFace(v) },
+    { type: 'enum', key: 'pointDir', help: 'For holes at construction points or vertices: the direction the hole opens towards.', label: 'Opens towards', display: 'select', default: '+Z', visibleWhen: (v) => offFace(v), options: ['+Z', '-Z', '+X', '-X', '+Y', '-Y'].map((v) => ({ value: v, label: v })) },
     { type: 'preset', key: 'preset', help: 'Fill in the sizes for a standard screw: clearance, counterbore, countersink, tapped, or a heat-set insert for 3D printing.', label: 'Size', presets: HOLE_PRESETS, default: 'custom' },
     { type: 'enum', key: 'holeType', help: 'Simple: a plain hole. Counterbore: a wider flat-bottomed recess for a screw head. Countersink: a cone for a flat head screw.', label: 'Type', display: 'segmented', default: 'simple', options: [{ value: 'simple', label: 'Simple' }, { value: 'cbore', label: 'Counterbore' }, { value: 'csink', label: 'Countersink' }] },
     { type: 'enum', key: 'tapType', help: 'Simple: a plain drilled hole. Tapped: drilled to the tap size and marked with a thread.', label: 'Thread', display: 'segmented', default: 'simple', options: [{ value: 'simple', label: 'None' }, { value: 'tapped', label: 'Tapped' }] },
@@ -144,7 +146,7 @@ function specOf(p: HoleP): HoleSpec {
 export interface HoleResult { bodies: Body[]; placed: PlacedHole[]; threads: CosmeticThread[]; report: RefReport }
 
 /** Build the holes: shared by the feature and its preview. */
-export async function buildHoles(p: HoleP, env: RefEnv, fid: string, report = new RefReport()): Promise<HoleResult> {
+export async function buildHoles(p: HoleP, env: RefEnv, fid: string, report = new RefReport(), toolOnly = false): Promise<HoleResult> {
   const placed = await placeHoles(p, env, report)
   const spec = specOf(p)
   const by = new Map<string, { body: Body; holes: PlacedHole[] }>()
@@ -156,7 +158,7 @@ export async function buildHoles(p: HoleP, env: RefEnv, fid: string, report = ne
   if (!by.size) throw new Error('None of the hole positions are on a body. Click a face of the model, or pick points that lie on it.')
   const bodies: Body[] = []
   for (const g of by.values()) {
-    const args: HoleArgs = { id: g.body.id, name: g.body.name, key: g.body.key, holes: g.holes.map((h) => ({ k: h.k, origin: h.origin, dir: h.dir })), spec, fid }
+    const args: HoleArgs = { id: g.body.id, name: g.body.name, key: g.body.key, holes: g.holes.map((h) => ({ k: h.k, origin: h.origin, dir: h.dir })), spec, fid, toolOnly }
     bodies.push((await env.kernel.call('holes', args)) as Body)
   }
   const threads: CosmeticThread[] = p.tapType === 'tapped' && !p.modeled
@@ -195,9 +197,10 @@ function holePreview({ values, setValues }: PreviewCtx): PreviewHandle {
     try {
       const placed = await placeHoles(p, env, rep)
       setMarkers(placed.map((h) => ({ id: h.k, pos: add3(h.origin, mul3(norm3(h.dir), 0.05)), state: 'on' as const })), markerClick)
-      const r = await buildHoles(p, env, 'preview', rep)
+      // the original body stays pickable (more holes can be clicked onto it); the drills show in red where they cut
+      const r = await buildHoles(p, env, 'preview', rep, true)
       if (stale()) return
-      setPreview(r.bodies.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), r.bodies.map((b) => b.id))
+      setPreview(r.bodies.map((b) => ({ mesh: b.mesh, kind: 'cut' as const })))
       useConstruct.getState().setThreads('preview', r.threads)
     } catch { clearPreview() }
   })

@@ -33,7 +33,7 @@ import { ORIGIN, emptyModel, type Constraint, type ConstraintType, type PlaneDef
 
 export type ToolId =
   | 'select' | 'line' | 'rect' | 'rectC' | 'circle' | 'arc' | 'dimension' | 'constraint' | 'trim' | 'offset' | 'project'
-  | 'spline' | 'splineC' | 'ellipse' | 'slotCC' | 'slotOv' | 'slotArc' | 'polygon' | 'fillet' | 'chamfer' | 'mirror' | 'patternR' | 'patternC' | 'text'
+  | 'spline' | 'splineC' | 'ellipse' | 'slotCC' | 'slotOv' | 'slotArc' | 'polygon' | 'fillet' | 'chamfer' | 'mirror' | 'patternR' | 'patternC' | 'text' | 'arcT'
 
 /**
  * Handlers of the tools that live outside this file (sketch/toolsUi.ts). A tool registered here gets the pointer and keyboard

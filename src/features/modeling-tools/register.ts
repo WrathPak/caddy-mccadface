@@ -65,6 +65,7 @@ cmd('doc.configs', 'Configurations', Table, 'Document', () => useConfigDialog.ge
 const tool = (id: string, t: ToolId, label: string, icon: Icon, tip?: string) => cmd(id, label, icon, 'Sketch', () => { if (sketching()) setTool(t) }, tip)
 tool('sketch.spline', 'spline', 'Fit Point Spline', Waves, 'A smooth curve through the points you click')
 tool('sketch.splineC', 'splineC', 'Control Point Spline', Waves, 'A curve shaped by control points')
+tool('sketch.arcT', 'arcT', 'Tangent Arc', Waves, 'An arc that leaves the end of a line or arc tangentially')
 tool('sketch.ellipse', 'ellipse', 'Ellipse', Circle, 'Centre, long axis end, short radius')
 tool('sketch.slotCC', 'slotCC', 'Centre to Centre Slot', Rows, 'A slot between two centres')
 tool('sketch.slotOv', 'slotOv', 'Overall Slot', Rows, 'A slot of a given overall length')
@@ -100,6 +101,8 @@ group('solid', 'Modify').items.push({ cmd: 'solid.pressPull', menu: ['solid.pres
 group('solid', 'Document').items.push({ cmd: 'doc.configs' })
 {
   const create = group('sketch', 'Create')
+  const arcItem = create.items.find((i) => i.cmd === 'sketch.arc')
+  if (arcItem) arcItem.menu = ['sketch.arc', 'sketch.arcT']
   create.items.push(
     { cmd: 'sketch.spline', menu: ['sketch.spline', 'sketch.splineC'] }, { cmd: 'sketch.ellipse' },
     { cmd: 'sketch.slotCC', menu: ['sketch.slotCC', 'sketch.slotOv', 'sketch.slotArc'] }, { cmd: 'sketch.polygon' }, { cmd: 'sketch.text' }, { cmd: 'sketch.import' },

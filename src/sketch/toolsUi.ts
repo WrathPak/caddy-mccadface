@@ -10,7 +10,7 @@ import { hitTest } from './hit'
 import { loadFont } from './font'
 import { boundsOfImport, insertImported, parseDxf, parseSvg } from './importers'
 import {
-  addHandles, chamferCorner, cornerOf, drawEllipse, drawPolygon, drawSlotArc, drawSlotCC, drawSlotOverall, drawSpline, drawText, filletCorner,
+  addHandles, chamferCorner, cornerOf, drawEllipse, drawTangentArc, drawPolygon, drawSlotArc, drawSlotCC, drawSlotOverall, drawSpline, drawText, filletCorner,
   mirrorEntities, patternCirc, patternRect, type PolygonKind,
 } from './shapes'
 import { extraTools, sketchInternals as K, setTool, type Mods, type ToolHandlers, type ToolId } from './store'
@@ -71,6 +71,7 @@ const CLICK_TOOLS: Partial<Record<ToolId, ClickTool>> = {
   slotCC: { need: 3, build: (m, p) => drawSlotCC(m, p[0], p[1], 2 * lineDist(p[2], p[0], p[1])) },
   slotOv: { need: 3, build: (m, p) => drawSlotOverall(m, p[0], p[1], 2 * lineDist(p[2], p[0], p[1])) },
   slotArc: { need: 4, build: (m, p) => drawSlotArc(m, p[0], p[1], p[2], 2 * Math.abs(dist(p[3], p[0]) - dist(p[1], p[0]))) },
+  arcT: { need: 2, build: (m, p) => drawTangentArc(m, p[0], p[1]) },
   polygon: { need: 2, build: (m, p) => drawPolygon(m, p[0], p[1], opts().sides, opts().polyKind) },
 }
 
