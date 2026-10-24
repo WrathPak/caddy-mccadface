@@ -12,11 +12,13 @@ import { viewportBus } from '@/viewport/bus'
 import { applyConstraint, ready, type CKind } from './constraints'
 import { defaultOff, measure, refreshDims } from './dims'
 import {
-  addArc, addCircle, addCoincident, addConstraint, addLine, addPoint, cloneModel, entityById, entityPoints, lineEnds, pos, removeIds,
+  addArc, addCircle, addCoincident, addConstraint, addLine, addPoint, cloneModel, entityById, entityPoints, lineEnds, pos, removeIds, tangentValue,
 } from './model'
 import { boxSelect, hitTest } from './hit'
 import { detectProfiles } from './profiles'
 import { snap as snapAt, gridStep, type Snap } from './snap'
+import { inferSnap, type Rel } from './infer'
+import { useSnapFlags } from './snapSettings'
 import { analyze, ensureSolver, solveModel, solvePruned, type DragSpec, type SolveInfo } from './solver'
 import { circumcircle, cross, dist, norm, sub } from './geom'
 import { applyOffset, collectChain, sideOf, type Chain } from './offsetTool'
@@ -28,7 +30,36 @@ import {
 } from './typed'
 import { ORIGIN, emptyModel, type Constraint, type ConstraintType, type PlaneDef, type Profile, type SketchModel, type Vec2 } from './types'
 
-export type ToolId = 'select' | 'line' | 'rect' | 'rectC' | 'circle' | 'arc' | 'dimension' | 'constraint' | 'trim' | 'offset' | 'project'
+export type ToolId =
+  | 'select' | 'line' | 'rect' | 'rectC' | 'circle' | 'arc' | 'dimension' | 'constraint' | 'trim' | 'offset' | 'project'
+  | 'spline' | 'splineC' | 'ellipse' | 'slotCC' | 'slotOv' | 'slotArc' | 'polygon' | 'fillet' | 'chamfer' | 'mirror' | 'patternR' | 'patternC' | 'text'
+
+/**
+ * Handlers of the tools that live outside this file (sketch/toolsUi.ts). A tool registered here gets the pointer and keyboard
+ * events while it is active, and `reset` when it is left or cancelled.
+ */
+export interface ToolHandlers {
+  start?(): void
+  move?(raw: Vec2, wpp: number, mods: Mods): void
+  down?(raw: Vec2, wpp: number, mods: Mods): void
+  dbl?(raw: Vec2, wpp: number): void
+  /** Enter: finish what is in progress; returns true when it did something */
+  enter?(): boolean
+  /** Escape / right click: drop what is in progress; returns true when there was something to drop */
+  cancel?(): boolean
+}
+export const extraTools: Partial<Record<ToolId, ToolHandlers>> = {}
+/** The pieces of this file the extra tools build on. */
+export const sketchInternals = {
+  get: () => get(),
+  set: (p: Partial<SketchState>) => set(p),
+  commit: (fn: (m: SketchModel) => string | void, opts?: { strict?: boolean }) => commit(fn, opts),
+  flash: (msg: string) => flash(msg),
+  snap: (raw: Vec2, mods: Mods, anchor?: Vec2) => doSnap(raw, mods, anchor),
+  pointFor: (m: SketchModel, s: Snap) => pointFor(m, s),
+  wpp: () => wppNow,
+  invalidate: () => invalidate(),
+}
 
 export interface Draft {
   tool: ToolId
@@ -148,6 +179,8 @@ export function commit(fn: (m: SketchModel) => string | void, opts: { strict?: b
 }
 
 function resetTransient(extra: Partial<SketchState> = {}) {
+  woken.clear()
+  lastDir = null
   set({ draft: null, typed: null, picks: [], placing: null, dimEdit: null, trimHover: null, offset: null, ...extra })
 }
 
@@ -230,10 +263,12 @@ export function cancelSketch() {
 // ---------------------------------------------------------------- tools
 
 export function setTool(tool: ToolId, ckind: CKind | null = null) {
+  extraTools[get().tool]?.cancel?.()
   watchProject(tool === 'project')
   resetTransient({ tool, ckind, box: null })
-  const id = tool === 'select' ? null : tool === 'constraint' && ckind ? 'sketch.' + (ckind === 'hv' ? 'horizontal' : ckind) : tool === 'dimension' ? 'sketch.dimension' : tool === 'rectC' ? 'sketch.rectCenter' : 'sketch.' + tool
+  const id = tool === 'select' ? null : tool in extraTools ? 'sketch.' + tool : tool === 'constraint' && ckind ? 'sketch.' + (ckind === 'hv' ? 'horizontal' : ckind) : tool === 'dimension' ? 'sketch.dimension' : tool === 'rectC' ? 'sketch.rectCenter' : 'sketch.' + tool
   useUi.getState().setActiveTool(id)
+  extraTools[tool]?.start?.()
   if (tool === 'offset') {
     // an already selected curve starts the offset straight away
     const s = get()
@@ -280,6 +315,7 @@ export function deleteSelection() {
 export function enterSketch() {
   const s = get()
   if (!s.active || s.dimEdit) return
+  if (extraTools[s.tool]?.enter?.()) return
   if (s.draft || s.picks.length || s.placing || s.offset) { resetTransient(); invalidate(); return }
   if (s.tool !== 'select') { setTool('select'); return }
   finishSketch()
@@ -289,6 +325,7 @@ export function enterSketch() {
 export function escapeSketch() {
   const s = get()
   if (s.dimEdit) { cancelDimEdit(); return }
+  if (extraTools[s.tool]?.cancel?.()) { invalidate(); return }
   if (s.typed && hasText(s.typed)) { set({ typed: { ...s.typed, fields: s.typed.fields.map((f) => ({ ...f, text: '' })), active: 0 } }); invalidate(); return }
   if (s.draft || s.picks.length || s.placing || s.offset) { resetTransient(); invalidate(); return }
   if (s.tool !== 'select') { setTool('select'); return }
@@ -332,9 +369,36 @@ export function applyDimEdit(id: string, text: string): boolean {
 
 // -------- snapping helpers
 
-function doSnap(raw: Vec2, mods: Mods, anchor?: Vec2, exclude?: Set<string>): Snap {
+/** Curves the cursor has passed over while drawing: reference geometry for inference. */
+const woken = new Set<string>()
+let lastDir: Vec2 | null = null
+
+function doSnap(raw: Vec2, mods: Mods, anchor?: Vec2, exclude?: Set<string>, anchorId?: string): Snap {
+  // Ctrl holds all snapping and inference off for as long as it is down
   if (mods.ctrl) return { pos: raw, kind: 'free', guides: [] }
-  return snapAt(raw, { model: get().model, wpp: wppNow, grid: useUi.getState().snap, anchor, exclude })
+  const ctx = { model: get().model, wpp: wppNow, grid: useUi.getState().snap, anchor, exclude }
+  const flags = useSnapFlags.getState().flags
+  const r = inferSnap(raw, { ...ctx, flags, anchorId, woken, lock: mods.shift && lastDir ? { dir: lastDir } : null })
+  if (!(mods.shift && lastDir)) lastDir = r.dir ?? null
+  return r
+}
+
+/** Constraints for the relations inferred for a new line from p1 to p2. */
+function applyRelations(m: SketchModel, line: string, p1: string, p2: string, rel: Rel[] | undefined) {
+  for (const r of rel ?? []) {
+    if (r.type === 'horizontal' || r.type === 'vertical') continue // placed by the caller
+    if (r.type === 'parallel' || r.type === 'perpendicular' || r.type === 'equal') addConstraint(m, { type: r.type, refs: [line, r.ref] })
+    else if (r.type === 'collinear') {
+      addConstraint(m, { type: 'parallel', refs: [line, r.ref] })
+      addConstraint(m, { type: 'pointOnLine', refs: [p1, r.ref] })
+    } else if (r.type === 'tangent') {
+      if (r.at) addConstraint(m, { type: 'tangentAt', refs: [r.ref, line, p1], value: tangentValue(m, r.ref, line, p1) })
+      else {
+        addConstraint(m, { type: 'tangent', refs: [line, r.ref] })
+        addConstraint(m, { type: 'pointOnCurve', refs: [p2, r.ref] })
+      }
+    }
+  }
 }
 
 /**
@@ -345,6 +409,15 @@ function doSnap(raw: Vec2, mods: Mods, anchor?: Vec2, exclude?: Set<string>): Sn
 function pointFor(m: SketchModel, s: Snap): string {
   const id = addPoint(m, s.pos[0], s.pos[1])
   if (s.pointId && (s.kind === 'point' || s.kind === 'origin' || s.kind === 'center')) { addCoincident(m, id, s.pointId); return id }
+  if (s.kind === 'quad' && s.entityId && s.quad) {
+    addConstraint(m, { type: 'pointOnCurve', refs: [id, s.entityId] })
+    addConstraint(m, { type: s.quad.axis === 'h' ? 'horizontal' : 'vertical', refs: [id, s.quad.center] })
+    return id
+  }
+  if (s.kind === 'int' && s.entityIds) {
+    for (const eid of s.entityIds) { const t = entityById(m, eid); if (t) addConstraint(m, { type: t.type === 'line' ? 'pointOnLine' : 'pointOnCurve', refs: [id, eid] }) }
+    return id
+  }
   const e = s.entityId ? entityById(m, s.entityId) : undefined
   if (s.kind === 'mid' && e) addConstraint(m, { type: 'midpoint', refs: [id, e.id] })
   else if (s.kind === 'on' && e) addConstraint(m, { type: e.type === 'line' ? 'pointOnLine' : 'pointOnCurve', refs: [id, e.id] })
@@ -371,6 +444,8 @@ export function pointerMove(raw: Vec2, wpp: number, mods: Mods) {
 
   if (drag) { dragMove(raw, mods); return }
   if (boxStart) { set({ box: [boxStart, raw] }); invalidate(); return }
+  const extra = extraTools[tool]
+  if (extra) { extra.move?.(raw, wpp, mods); return }
 
   if (tool === 'select' || tool === 'constraint') {
     const h = hitTest(s.model, raw, tolPx * wpp)
@@ -408,8 +483,12 @@ export function pointerMove(raw: Vec2, wpp: number, mods: Mods) {
   if (tool === 'project') { set({ cursor: null }); return }
   const d = s.draft
   const anchor = d ? (tool === 'line' ? d.pts[d.pts.length - 1] : undefined) : undefined
-  const sn = doSnap(raw, mods, anchor)
-  set({ cursor: sn, hover: null })
+  // hovering over a curve wakes it up as reference geometry for the inference
+  const over = hitTest(s.model, raw, 12 * wpp, curvesOnly)
+  if (over) woken.add(over)
+  const anchorId = d && tool === 'line' ? d.snaps[d.snaps.length - 1]?.pointId : undefined
+  const sn = doSnap(raw, mods, anchor, undefined, anchorId)
+  set({ cursor: sn, hover: sn.refs?.[0] ?? null })
   invalidate()
 }
 
@@ -417,6 +496,8 @@ export function pointerDown(raw: Vec2, wpp: number, mods: Mods, px: Vec2) {
   wppNow = wpp
   const s = get()
   if (!s.active) return
+  const extra = extraTools[s.tool]
+  if (extra) { extra.down?.(raw, wpp, mods); return }
   switch (s.tool) {
     case 'select': return downSelect(raw, mods, px)
     case 'constraint': return downConstraint(raw, mods)
@@ -445,6 +526,8 @@ export function doubleClick(raw: Vec2, wpp: number) {
   wppNow = wpp
   const s = get()
   if (!s.active) return
+  const extra = extraTools[s.tool]
+  if (extra?.dbl) { extra.dbl(raw, wpp); return }
   if (s.tool === 'line' && s.draft) { resetTransient(); invalidate(); return }
   if (s.tool === 'select') {
     const h = hitTest(s.model, raw, tolPx * wpp)
@@ -455,6 +538,7 @@ export function doubleClick(raw: Vec2, wpp: number) {
 
 export function rightClick() {
   const s = get()
+  if (extraTools[s.tool]?.cancel?.()) { invalidate(); return }
   if (s.draft || s.picks.length || s.offset) { resetTransient(); invalidate() }
   else if (s.tool !== 'select') setTool('select')
 }
@@ -848,7 +932,7 @@ function downDraw(raw: Vec2, mods: Mods) {
   const d = s.draft
   const tool = s.tool as DrawTool
   const anchor = d && s.tool === 'line' ? d.pts[d.pts.length - 1] : undefined
-  let sn = doSnap(raw, mods, anchor)
+  let sn = doSnap(raw, mods, anchor, undefined, d && s.tool === 'line' ? d.snaps[d.snaps.length - 1]?.pointId : undefined)
   const constr = s.construction
   const typed = d && s.typed && s.typed.tool === s.tool && s.typed.stage === stageOf(d) ? s.typed : null
   const vals: Values = valuesOf(typed)
@@ -866,6 +950,7 @@ function downDraw(raw: Vec2, mods: Mods) {
         const p1 = pointFor(m, a)
         const p2 = pointFor(m, sn)
         const l = addLine(m, p1, p2, constr)
+        if (!useTyped && !constr) applyRelations(m, l.id, p1, p2, sn.rel)
         if (sn.h && !sn.pointId && !constr) addConstraint(m, { type: 'horizontal', refs: [l.id] })
         else if (sn.v && !sn.pointId && !constr) addConstraint(m, { type: 'vertical', refs: [l.id] })
         const len = textOf(tt, 'len'), ang = textOf(tt, 'ang')

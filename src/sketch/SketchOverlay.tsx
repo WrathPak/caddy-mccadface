@@ -276,9 +276,10 @@ function draftPreview(d: SketchState['draft'], cur: Snap | null, typed: Typed | 
   }
 }
 
-const KIND_TEXT: Record<string, string> = { point: 'Endpoint', origin: 'Origin', center: 'Center', mid: 'Midpoint', on: 'On curve', axis: 'On axis' }
+const KIND_TEXT: Record<string, string> = { quad: 'Quadrant', int: 'Intersection', point: 'Endpoint', origin: 'Origin', center: 'Center', mid: 'Midpoint', on: 'On curve', axis: 'On axis' }
 
 function snapHint(s: Snap): string | null {
+  if (s.hint) return s.hint
   if (KIND_TEXT[s.kind]) return KIND_TEXT[s.kind]
   if (s.h) return 'Horizontal'
   if (s.v) return 'Vertical'
@@ -295,7 +296,8 @@ function Marker({ snap, wpp }: { snap: Snap; wpp: number }) {
     case 'center': { const pts: Vec2[] = []; for (let i = 0; i <= 24; i++) pts.push(polar([x, y], r, (i / 24) * TAU)); shapes.push(pts); break }
     case 'mid': shapes.push([[x - r, y - r], [x + r, y - r], [x, y + r], [x - r, y - r]]); break
     case 'on': shapes.push([[x - r, y - r], [x + r, y + r]], [[x - r, y + r], [x + r, y - r]]); break
-    case 'axis': shapes.push([[x - r, y], [x, y + r], [x + r, y], [x, y - r], [x - r, y]]); break
+    case 'axis': case 'quad': shapes.push([[x - r, y], [x, y + r], [x + r, y], [x, y - r], [x - r, y]]); break
+    case 'int': shapes.push([[x - r, y - r], [x + r, y + r]], [[x - r, y + r], [x + r, y - r]]); break
     default: shapes.push([[x - r * 0.5, y], [x + r * 0.5, y]], [[x, y - r * 0.5], [x, y + r * 0.5]])
   }
   const hint = snapHint(snap)

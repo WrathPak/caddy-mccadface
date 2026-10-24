@@ -5,7 +5,7 @@ import { closestOnArc, closestOnCircle, closestOnSegment, dist, mid } from './ge
 import { circleOf, lineEnds, pos } from './model'
 import { closestOnDerived, isDerived } from './curves'
 
-export type SnapKind = 'point' | 'origin' | 'center' | 'mid' | 'on' | 'axis' | 'grid' | 'free'
+export type SnapKind = 'point' | 'origin' | 'center' | 'mid' | 'on' | 'axis' | 'grid' | 'free' | 'quad' | 'int' | 'infer'
 
 export interface Guide { from: Vec2; to: Vec2 }
 export interface Snap {
@@ -19,6 +19,16 @@ export interface Snap {
   h?: boolean
   v?: boolean
   guides: Guide[]
+  /** relations inferred for the segment being drawn (see infer.ts), applied as constraints when the point is placed */
+  rel?: import('./infer').Rel[]
+  /** reference curves to highlight */
+  refs?: string[]
+  /** intersection: the two curves; quadrant: the circle's centre and whether the point is level (h) or above / below (v) it */
+  entityIds?: string[]
+  quad?: { center: string; axis: 'h' | 'v' }
+  hint?: string
+  /** unit direction of the inferred ray */
+  dir?: Vec2
 }
 
 export interface SnapCtx {
