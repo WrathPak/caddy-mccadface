@@ -337,20 +337,25 @@ test('optional inertia: off by default, keeps the view gliding after a fast drag
   await expect(pop.getByRole('checkbox', { name: 'Inertia' })).not.toBeChecked()
   await pop.getByRole('checkbox', { name: 'Inertia' }).click()
   await page.keyboard.press('Escape')
-  // fast flick, released while still moving
+  // fast flick, released while still moving. The nav clock is frozen and ticked by hand so pointer timing and the glide don't
+  // depend on how fast the renderer is.
+  await app.ev((c) => c.nav.freeze())
   await page.keyboard.down('Shift')
   await page.mouse.move(cx, cy)
   await page.mouse.down({ button: 'middle' })
-  await page.mouse.move(cx + 40, cy, { steps: 2 })
-  await page.mouse.move(cx + 80, cy)
+  for (let i = 1; i <= 5; i++) {
+    await page.mouse.move(cx + 16 * i, cy)
+    await app.ev((c) => c.nav.tick(16))
+  }
   await page.mouse.up({ button: 'middle' }) // released while still moving
   await page.keyboard.up('Shift')
   const a1 = await turn(app)
-  await page.waitForTimeout(100)
+  await app.ev((c) => c.nav.step(100))
   const a2 = await turn(app)
   expect(Math.abs(a2.az - a1.az), 'the view keeps gliding after release').toBeGreaterThan(1e-3)
-  await app.cameraStable()
+  await app.ev((c) => c.nav.step(4000, 100))
   const a3 = await turn(app)
-  await page.waitForTimeout(300)
+  await app.ev((c) => c.nav.step(300))
   expect(Math.abs((await turn(app)).az - a3.az), 'and comes to rest').toBeLessThan(1e-6)
+  await app.ev((c) => c.nav.unfreeze())
 })
