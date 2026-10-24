@@ -3,6 +3,7 @@ import * as CM from '@radix-ui/react-context-menu'
 import { CaretDown, CaretRight, Cube, Eye, EyeSlash, FileText, Folder, GridFour, LineSegment, PencilSimpleLine, Planet, Parallelogram } from '@phosphor-icons/react'
 import { useUi, type EntityKind } from '@/store/ui'
 import { useDoc, type TreeEntity } from '@/doc/store'
+import { PLANE_FEATURES } from '@/sketch/planes'
 
 interface RowProps {
   id: string
@@ -109,7 +110,7 @@ export function BrowserTree() {
           <Group label="Origin" depth={1} icon={<Planet size={13} />}>
             <Group label="Planes" depth={2} icon={<Folder size={13} />} defaultOpen={false}>
               {['XY', 'XZ', 'YZ'].map((p) => <Row key={p} id={'plane' + p} name={p + ' plane'} depth={3} kind="plane" icon={<Parallelogram size={13} />} />)}
-              {doc.features.filter((f) => f.type === 'offsetPlane').map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="plane" coll="sketches" icon={<Parallelogram size={13} />} />)}
+              {doc.features.filter((f) => PLANE_FEATURES.has(f.type)).map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="plane" coll="sketches" icon={<Parallelogram size={13} />} />)}
             </Group>
             <Group label="Axes" depth={2} icon={<Folder size={13} />} defaultOpen={false}>
               {['X', 'Y', 'Z'].map((a) => <Row key={a} id={'axis' + a} name={a + ' axis'} depth={3} kind="axis" icon={<LineSegment size={13} />} />)}

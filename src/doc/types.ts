@@ -47,6 +47,8 @@ export interface FeatureCtx {
   dataOf(featureId: string): unknown
   /** raw feature record by id (earlier features only is the caller's responsibility) */
   featureById(id: string): Feature | undefined
+  /** the bodies right before and right after an earlier feature ran (undefined for a feature that did not run) */
+  stateAround(featureId: string): { before: Body[]; after: Body[] } | undefined
 }
 
 export interface FeatureResult {

@@ -38,6 +38,7 @@ const navTools = {
 export function installDebugHandle() {
   ;(window as unknown as { __caddy: unknown }).__caddy = {
     doc: useDoc, ui: useUi, sketch: useSketch, hair: useHairView, preview: usePreview, planes: usePlanes, paint: useHairPaint, bus: viewportBus,
+    ...((window as unknown as { __caddyExtra?: object }).__caddyExtra ?? {}),
     nav: navTools, runCommand, regenerate, importFiles, saveDocument, serializeProject, parseProject,
   }
 }

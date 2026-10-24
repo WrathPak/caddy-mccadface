@@ -687,3 +687,14 @@ registerOp<{ key: string; edges: number[] }>('edgeGeom', (a, h) => {
   })
 })
 
+
+/** Centre of the region a feature changed (what it added or removed), used to anchor pattern markers. */
+registerOp<{ before: string; after: string; fid: string }>('deltaCenter', (a, h) => {
+  const d = deltaOf(h.getNamed(a.before), h.getNamed(a.after), a.fid)
+  const parts = [d.add, d.remove].filter((x): x is NShape => !!x)
+  if (!parts.length) return null
+  const bs = parts.map((p) => boundsOf(p.shape))
+  const mn = [0, 1, 2].map((k) => Math.min(...bs.map((b) => b[0][k])))
+  const mx = [0, 1, 2].map((k) => Math.max(...bs.map((b) => b[1][k])))
+  return [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2] as Vec3
+})

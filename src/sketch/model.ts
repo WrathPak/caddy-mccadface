@@ -1,5 +1,5 @@
 /** Pure helpers over SketchModel. Mutating helpers expect a model the caller owns (clone first). */
-import { ORIGIN, isDim, type ArcE, type CircleE, type Constraint, type Entity, type LineE, type PointE, type SketchModel, type Vec2 } from './types'
+import { ORIGIN, isDim, type ArcE, type CircleE, type Constraint, type EllipseE, type Entity, type LineE, type PointE, type SketchModel, type SplineE, type TextE, type Vec2 } from './types'
 import { arcInfo, dist } from './geom'
 
 export const cloneModel = (m: SketchModel): SketchModel => JSON.parse(JSON.stringify(m)) as SketchModel
@@ -40,6 +40,21 @@ export function addArc(m: SketchModel, c: string, s: string, e: string, construc
   m.entities.push(a)
   return a
 }
+export function addSpline(m: SketchModel, pts: string[], mode: SplineE['mode'] = 'fit', closed = false, construction = false): SplineE {
+  const e: SplineE = { id: newId(m, 'l'), type: 'spline', mode, pts, ...(closed ? { closed } : {}), ...(construction ? { construction } : {}) }
+  m.entities.push(e)
+  return e
+}
+export function addEllipse(m: SketchModel, c: string, major: string, r: number, construction = false): EllipseE {
+  const e: EllipseE = { id: newId(m, 'l'), type: 'ellipse', c, m: major, r, ...(construction ? { construction } : {}) }
+  m.entities.push(e)
+  return e
+}
+export function addText(m: SketchModel, p: string, text: string, h: number, a = 0, font?: string): TextE {
+  const e: TextE = { id: newId(m, 'l'), type: 'text', p, text, h, a, ...(font ? { font } : {}) }
+  m.entities.push(e)
+  return e
+}
 export function addConstraint(m: SketchModel, c: Omit<Constraint, 'id'>): Constraint {
   const k: Constraint = { id: newId(m, 'k'), ...c }
   m.constraints.push(k)
@@ -53,6 +68,9 @@ export function deps(e: Entity): string[] {
     case 'line': return [e.p1, e.p2]
     case 'circle': return [e.c]
     case 'arc': return [e.c, e.s, e.e]
+    case 'spline': return [...e.pts, ...(e.t0 ? [e.t0] : []), ...(e.t1 ? [e.t1] : [])]
+    case 'ellipse': return [e.c, e.m]
+    case 'text': return [e.p]
   }
 }
 

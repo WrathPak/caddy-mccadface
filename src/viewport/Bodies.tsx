@@ -11,6 +11,7 @@ import { useHairPaint } from '@/features/hair/paint'
 import { composeTransform, type Body } from '@/kernel/types'
 import { buildBvh } from './bvh'
 import { usePreview } from './preview'
+import { useLastPick } from './lastPick'
 import { useVpColors } from './colors'
 import { useSketch } from '@/sketch/store'
 import { sectionPlane } from './section'
@@ -125,7 +126,7 @@ function BodyView({ body, mats, colors, index, clip }: { body: Body; mats: Mats;
         material={mats.base}
         onPointerMove={pickFaces ? (e) => { e.stopPropagation(); const r = refFor(e); if (!sameRef(useUi.getState().hover, r)) setHover(r) } : undefined}
         onPointerOut={() => setHover(null)}
-        onClick={pickFaces ? (e) => { e.stopPropagation(); setSelection([refFor(e)], e.shiftKey || e.ctrlKey) } : undefined}
+        onClick={pickFaces ? (e) => { e.stopPropagation(); const r = refFor(e); useLastPick.setState((s) => ({ point: [e.point.x, e.point.y, e.point.z], ref: r, seq: s.seq + 1 })); setSelection([r], e.shiftKey || e.ctrlKey) } : undefined}
       />
       {clip && <SectionCap geometry={geo} plane={clip} color={CAP_COLORS[index % CAP_COLORS.length]} order={20 + index * 4} size={capSize} />}
       {wholeBody && <mesh geometry={geo} material={mats.hi} raycast={() => null} renderOrder={2} />}

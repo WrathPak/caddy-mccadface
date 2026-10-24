@@ -38,9 +38,14 @@ export function measure(m: SketchModel, type: Constraint['type'], refs: string[]
     case 'radius':
     case 'diameter': {
       const e = entityById(m, a)
+      if (e?.type === 'ellipse' && type === 'radius') return { value: e.r, sgn: 1 }
       if (!e || (e.type !== 'circle' && e.type !== 'arc')) return null
       const r = circleOf(m, e).r
       return { value: type === 'radius' ? r : r * 2, sgn: 1 }
+    }
+    case 'majorRadius': {
+      const e = entityById(m, a)
+      return e?.type === 'ellipse' ? { value: dist(pos(m, e.c), pos(m, e.m)), sgn: 1 } : null
     }
     case 'angle': {
       const la = entityById(m, a), lb = b ? entityById(m, b) : undefined
@@ -88,6 +93,7 @@ export function dimText(c: Constraint): string {
   const v = +(c.value ?? 0).toFixed(3)
   switch (c.type) {
     case 'radius': return 'R' + v
+    case 'majorRadius': return 'Ra' + v
     case 'diameter': return '⌀' + v
     case 'angle': return v + '°'
     default: return String(v)
@@ -167,9 +173,24 @@ export function layoutDim(m: SketchModel, c: Constraint, k = 1): DimLayout | nul
         label: mid(P1, P2),
       }
     }
+    case 'majorRadius': {
+      const e = entityById(m, a)
+      if (e?.type !== 'ellipse') return null
+      return layoutDim(m, { ...c, type: 'distance', refs: [e.c, e.m] }, k)
+    }
     case 'radius':
     case 'diameter': {
       const e = entityById(m, a)
+      if (e?.type === 'ellipse' && c.type === 'radius') {
+        // the minor semi-axis: from the centre across the narrow way
+        const C = pos(m, e.c), M = pos(m, e.m)
+        const u = norm(sub(M, C)), v = perp(u)
+        const side = dot(sub(off, C), v) < 0 ? -1 : 1
+        const tip = add(C, [v[0] * e.r * side, v[1] * e.r * side])
+        const L = Math.max(dist(off, C), e.r * 1.2)
+        const dir: Vec2 = [v[0] * side, v[1] * side]
+        return { lines: [[C, tip], [tip, add(C, [dir[0] * L, dir[1] * L])]], arrows: [{ tip, dir: [-dir[0], -dir[1]] }], label: add(C, [dir[0] * L, dir[1] * L]) }
+      }
       if (!e || (e.type !== 'circle' && e.type !== 'arc')) return null
       const { c: C, r } = circleOf(m, e)
       let dir = sub(off, C)

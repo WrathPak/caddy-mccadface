@@ -104,6 +104,7 @@ export function refFromSelection(sel: SelectionRef, bodies: Body[]): GeoRef | nu
     const sig = faceSigs(b)[sel.index]
     return sig ? { kind: 'face', bodyId: b.id, featureId: b.featureId, index: sel.index, sig, name: nameOf(b, 'face', sel.index) } : null
   }
+  if (sel.kind === 'vertex' && sel.index !== undefined) return vertexRef(b, sel.index)
   if (sel.kind === 'edge' && sel.index !== undefined) {
     const sig = edgeSigs(b)[sel.index]
     return sig ? { kind: 'edge', bodyId: b.id, featureId: b.featureId, index: sel.index, sig, name: nameOf(b, 'edge', sel.index) } : null

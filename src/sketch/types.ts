@@ -19,12 +19,23 @@ export interface LineE { id: string; type: 'line'; p1: string; p2: string; const
 export interface CircleE { id: string; type: 'circle'; c: string; r: number; construction?: boolean; ref?: boolean; broken?: boolean }
 /** Counter-clockwise arc from `s` to `e` around `c`. */
 export interface ArcE { id: string; type: 'arc'; c: string; s: string; e: string; construction?: boolean; ref?: boolean; broken?: boolean }
-export type Entity = PointE | LineE | CircleE | ArcE
+/**
+ * Spline through (`fit`) or controlled by (`ctrl`: clamped cubic B-spline) the points `pts`; `bez` holds Bezier pieces
+ * (3 n + 1 points: end, two controls, end, ...). A fit spline may carry end tangent handles `t0` / `t1`: points that are
+ * the first / last inner control point of the curve, so dragging one turns and stretches the tangent there.
+ */
+export interface SplineE { id: string; type: 'spline'; mode: 'fit' | 'ctrl' | 'bez'; pts: string[]; closed?: boolean; t0?: string; t1?: string; construction?: boolean; ref?: boolean; broken?: boolean }
+/** Ellipse: centre `c`, the end of the major semi-axis `m` (a point, so the axis direction and length are driven by it) and the minor semi-axis `r`. */
+export interface EllipseE { id: string; type: 'ellipse'; c: string; m: string; r: number; construction?: boolean; ref?: boolean; broken?: boolean }
+/** Text laid out at the anchor point `p`: `h` is the cap height in mm, `a` the angle of the baseline in degrees. Its outlines are profiles. */
+export interface TextE { id: string; type: 'text'; p: string; text: string; h: number; a: number; font?: string; construction?: boolean; ref?: boolean; broken?: boolean }
+export type Entity = PointE | LineE | CircleE | ArcE | SplineE | EllipseE | TextE
 
 export type ConstraintType =
   | 'coincident' | 'pointOnLine' | 'pointOnCurve' | 'onAxis' | 'midpoint'
   | 'horizontal' | 'vertical' | 'parallel' | 'perpendicular' | 'tangent' | 'tangentAt' | 'equal' | 'fix'
   | 'distance' | 'hdist' | 'vdist' | 'radius' | 'diameter' | 'angle' | 'offset'
+  | 'splineTangent' | 'majorRadius' | 'mirror' | 'rotated'
 
 export interface Constraint {
   id: string
@@ -38,6 +49,11 @@ export interface Constraint {
    * [lineA, lineB] (between lines) or [line] / [pointA, pointB] (direction measured from the sketch +X axis);
    * offset: [offsetCurve, sourceCurve] (two lines: point-to-line distance of the offset line's first point; two
    * circles / arcs: radius difference).
+   *
+   * splineTangent: [spline, curve, point] the spline's end handle at `point` (an end of the spline that meets the curve) lies
+   * along the curve's tangent there (`value` 0: the spline leaves in the curve's direction, 180: against it).
+   * majorRadius: [ellipse] the major semi-axis length. mirror: [point, mirrored point, line] the second is the first
+   * reflected across the line. rotated: [centre, point, rotated point] the third is the second turned about the centre by `value` degrees.
    */
   refs: string[]
   axis?: 'x' | 'y'
@@ -56,7 +72,7 @@ export interface Constraint {
   hidden?: boolean
 }
 
-export const DIM_TYPES: ConstraintType[] = ['distance', 'hdist', 'vdist', 'radius', 'diameter', 'angle', 'offset']
+export const DIM_TYPES: ConstraintType[] = ['distance', 'hdist', 'vdist', 'radius', 'diameter', 'angle', 'offset', 'majorRadius']
 export const isDim = (c: Constraint) => DIM_TYPES.includes(c.type)
 
 /**
@@ -83,6 +99,8 @@ export type Seg =
   /** arc from a to b through m (centre c, radius r; ccw when traversed a -> b counter-clockwise) */
   | { k: 'a'; a: Vec2; m: Vec2; b: Vec2; c: Vec2; r: number; ccw: boolean; id?: string }
   | { k: 'c'; c: Vec2; r: number; id?: string }
+  /** cubic Bezier from a to b with controls c1, c2 (spline, ellipse and text pieces) */
+  | { k: 'b'; a: Vec2; c1: Vec2; c2: Vec2; b: Vec2; id?: string }
 export type Loop = Seg[]
 export interface Profile {
   /** stable-ish key: centroid + area (see profileKey) */

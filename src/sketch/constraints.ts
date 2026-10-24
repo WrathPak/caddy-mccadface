@@ -1,6 +1,6 @@
 /** Applying geometric constraints to a model from a set of picked entity ids. */
 import { ORIGIN, type Constraint, type SketchModel } from './types'
-import { addCoincident, addConstraint, entityById, lineEnds, pos, sharedEnd, tangentValue } from './model'
+import { addCoincident, addConstraint, deps, entityById, lineEnds, pos, sharedEnd, tangentValue } from './model'
 
 export type CKind = 'hv' | 'horizontal' | 'vertical' | 'parallel' | 'perpendicular' | 'tangent' | 'equal' | 'coincident' | 'midpoint' | 'fix'
 
@@ -81,7 +81,7 @@ export function applyConstraint(m: SketchModel, kind: CKind, idsIn: string[]): s
     case 'fix': {
       for (const id of ids) {
         const e = entityById(m, id)
-        const pts = id === ORIGIN ? [] : !e ? [] : e.type === 'point' ? [e.id] : e.type === 'line' ? [e.p1, e.p2] : e.type === 'circle' ? [e.c] : [e.c, e.s, e.e]
+        const pts = id === ORIGIN ? [] : !e ? [] : e.type === 'point' ? [e.id] : deps(e)
         for (const p of pts) if (p !== ORIGIN) add('fix', [p])
       }
       return null

@@ -8,7 +8,7 @@ import { useDoc } from '@/doc/store'
 import type { Body } from '@/kernel/types'
 import { isPlanarFace } from '@/sketch/create'
 import { originPlane, planeFromNormal } from '@/sketch/plane'
-import { usePlanes } from '@/sketch/planes'
+import { PLANE_FEATURES, usePlanes } from '@/sketch/planes'
 import type { PlaneDef } from '@/sketch/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
@@ -71,5 +71,5 @@ export function startOffsetPlane() {
 export function livePlanes(): { id: string; name: string; plane: PlaneDef }[] {
   const d = useDoc.getState()
   const data = usePlanes.getState().data
-  return d.features.filter((f, i) => f.type === 'offsetPlane' && i < d.rollback && !f.suppressed && data[f.id]).map((f) => ({ id: f.id, name: f.name, plane: data[f.id] }))
+  return d.features.filter((f, i) => PLANE_FEATURES.has(f.type) && i < d.rollback && !f.suppressed && data[f.id]).map((f) => ({ id: f.id, name: f.name, plane: data[f.id] }))
 }

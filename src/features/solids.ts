@@ -12,6 +12,7 @@ import type { Body, Vec3 } from '@/kernel/types'
 import { useSketchData } from '@/sketch/draw'
 import { arcOf, lineEnds, pos } from '@/sketch/model'
 import { dist, polar } from '@/sketch/geom'
+import { entityPolyline } from '@/sketch/curves'
 import { originPlane, toWorld } from '@/sketch/plane'
 import type { SketchData, Vec2 } from '@/sketch/types'
 import { useUi } from '@/store/ui'
@@ -80,10 +81,14 @@ export function sketchPath(data: SketchData): PathSeg[] {
     } else if (e.type === 'arc') {
       const i = arcOf(model, e)
       segs.push({ a: pos(model, e.s), b: pos(model, e.e), m: polar(pos(model, e.c), i.r, i.a0 + i.span / 2), id: e.id })
-    } else {
+    } else if (e.type === 'circle') {
       const c = pos(model, e.c)
       const p0: Vec2 = [c[0] + e.r, c[1]], p1: Vec2 = [c[0] - e.r, c[1]]
       segs.push({ a: p0, b: p1, m: [c[0], c[1] + e.r], id: e.id }, { a: p1, b: p0, m: [c[0], c[1] - e.r], id: e.id })
+    } else {
+      // splines, ellipses and text: followed as a fine chain of straight pieces
+      const pl = entityPolyline(model, e)
+      for (let i = 0; i + 1 < pl.length; i++) if (dist(pl[i], pl[i + 1]) > 1e-9) segs.push({ a: pl[i], b: pl[i + 1], id: e.id })
     }
   }
   if (!segs.length) throw new Error('The path sketch has no curves')

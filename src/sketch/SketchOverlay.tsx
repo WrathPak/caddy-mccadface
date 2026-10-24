@@ -13,6 +13,7 @@ import { dimText, layoutDim } from './dims'
 import { curvePoints, entityPolylines, profileGeometry } from './draw'
 import { circumcircle, arcInfo, cross, dist, perp, polar, sampleArc, sub, TAU } from './geom'
 import { circleOf, entityById, lineEnds, pos } from './model'
+import { splineMid } from './curves'
 import { previewPolys } from './offsetTool'
 import { fieldsFor, liveValues, resolveEnd, valuesOf, hasText, arcThrough, type DrawTool, type Typed } from './typed'
 import { planeQuaternion, toLocal } from './plane'
@@ -392,7 +393,7 @@ function SelectionBox() {
 
 const GLYPH: Partial<Record<Constraint['type'], string>> = {
   horizontal: 'H', vertical: 'V', parallel: '∥', perpendicular: '⊥', equal: '=', tangent: 'T', tangentAt: 'T', midpoint: 'M', fix: '■',
-  pointOnLine: '○', pointOnCurve: '○', onAxis: '○', coincident: '◉',
+  pointOnLine: '○', pointOnCurve: '○', onAxis: '○', coincident: '◉', splineTangent: 'T', mirror: '⇋', rotated: '↻',
 }
 
 function anchorOf(m: SketchModel, id: string): Vec2 | null {
@@ -402,6 +403,9 @@ function anchorOf(m: SketchModel, id: string): Vec2 | null {
   if (e.type === 'point') return [e.x, e.y]
   if (e.type === 'line') { const [a, b] = lineEnds(m, e); return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }
   if (e.type === 'circle') { const { c, r } = circleOf(m, e); return [c[0], c[1] + r] }
+  if (e.type === 'spline') return splineMid(m, e)
+  if (e.type === 'ellipse') { const c = pos(m, e.c); return [c[0], c[1] + e.r] }
+  if (e.type === 'text') return pos(m, e.p)
   const i = arcInfo(pos(m, e.c), pos(m, e.s), pos(m, e.e))
   return polar(pos(m, e.c), i.r, i.a0 + (i.a1 - i.a0) / 2)
 }
@@ -413,7 +417,7 @@ function Glyphs() {
     const map = new Map<string, { at: Vec2; items: Constraint[] }>()
     for (const c of model.constraints) {
       if (isDim(c) || !GLYPH[c.type]) continue
-      const targets = c.type === 'pointOnLine' || c.type === 'pointOnCurve' || c.type === 'midpoint' || c.type === 'coincident' ? [c.refs[0]] : c.type === 'tangentAt' ? [c.refs[2]] : c.refs
+      const targets = c.type === 'pointOnLine' || c.type === 'pointOnCurve' || c.type === 'midpoint' || c.type === 'coincident' ? [c.refs[0]] : c.type === 'tangentAt' || c.type === 'splineTangent' ? [c.refs[2]] : c.type === 'mirror' ? [c.refs[1]] : c.type === 'rotated' ? [c.refs[2]] : c.refs
       for (const t of targets) {
         const at = anchorOf(model, t)
         if (!at) continue

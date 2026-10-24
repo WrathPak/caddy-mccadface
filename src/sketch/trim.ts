@@ -9,7 +9,7 @@
  */
 import { TAU, closestOnSegment, dist, polar, relAngle, sampleArc } from './geom'
 import { addArc, addConstraint, addLine, addPoint, arcOf, circleOf, entityById, lineEnds, pos, removeIds } from './model'
-import { intersections, maxParam, paramOn, type Curve } from './profiles'
+import { intersections, maxParam, paramOn, type ClassicCurve as Curve } from './profiles'
 import type { ArcE, CircleE, Constraint, Entity, LineE, SketchModel, Vec2 } from './types'
 
 export interface Cut { t: number; p: Vec2; cutter: string }

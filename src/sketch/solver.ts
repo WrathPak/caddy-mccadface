@@ -13,7 +13,7 @@ import { GcsWrapper, init_planegcs_module, type SketchPrimitive } from '@salusof
 import wasmUrl from '@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url'
 import { ORIGIN, type Constraint, type SketchModel, type Vec2 } from './types'
 import { arcInfo } from './geom'
-import { cloneModel, entityById, pos } from './model'
+import { cloneModel, deps, entityById, pos } from './model'
 import { freedom, maxResidual } from './dof'
 
 let wrapper: GcsWrapper | null = null
@@ -69,9 +69,15 @@ function build(m: SketchModel, drag?: DragSpec, extra?: Prim[]): Prim[] {
       const i = arcInfo(pos(m, e.c), pos(m, e.s), pos(m, e.e))
       prims.push({ id: e.id, type: 'arc', c_id: e.c, radius: i.r, start_angle: i.a0, end_angle: i.a1, start_id: e.s, end_id: e.e })
       prims.push({ id: e.id + '_rules', type: 'arc_rules', a_id: e.id })
+    } else if (e.type === 'ellipse') {
+      // an ellipse is its centre, the end of its major semi-axis (a point) and the minor semi-axis: the axis is a helper line
+      // and the minor semi-axis the radius of a helper circle, so the usual dimensions and constraints apply to them
+      prims.push({ id: e.id + '~maj', type: 'line', p1_id: e.c, p2_id: e.m })
+      prims.push({ id: e.id + '~min', type: 'circle', c_id: e.c, radius: e.r })
     }
   }
-  for (const c of m.constraints) prims.push(...mapConstraint(m, c).map((p) => ({ ...p, driving: true })))
+  // helper geometry some constraints bring along (lines through the points they relate) is not a constraint itself
+  for (const c of m.constraints) prims.push(...mapConstraint(m, c).map((p) => (weight(p.type) < 2 ? p : { ...p, driving: true })))
   if (drag?.points) {
     for (const [id, [x, y]] of Object.entries(drag.points)) {
       if (isRefPoint(m, id)) continue
@@ -96,11 +102,16 @@ function build(m: SketchModel, drag?: DragSpec, extra?: Prim[]): Prim[] {
 }
 const weight = (t: string) => (t === 'point' ? 0 : t === 'line' || t === 'circle' || t === 'arc' ? 1 : 2)
 
+
 function mapConstraint(m: SketchModel, c: Constraint): Prim[] {
   const [a, b] = c.refs
   const id = c.id
   const t = (e: string) => entityById(m, e)?.type
   const val = c.value ?? 0
+  /** the line standing for a curve in parallel / perpendicular constraints: an ellipse stands for its major axis */
+  const ln = (x: string) => (t(x) === 'ellipse' ? x + '~maj' : x)
+  /** the helper circle that carries the minor semi-axis of an ellipse */
+  const cc = (x: string) => (t(x) === 'ellipse' ? x + '~min' : x)
   switch (c.type) {
     case 'fix': return []
     case 'coincident': return [{ id, type: 'p2p_coincident', p1_id: a, p2_id: b }]
@@ -113,8 +124,8 @@ function mapConstraint(m: SketchModel, c: Constraint): Prim[] {
     ]
     case 'horizontal': return [b ? { id, type: 'horizontal_pp', p1_id: a, p2_id: b } : { id, type: 'horizontal_l', l_id: a }]
     case 'vertical': return [b ? { id, type: 'vertical_pp', p1_id: a, p2_id: b } : { id, type: 'vertical_l', l_id: a }]
-    case 'parallel': return [{ id, type: 'parallel', l1_id: a, l2_id: b }]
-    case 'perpendicular': return [{ id, type: 'perpendicular_ll', l1_id: a, l2_id: b }]
+    case 'parallel': return [{ id, type: 'parallel', l1_id: ln(a), l2_id: ln(b) }]
+    case 'perpendicular': return [{ id, type: 'perpendicular_ll', l1_id: ln(a), l2_id: ln(b) }]
     case 'tangent': {
       const ta = t(a), tb = t(b)
       if (ta === 'line') return [tb === 'arc' ? { id, type: 'tangent_la', l_id: a, a_id: b } : { id, type: 'tangent_lc', l_id: a, c_id: b }]
@@ -127,9 +138,9 @@ function mapConstraint(m: SketchModel, c: Constraint): Prim[] {
     case 'equal': {
       const ta = t(a), tb = t(b)
       if (ta === 'line') return [{ id, type: 'equal_length', l1_id: a, l2_id: b }]
-      if (ta === 'circle' && tb === 'circle') return [{ id, type: 'equal_radius_cc', c1_id: a, c2_id: b }]
+      if ((ta === 'circle' || ta === 'ellipse') && (tb === 'circle' || tb === 'ellipse')) return [{ id, type: 'equal_radius_cc', c1_id: cc(a), c2_id: cc(b) }]
       if (ta === 'arc' && tb === 'arc') return [{ id, type: 'equal_radius_aa', a1_id: a, a2_id: b }]
-      return [ta === 'circle' ? { id, type: 'equal_radius_ca', c1_id: a, a2_id: b } : { id, type: 'equal_radius_ca', c1_id: b, a2_id: a }]
+      return [ta === 'circle' || ta === 'ellipse' ? { id, type: 'equal_radius_ca', c1_id: cc(a), a2_id: b } : { id, type: 'equal_radius_ca', c1_id: cc(b), a2_id: a }]
     }
     case 'distance':
       return [t(b) === 'line' ? { id, type: 'p2l_distance', p_id: a, l_id: b, distance: val } : { id, type: 'p2p_distance', p1_id: a, p2_id: b, distance: val }]
@@ -137,7 +148,35 @@ function mapConstraint(m: SketchModel, c: Constraint): Prim[] {
       return [{ id, type: 'difference', param1: { o_id: a, prop: 'x' }, param2: { o_id: b, prop: 'x' }, difference: val * (c.sgn ?? 1) }]
     case 'vdist':
       return [{ id, type: 'difference', param1: { o_id: a, prop: 'y' }, param2: { o_id: b, prop: 'y' }, difference: val * (c.sgn ?? 1) }]
-    case 'radius': return [t(a) === 'arc' ? { id, type: 'arc_radius', a_id: a, radius: val } : { id, type: 'circle_radius', c_id: a, radius: val }]
+    case 'radius': return [t(a) === 'arc' ? { id, type: 'arc_radius', a_id: a, radius: val } : { id, type: 'circle_radius', c_id: cc(a), radius: val }]
+    case 'majorRadius': { const e = entityById(m, a) as { c: string; m: string }; return [{ id, type: 'p2p_distance', p1_id: e.c, p2_id: e.m, distance: val }] }
+    case 'mirror': return [{ id, type: 'p2p_symmetric_ppl', p1_id: a, p2_id: b, l_id: c.refs[2] }]
+    case 'rotated': return [
+      { id: id + '~a', type: 'line', p1_id: a, p2_id: b },
+      { id: id + '~b', type: 'line', p1_id: a, p2_id: c.refs[2] },
+      { id, type: 'equal_length', l1_id: id + '~a', l2_id: id + '~b' },
+      { id: id + '_b', type: 'l2l_angle_ll', l1_id: id + '~a', l2_id: id + '~b', angle: (val * Math.PI) / 180 },
+    ]
+    case 'splineTangent': {
+      // refs: [spline, other curve, shared end point]; the spline's end handle lies along the other curve's tangent there
+      const sp = entityById(m, a) as { pts: string[]; t0?: string; t1?: string }
+      const at = c.refs[2]
+      const h = at === sp.pts[0] ? sp.t0 : sp.t1
+      if (!h) return []
+      const out: Prim[] = [{ id: id + '~h', type: 'line', p1_id: at, p2_id: h }]
+      const tb = t(b)
+      if (tb === 'line') out.push({ id, type: 'parallel', l1_id: id + '~h', l2_id: b })
+      else if (tb === 'arc' || tb === 'circle') {
+        const ce = entityById(m, b) as { c: string }
+        out.push({ id: id + '~r', type: 'line', p1_id: ce.c, p2_id: at }, { id, type: 'perpendicular_ll', l1_id: id + '~h', l2_id: id + '~r' })
+      } else if (tb === 'spline') {
+        const o = entityById(m, b) as { pts: string[]; t0?: string; t1?: string }
+        const h2 = at === o.pts[0] ? o.t0 : at === o.pts[o.pts.length - 1] ? o.t1 : undefined
+        if (!h2) return []
+        out.push({ id: id + '~h2', type: 'line', p1_id: at, p2_id: h2 }, { id, type: 'parallel', l1_id: id + '~h', l2_id: id + '~h2' })
+      }
+      return out
+    }
     case 'diameter': return [t(a) === 'arc' ? { id, type: 'arc_diameter', a_id: a, diameter: val } : { id, type: 'circle_diameter', c_id: a, diameter: val }]
     case 'angle': {
       const rad = ((val * (c.sgn ?? 1)) * Math.PI) / 180
@@ -195,6 +234,11 @@ function run(prims: Prim[], constraintIds?: Set<string>, soft = false): RunOut {
 /** Read solved point positions / circle radii back into the model. */
 function writeBack(m: SketchModel, prims: Map<string, Prim>) {
   for (const e of m.entities) {
+    if (e.type === 'ellipse') {
+      const q = prims.get(e.id + '~min')
+      if (q) e.r = Math.abs(q.radius as number)
+      continue
+    }
     const p = prims.get(e.id)
     if (!p) continue
     if (e.type === 'point') { e.x = p.x as number; e.y = p.y as number }
@@ -241,6 +285,8 @@ export function analyze(model: SketchModel, info: SolveInfo): Set<string> {
       if (e.type === 'point') { if (!free.has(e.id)) fixed.add(e.id) }
       else if (e.type === 'line') { if (!free.has(e.p1) && !free.has(e.p2)) fixed.add(e.id) }
       else if (e.type === 'circle') { if (!free.has(e.c) && !free.has(e.id)) fixed.add(e.id) }
+      else if (e.type === 'ellipse') { if (!free.has(e.c) && !free.has(e.m) && !free.has(e.id)) fixed.add(e.id) }
+      else if (e.type === 'spline' || e.type === 'text') { if (deps(e).every((d) => !free.has(d))) fixed.add(e.id) }
       else if (!free.has(e.c) && !free.has(e.s) && !free.has(e.e)) fixed.add(e.id)
     }
     return fixed
