@@ -12,7 +12,7 @@ export function SnapPopover() {
   return (
     <P.Root open={open} onOpenChange={setOpen}>
       <P.Trigger asChild>
-        <button type="button" className="cell" aria-label="Snap settings" title="Snap and inference settings" data-testid="snap-settings"><CaretUp size={10} weight="bold" /></button>
+        <button type="button" className="cell" aria-label="Inference settings" title="Which snaps and inferences are offered while drawing" data-testid="snap-settings"><CaretUp size={10} weight="bold" /></button>
       </P.Trigger>
       <P.Portal>
         <P.Content className="menu" side="top" align="start" sideOffset={6} data-testid="snap-popover" style={{ padding: 10, minWidth: 250 }}>

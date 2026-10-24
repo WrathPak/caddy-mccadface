@@ -93,7 +93,8 @@ group('solid', 'Modify').items.push({ cmd: 'solid.pressPull', menu: ['solid.pres
 {
   const c = group('solid', 'Construct')
   c.items = [
-    { cmd: 'construct.plane', menu: ['construct.plane', 'construct.planeAngle', 'construct.planeTangent', 'construct.planeMid', 'construct.plane3'] },
+    { cmd: 'construct.plane' },
+    { cmd: 'construct.planeAngle', menu: ['construct.planeAngle', 'construct.planeTangent', 'construct.planeMid', 'construct.plane3'] },
     { cmd: 'construct.axis', menu: ['construct.axis', 'construct.axisPoints', 'construct.axisNormal', 'construct.axisCyl'] },
     { cmd: 'construct.point', menu: ['construct.point', 'construct.pointVertex', 'construct.pointCenter', 'construct.pointAxisPlane'] },
   ]

@@ -148,8 +148,7 @@ test('Construction geometry: plane at an angle, axis, point; usable as a sketch 
   await page.getByText('Points', { exact: true }).click()
   await expect(page.locator('.tree-row', { hasText: 'Construction Point' })).toHaveCount(2)
   // the plane at an angle about that axis
-  await page.getByRole('button', { name: 'Offset Plane options' }).click()
-  await page.getByRole('menuitem', { name: 'Plane at Angle' }).click()
+  await app.ribbon('Plane at Angle').first().click()
   await expect(title(app)).toHaveText('Construction Plane')
   await page.getByText('Planes', { exact: true }).click()
   await page.locator('.tree-row', { hasText: 'XY plane' }).first().click()
