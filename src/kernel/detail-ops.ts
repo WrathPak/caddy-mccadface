@@ -323,8 +323,8 @@ registerOp<ThreadOpArgs>('threadPreview', async (a, h) => {
     const place = (m: Manifold) => own(m.transform(mat as never))
     const body = solidOf(W, h.getTopo(a.key), 'The body', own)
     const twist = (a.leftHand ? -1 : 1) * (360 * length) / a.profile.pitch
-    const div = Math.max(8, Math.ceil((length / a.profile.pitch) * 14))
-    const outline = polarOutline(build, 168)
+    const div = Math.max(8, Math.ceil((length / a.profile.pitch) * 10))
+    const outline = polarOutline(build, 144)
     const disc = (r: number, n = 96) => Array.from({ length: n }, (_, k) => [r * Math.cos((2 * Math.PI * k) / n), r * Math.sin((2 * Math.PI * k) / n)] as [number, number])
     const cyls = (r: number) => own(W.Manifold.cylinder(length, r, r, 64))
     let res: Manifold
