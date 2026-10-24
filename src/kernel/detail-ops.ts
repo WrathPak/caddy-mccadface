@@ -11,9 +11,9 @@ import { artworkBounds, fitArtwork, type Artwork } from './emboss/shapes'
 import { parseSvg } from './emboss/svg'
 import { textShape, type TextOptions } from './emboss/text'
 import { initManifold } from './mesh'
-import { boolNamed, rootNames, type NShape } from './naming'
+import { boolNamed, finalize, namesOf, rootNames, type NShape } from './naming'
 import { tessellate, topoOf, type Shape } from './occ'
-import { registerOp } from './store'
+import { putStored, registerOp } from './store'
 import { applyTexture, type TextureInput } from './texture/displace'
 import type { HeightImage, PatternId } from './texture/patterns'
 import { boreRadius, checkProfile, coreRadius, externalVoid, internalVoid, placeOnAxis, polarOutline, recessionFor, ringSolid, type Fit, type ThreadProfile } from './threads'
@@ -345,6 +345,27 @@ registerOp<ThreadOpArgs>('threadPreview', async (a, h) => {
     free()
   }
 })
+/** Built threads by their parameters and the geometry they were cut from. Shapes are kept (cheap); keys are made fresh on every hit. */
+const THREAD_CACHE = new Map<string, { shape: Shape; faces: string[][]; mesh: MeshData }>()
+
+const cloneMesh = (m: MeshData): MeshData => ({
+  ...m,
+  positions: m.positions.slice(), normals: m.normals.slice(), indices: m.indices.slice(), faceIds: m.faceIds.slice(), edges: m.edges.slice(),
+  edgeIds: m.edgeIds?.slice(), faceHashes: m.faceHashes?.slice(), edgeHashes: m.edgeHashes?.slice(), vertexPos: m.vertexPos?.slice(),
+})
+
+/**
+ * A stored B-rep with its display mesh. Helical faces are tessellated far more coarsely than the default (the chord only has to
+ * look smooth at the scale of one pitch), which cuts the time of showing a thread from seconds to a fraction of one.
+ */
+function threadBody(id: string, name: string, shape: Shape, faces: string[][], mesh?: MeshData): Body {
+  const T = performance.now(); const L: string[] = []
+  const fn = finalize(shape as unknown as AnyShape, faces, id); L.push('fin ' + Math.round(performance.now() - T))
+  const names = namesOf(shape as unknown as AnyShape, fn); L.push('names ' + Math.round(performance.now() - T))
+  const key = putStored({ kind: 'brep', shape: shape as never, names })
+  const mm = mesh ? cloneMesh(mesh) : tessellate(shape, 0.15, 0.9, names); L.push('tess ' + Math.round(performance.now() - T)); void L
+  return { id, name, kind: 'brep', key, mesh: mm }
+}
 /**
  * Where the tooth sits on the start angle (fraction of a turn), tried in turn. A nut and a bolt mesh whatever their phases (the nut is simply
  * turned), but the OCC boolean of a helix against the flat ends of a face quietly does nothing for some of them.
@@ -376,8 +397,12 @@ registerOp<ThreadOpArgs>('threadFace', (a, h) => {
     const placed = placeOnAxis(s, o, d) as unknown as Shape
     return { shape: placed, faces: rootNames(placed as unknown as AnyShape, a.id + ':thread') }
   }
-  const volume = (s: NShape) => Math.abs(measureVolume(s.shape as never))
-  const v0 = volume(named)
+  // exact volumes of helical solids are slow to integrate, so success is judged by the faces a thread adds instead
+  const bb = (named.shape as unknown as { boundingBox: { bounds: number[][] } }).boundingBox.bounds.flat().map((x) => +x.toFixed(4))
+  // the same thread on the same geometry is not built twice (a regeneration after an unrelated edit reuses it)
+  const sig = JSON.stringify([a.id, kind, a.profile, base.clearance, length, fromEnd, a.leftHand, +cyl.radius.toFixed(4), +span.toFixed(4), bb, named.faces.length, named.faces[a.face]?.[0]])
+  const hit = THREAD_CACHE.get(sig)
+  if (hit) { THREAD_CACHE.delete(sig); THREAD_CACHE.set(sig, hit); return h.sendBody(threadBody(a.id, a.name, hit.shape, hit.faces, hit.mesh)) }
   if (kind === 'external' && coreRadius(base) < 0.3) throw new Error('The thread is too deep for this shaft; use a smaller pitch or a larger diameter')
 
   /** One try at a given phase of the helix; null when the boolean quietly did nothing (it does for some phases of a helix against flat ends). */
@@ -385,24 +410,19 @@ registerOp<ThreadOpArgs>('threadFace', (a, h) => {
     const build = { ...base, phase }
     if (kind === 'external') {
       // one cut removes the ring of material outside the twisted thread outline
-      const voidShape = tool(externalVoid(build, phase) as unknown as AnyShape)
-      const gone = volume(voidShape)
-      const cut = boolNamed('cut', named, voidShape, a.id)
-      return volume(cut) < v0 - 0.05 * gone ? cut : null
+      const cut = boolNamed('cut', named, tool(externalVoid(build, phase) as unknown as AnyShape), a.id)
+      return cut.faces.length > named.faces.length + 1 ? cut : null
     }
     // fill the hole, then cut the twisted void (the bore with its grooves) back out
     const closed = boolNamed('fuse', named, tool(ringSolid(0, cyl.radius + build.clearance / 2 + 0.3, length)), a.id)
-    const voidShape = tool(internalVoid(build, phase) as unknown as AnyShape)
-    const gone = volume(voidShape)
-    const cut = boolNamed('cut', closed, voidShape, a.id)
-    return volume(cut) < volume(closed) - 0.1 * gone ? cut : null
+    const cut = boolNamed('cut', closed, tool(internalVoid(build, phase) as unknown as AnyShape), a.id)
+    return cut.faces.length > closed.faces.length ? cut : null
   }
   let body: NShape | null = null
   for (const phase of PHASES) { body = attempt(phase); if (body) break }
   if (!body) throw new Error('The thread could not be built on this face. Try a different pitch or depth, or a longer or wider face')
-  const v1 = volume(body)
-  if (kind === 'external' ? !(v1 < v0 * 1.0001 && v1 > v0 * 0.3) : !(v1 > v0 * 0.8 && v1 < v0 * 3)) {
-    throw new Error('The thread could not be built on this face. Try a different pitch or depth, or a longer or wider face')
-  }
-  return h.sendBody(h.bodyFromShape(a.id, a.name, body.shape, body.faces))
+  const made = threadBody(a.id, a.name, body.shape, body.faces)
+  THREAD_CACHE.set(sig, { shape: body.shape, faces: body.faces, mesh: cloneMesh(made.mesh) })
+  if (THREAD_CACHE.size > 6) THREAD_CACHE.delete(THREAD_CACHE.keys().next().value!)
+  return h.sendBody(made)
 })

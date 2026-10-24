@@ -149,7 +149,7 @@ export function twistedThread(b: ThreadBuild, floor: number, phase = 0, around =
       const a = 2 * Math.PI * u
       return [rp * Math.cos(a) - r(u) * 2 * Math.PI * Math.sin(a), rp * Math.sin(a) + r(u) * 2 * Math.PI * Math.cos(a)]
     }
-    const n = 3
+    const n = 1
     for (let i = 0; i < n; i++) {
       const u0 = uA + ((uB - uA) * i) / n, u1 = uA + ((uB - uA) * (i + 1)) / n
       const h = (u1 - u0) / 3

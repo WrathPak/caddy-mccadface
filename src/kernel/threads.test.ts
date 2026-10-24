@@ -297,3 +297,31 @@ describe('fast preview and fit', () => {
     expect(self).toBeLessThan(split)
   })
 })
+describe('build time and cache', () => {
+  it('a full external M8 x 20 is built and shown in a few seconds, and the same thread again is free', async () => {
+    const b = await bolt(20)
+    const a = args(b, { clearance: 0.27 }) // a value no other test uses, so nothing is cached yet
+    const t0 = performance.now()
+    const first = (await getOp('threadFace')!(a as never, helpers)) as Body
+    const cold = performance.now() - t0
+    console.info('cold M8x20 external ms', Math.round(cold))
+    expect(cold).toBeLessThan(5500)
+    expect(first.mesh.indices.length / 3).toBeGreaterThan(5000)
+    const t1 = performance.now()
+    const again = (await getOp('threadFace')!(a as never, helpers)) as Body
+    const warm = performance.now() - t1
+    expect(warm).toBeLessThan(150)
+    expect(again.key).not.toBe(first.key) // a fresh stored body each time, same geometry
+    expect(again.mesh.indices.length).toBe(first.mesh.indices.length)
+    expect(Math.abs(vol(again) - vol(first))).toBeLessThan(1e-6)
+    // the same geometry rebuilt upstream (a new body with the same shape) also hits
+    const b2 = await bolt(20)
+    const t2 = performance.now()
+    await getOp('threadFace')!(args(b2, { clearance: 0.27 }) as never, helpers)
+    expect(performance.now() - t2).toBeLessThan(150)
+    // a different setting is a different thread
+    const t3 = performance.now()
+    await getOp('threadFace')!(args(b2, { clearance: 0.29 }) as never, helpers)
+    expect(performance.now() - t3).toBeGreaterThan(500)
+  }, 120_000)
+})

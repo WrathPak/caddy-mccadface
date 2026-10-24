@@ -14,6 +14,7 @@ import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
 import { clearPreview, setPreview } from '@/viewport/preview'
 import { createRunner } from '../previewKit'
+import { withProgress } from './progress'
 import { clearDetailView, useDetailView } from './store'
 
 export interface ThreadValues {
@@ -124,7 +125,7 @@ registerFeature({
     const v = raw as unknown as ThreadValues
     const { body } = faceOf(v, ctx.bodies)
     const { op, note } = await threadArgs(v, ctx.bodies, ctx.kernel, body.id, undefined, report)
-    const result = (await ctx.kernel.call('threadFace', op)) as Body
+    const result = (await withProgress(ctx.feature.id, 'building thread...', () => ctx.kernel.call('threadFace', op))) as Body
     return { bodies: [result], warning: [report.warning, note].filter(Boolean).join('. ') || undefined, reboundRefs: report.flagged, upgrades: report.upgradeMap }
   },
   preview: (ctx) => threadPreview(ctx),
