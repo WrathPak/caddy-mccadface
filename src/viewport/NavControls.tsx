@@ -190,7 +190,8 @@ export function NavControls() {
     // near / far follow the scene: everything lies within [d - R, d + R] of the camera; the near plane never reaches the geometry
     const dc = cam.position.distanceTo(sph.center)
     const floor = Math.max(0.01, R * 4e-4)
-    const far = dc + R * 1.25 + 10
+    // the extra reach (8x the orbit distance) is for the ground grid, which fades out well inside it instead of hitting the clip plane
+    const far = dc + R * 1.25 + 10 + st.dist * 8
     if ((cam as OrthographicCamera).isOrthographicCamera) {
       const o = cam as OrthographicCamera
       o.zoom = sizeRef.current.height / (2 * st.dist * Math.tan(MathUtils.degToRad(FOV) / 2))
@@ -199,7 +200,7 @@ export function NavControls() {
       o.updateProjectionMatrix()
     } else {
       const p = cam as PerspectiveCamera
-      p.near = dc > R * 1.05 ? Math.max(floor, (dc - R) * 0.5) : floor
+      p.near = dc > R * 1.05 ? Math.max(floor, Math.min((dc - R) * 0.5, dc * 0.05)) : floor // capped so a grazing view of the ground is not cut off by the near plane
       p.far = far
       p.updateProjectionMatrix()
     }
