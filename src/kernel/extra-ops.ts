@@ -13,5 +13,6 @@ import './solid-ops'
 import './mesh-ops'
 import './modeling-ops'
 import './print-ops'
+import './assembly-ops'
 
 export {}
