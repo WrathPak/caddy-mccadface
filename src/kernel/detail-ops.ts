@@ -7,7 +7,7 @@ import { buildGenSolids, generateSurface, type GenInput } from './generators/gen
 import { solidOf, topoOfManifold } from './generators/solids'
 import { buildEmbossTool, type EmbossInput } from './emboss/emboss'
 import { rasterArtwork } from './emboss/raster'
-import { fitArtwork, type Artwork } from './emboss/shapes'
+import { artworkBounds, fitArtwork, type Artwork } from './emboss/shapes'
 import { parseSvg } from './emboss/svg'
 import { textShape, type TextOptions } from './emboss/text'
 import { initManifold } from './mesh'
@@ -70,9 +70,10 @@ registerOp<EmbossOpArgs>('embossFace', async (a, h) => {
     const t = buildEmbossTool(W, { ...a, art, sink: a.sink }, own)
     const warnings = [...notes, ...t.warnings]
     if (a.preview) {
-      const bb = t.tool.boundingBox()
+      // size of the artwork itself (before it is turned or laid on the surface), for the handle in the viewport
+      const ab = artworkBounds(art)
       const mesh = topoOfManifold(t.tool)
-      const out: EmbossPreview = { mesh, warnings, point: t.point, normal: t.normal, wrapped: t.wrapped, width: bb.max[0] - bb.min[0], height: bb.max[1] - bb.min[1] }
+      const out: EmbossPreview = { mesh, warnings, point: t.point, normal: t.normal, wrapped: t.wrapped, width: ab.w + 2 * a.weight, height: ab.h + 2 * a.weight }
       return Comlink.transfer(out, [mesh.positions.buffer, mesh.indices.buffer] as ArrayBuffer[])
     }
     const target = solidOf(W, h.getTopo(a.targetKey!), 'The target body', own)
@@ -279,6 +280,9 @@ export function cylinderOfFace(shape: AnyShape, faceIndex: number): CylinderOfFa
     surf.delete()
   }
 }
+
+/** What the dialog needs to know about the face before it picks a size: radius, facing and extent. */
+registerOp<{ key: string; face: number }, CylinderOfFace>('threadInfo', (a, h) => cylinderOfFace(h.getBrep(a.key) as unknown as AnyShape, a.face))
 
 /**
  * Where the tooth sits on the start angle (fraction of a turn), tried in turn. A nut and a bolt mesh whatever their phases (the nut is simply

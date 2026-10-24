@@ -1,0 +1,6 @@
+/* DETAIL workspace: dialog controls and the readout over the viewport */
+.inp .text-area { flex: 1; min-width: 0; resize: vertical; min-height: 38px; background: transparent; border: none; outline: none; padding: 3px 0; font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.35; color: var(--text); user-select: text; }
+.inp.file-pick { gap: 6px; padding-right: 3px; }
+.inp.file-pick .txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
+.inp.file-pick .btn.small { height: 18px; padding: 0 8px; font-size: var(--fs-sm); flex: none; }
+.detail-readout { position: absolute; left: 10px; top: 42px; max-width: min(640px, calc(100% - 20px)); padding: 4px 9px; border-radius: var(--radius); background: color-mix(in srgb, var(--bg-1) 88%, transparent); border: 1px solid var(--line-strong); color: var(--text); font-size: var(--fs-sm); line-height: 1.35; box-shadow: var(--shadow-float); }
