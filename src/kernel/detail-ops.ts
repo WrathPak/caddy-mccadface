@@ -16,7 +16,7 @@ import { tessellate, topoOf, type Shape } from './occ'
 import { registerOp } from './store'
 import { applyTexture, type TextureInput } from './texture/displace'
 import type { HeightImage, PatternId } from './texture/patterns'
-import { boreRadius, checkProfile, coreRadius, helixSolid, placeOnAxis, ringSolid, type ThreadProfile } from './threads'
+import { boreRadius, checkProfile, coreRadius, helixSolid, placeOnAxis, polarOutline, recessionFor, ringSolid, type Fit, type ThreadProfile } from './threads'
 import type { Body, MeshData, TopoMesh, Vec3 } from './types'
 
 const buffers = (m: MeshData): ArrayBuffer[] =>
@@ -221,6 +221,8 @@ export interface ThreadOpArgs {
   length: number
   fromEnd: 'start' | 'end'
   leftHand: boolean
+  /** who gets the clearance: this part in full (default for the dialog), the bolt or the nut only, or half each */
+  fit?: Fit
   /** preview only: build just this many turns */
   previewTurns?: number
 }
@@ -284,6 +286,65 @@ export function cylinderOfFace(shape: AnyShape, faceIndex: number): CylinderOfFa
 /** What the dialog needs to know about the face before it picks a size: radius, facing and extent. */
 registerOp<{ key: string; face: number }, CylinderOfFace>('threadInfo', (a, h) => cylinderOfFace(h.getBrep(a.key) as unknown as AnyShape, a.face))
 
+/** Column-major matrix taking +Z to `dir` and the origin to `o`. */
+function axisMatrix(o: Vec3, dir: Vec3): number[] {
+  const l = Math.hypot(...dir)
+  const z: Vec3 = [dir[0] / l, dir[1] / l, dir[2] / l]
+  const ref: Vec3 = Math.abs(z[0]) < 0.8 ? [1, 0, 0] : [0, 1, 0]
+  const x0: Vec3 = [z[1] * ref[2] - z[2] * ref[1], z[2] * ref[0] - z[0] * ref[2], z[0] * ref[1] - z[1] * ref[0]]
+  const xl = Math.hypot(...x0)
+  const x: Vec3 = [x0[0] / xl, x0[1] / xl, x0[2] / xl]
+  const y: Vec3 = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]]
+  return [...x, 0, ...y, 0, ...z, 0, ...o, 1]
+}
+
+/**
+ * The same thread as a mesh, built with manifold in milliseconds (the profile outline is twist-extruded about the axis): used for
+ * the live preview. The B-rep thread of `threadFace` is built only when the dialog is accepted.
+ */
+registerOp<ThreadOpArgs>('threadPreview', async (a, h) => {
+  const err = checkProfile(a.profile)
+  if (err) throw new Error(err)
+  const W = await initManifold()
+  const { own, free } = scope()
+  try {
+    const shape = h.getBrep(a.key) as unknown as AnyShape
+    const cyl = cylinderOfFace(shape, a.face)
+    if (!cyl.fullTurn) throw new Error('A thread needs a full round face; this face is only part of a cylinder')
+    const kind = a.kind === 'auto' ? (cyl.external ? 'external' : 'internal') : a.kind
+    if ((kind === 'external') !== cyl.external) throw new Error(cyl.external ? 'This is a shaft, so it can only get an external thread' : 'This is a hole, so it can only get an internal thread')
+    const span = cyl.v1 - cyl.v0
+    const length = a.length > 0 ? Math.min(a.length, span) : span
+    if (!(length > a.profile.pitch * 0.5)) throw new Error(`The threaded stretch (${length.toFixed(2)} mm) is shorter than half a pitch; use a longer face or a smaller pitch`)
+    const build = { kind, radius: cyl.radius, profile: a.profile, clearance: 2 * recessionFor(a.fit ?? 'split', kind, Math.max(0, a.clearance)), length, leftHand: a.leftHand } as const
+    const fromEnd = a.fromEnd === 'end'
+    const at = (v: number): Vec3 => [cyl.origin[0] + cyl.dir[0] * v, cyl.origin[1] + cyl.dir[1] * v, cyl.origin[2] + cyl.dir[2] * v]
+    const mat = axisMatrix(at(fromEnd ? cyl.v1 : cyl.v0), fromEnd ? [-cyl.dir[0], -cyl.dir[1], -cyl.dir[2]] : cyl.dir)
+    const place = (m: Manifold) => own(m.transform(mat as never))
+    const body = solidOf(W, h.getTopo(a.key), 'The body', own)
+    const twist = (a.leftHand ? -1 : 1) * (360 * length) / a.profile.pitch
+    const div = Math.max(8, Math.ceil((length / a.profile.pitch) * 14))
+    const outline = polarOutline(build, 168)
+    const disc = (r: number, n = 96) => Array.from({ length: n }, (_, k) => [r * Math.cos((2 * Math.PI * k) / n), r * Math.sin((2 * Math.PI * k) / n)] as [number, number])
+    const cyls = (r: number) => own(W.Manifold.cylinder(length, r, r, 64))
+    let res: Manifold
+    if (kind === 'external') {
+      const core = coreRadius(build)
+      const rod = own(own(W.CrossSection.ofPolygons([outline], 'NonZero')).extrude(length, div, twist))
+      const turned = own(body.subtract(place(own(cyls(cyl.radius + 1.5).subtract(cyls(core))))))
+      res = own(turned.add(place(rod)))
+    } else {
+      const tube = own(own(W.CrossSection.ofPolygons([disc(cyl.radius + build.clearance / 2 + 0.3), outline], 'EvenOdd')).extrude(length, div, twist))
+      const opened = own(body.subtract(place(cyls(cyl.radius + build.clearance / 2))))
+      res = own(opened.add(place(tube)))
+    }
+    if (res.status() !== 'NoError' || res.isEmpty()) throw new Error('The thread preview could not be built on this face')
+    const mesh = topoOfManifold(res)
+    return Comlink.transfer(mesh, [mesh.positions.buffer, mesh.indices.buffer] as ArrayBuffer[])
+  } finally {
+    free()
+  }
+})
 /**
  * Where the tooth sits on the start angle (fraction of a turn), tried in turn. A nut and a bolt mesh whatever their phases (the nut is simply
  * turned), but the OCC boolean of a helix against the flat ends of a face quietly does nothing for some of them.
@@ -305,7 +366,7 @@ registerOp<ThreadOpArgs>('threadFace', (a, h) => {
   // a preview only builds the first turns: the full thread is the same sweep, just longer
   if (a.previewTurns && a.previewTurns > 0) length = Math.min(length, a.previewTurns * a.profile.pitch)
   if (!(length > a.profile.pitch * 0.5)) throw new Error(`The threaded stretch (${length.toFixed(2)} mm) is shorter than half a pitch; use a longer face or a smaller pitch`)
-  const base = { kind, radius: cyl.radius, profile: a.profile, clearance: Math.max(0, a.clearance), length, leftHand: a.leftHand } as const
+  const base = { kind, radius: cyl.radius, profile: a.profile, clearance: 2 * recessionFor(a.fit ?? 'split', kind, Math.max(0, a.clearance)), length, leftHand: a.leftHand } as const
   // the thread starts at the chosen end of the face and runs along the axis
   const fromEnd = a.fromEnd === 'end'
   const at = (v: number): Vec3 => [cyl.origin[0] + cyl.dir[0] * v, cyl.origin[1] + cyl.dir[1] * v, cyl.origin[2] + cyl.dir[2] * v]

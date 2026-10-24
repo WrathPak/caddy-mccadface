@@ -8,7 +8,7 @@ import { useDoc } from '@/doc/store'
 import type { FeatureCtx, PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel, type KernelClient } from '@/kernel/client'
 import type { CylinderOfFace, ThreadOpArgs } from '@/kernel/detail-ops'
-import type { Body } from '@/kernel/types'
+import type { Body, TopoMesh } from '@/kernel/types'
 import { ISO_SIZES, isoProfile, nearestIso, type ThreadProfile } from '@/kernel/threads'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
@@ -27,6 +27,7 @@ export interface ThreadValues {
   depth: number
   crest: number
   clearance: number
+  fit: 'self' | 'bolt' | 'nut' | 'split'
   length: number
   fromEnd: 'start' | 'end'
   leftHand: boolean
@@ -58,7 +59,8 @@ export const threadSchema: ParamSchema = {
     },
     {
       type: 'group', id: 'fit', label: 'Fit and extent', help: 'How loose the thread is and how far it runs.', children: [
-        { type: 'number', key: 'clearance', label: 'Printing clearance', unit: 'mm', min: 0, step: 0.05, default: DEFAULT_CLEARANCE, help: 'The gap left between a bolt thread and a nut thread, so a printed pair turns freely. Each part takes half of it, so make both with the same value. 0.2 mm suits most FDM printers; use less for resin.' },
+        { type: 'number', key: 'clearance', label: 'Printing clearance', unit: 'mm', min: 0, step: 0.05, default: DEFAULT_CLEARANCE, help: 'How much looser the thread is made so a printed bolt and nut turn freely. 0.2 mm suits most FDM printers; use less for resin.' },
+        { type: 'enum', key: 'fit', label: 'Clearance goes to', display: 'select', default: 'self', options: [{ value: 'self', label: 'This part (full)' }, { value: 'bolt', label: 'The bolt only' }, { value: 'nut', label: 'The nut only' }, { value: 'split', label: 'Half on each part' }], help: 'This part gives the part you are threading the whole clearance, so a lone bolt or nut is loose on its own. Use the bolt only or the nut only when you want the other part to stay exact, or half on each part when you make both with the same setting.' },
         { type: 'number', key: 'length', label: 'Length', unit: 'mm', min: 0, step: 1, default: 0, help: 'How far the thread runs along the face. 0 threads the whole face.' },
         { type: 'enum', key: 'fromEnd', label: 'Start at', display: 'segmented', default: 'start', visibleWhen: (v) => (v.length as number) > 0, options: [{ value: 'start', label: 'First end' }, { value: 'end', label: 'Other end' }], help: 'Which end of the face a shorter thread starts from.' },
         { type: 'bool', key: 'leftHand', label: 'Left hand thread', default: false, help: 'Turns the thread the other way (counter-clockwise to tighten). Rare; leave off for normal screws.' },
@@ -107,7 +109,7 @@ async function threadArgs(v: ThreadValues, bodies: Body[], kernel: KernelClient,
   const info = (await kernel.call('threadInfo', { key: body.key, face: index })) as CylinderOfFace
   const p = profileFor(v, info.radius * 2)
   const op: ThreadOpArgs = {
-    id, name: body.name, key: body.key, face: index, kind: v.kind, profile: p.profile, clearance: v.clearance, length: v.length, fromEnd: v.fromEnd, leftHand: v.leftHand, previewTurns,
+    id, name: body.name, key: body.key, face: index, kind: v.kind, profile: p.profile, clearance: v.clearance, fit: v.fit, length: v.length, fromEnd: v.fromEnd, leftHand: v.leftHand, previewTurns,
   }
   return { op, body, info, ...p }
 }
@@ -128,9 +130,6 @@ registerFeature({
   preview: (ctx) => threadPreview(ctx),
 })
 
-/** How many turns the live preview builds: the thread is a slow B-rep boolean, so only the first turns are shown while editing. */
-const PREVIEW_TURNS = 5
-
 function threadPreview({ values }: PreviewCtx): PreviewHandle {
   let cur: ParamValues = values
   let hidden: string | null = null
@@ -142,26 +141,28 @@ function threadPreview({ values }: PreviewCtx): PreviewHandle {
   const runner = createRunner(async (stale) => {
     try {
       const v = resolveParams(threadSchema, cur) as unknown as ThreadValues
-      if (!v.face.length) { hide(null); useDetailView.setState({ readout: null, busy: false }); useUi.setState({ inspectorNotice: null }); return }
+      if (!v.face.length) { hide(null); useDetailView.setState({ texture: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: null }); return }
       useDetailView.setState({ busy: true })
       const bodies = useDoc.getState().geometry
       const { body } = faceOf(v, bodies)
-      const { op, info, name, note } = await threadArgs(v, bodies, getKernel(), 'preview-' + body.id, PREVIEW_TURNS)
-      const result = (await getKernel().call('threadFace', op)) as Body
+      const { op, info, name, note } = await threadArgs(v, bodies, getKernel(), 'preview-' + body.id, undefined)
+      // the preview is the same thread as a mesh (milliseconds); the exact B-rep is built when the dialog is accepted
+      const mesh = (await getKernel().call('threadPreview', op)) as TopoMesh
       if (stale()) return
       hidden = body.id
-      setPreview([{ mesh: result.mesh, kind: 'result' }], [body.id])
+      setPreview([], [body.id])
       const full = op.length > 0 ? Math.min(op.length, info.v1 - info.v0) : info.v1 - info.v0
       useDetailView.setState({
-        readout: `${name} ${info.external ? 'outside' : 'inside'} thread, ${(full / op.profile.pitch).toFixed(1)} turns. The preview shows the first ${PREVIEW_TURNS}; OK builds all of them.${note ? ' | ' + note : ''}`,
+        texture: { mesh, bodyId: body.id },
+        readout: `${name} ${info.external ? 'outside' : 'inside'} thread, ${(full / op.profile.pitch).toFixed(1)} turns${note ? ' | ' + note : ''}`,
         busy: false,
       })
       useUi.setState({ inspectorNotice: null })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      if (!stale()) { hide(null); useDetailView.setState({ readout: null, busy: false }); useUi.setState({ inspectorNotice: msg }) }
+      if (!stale()) { hide(null); useDetailView.setState({ texture: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: msg }) }
     }
-  }, 350)
+  }, 120)
   runner.schedule()
   return {
     update(v) { cur = v; runner.schedule() },
@@ -173,7 +174,6 @@ function threadPreview({ values }: PreviewCtx): PreviewHandle {
     },
   }
 }
-
 export function startThread() {
   const face = encodeSelection(useUi.getState().selection.filter((r) => r.kind === 'face').slice(0, 1), useDoc.getState().geometry)
   createFeature('thread', { face }, 'detail.thread')

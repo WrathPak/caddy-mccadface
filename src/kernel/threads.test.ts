@@ -5,7 +5,7 @@ import { weld } from './meshutil'
 import { initManifold } from './mesh'
 import { initOcc, tessellate, topoOf, type Shape } from './occ'
 import { bodyFromShape, getBrep, getOp, helpers } from './store'
-import { ISO_SIZES, boreRadius, checkProfile, coreRadius, isoProfile, nearestIso, rootFlat, sectionOf } from './threads'
+import { ISO_SIZES, recessionFor, boreRadius, checkProfile, coreRadius, isoProfile, nearestIso, rootFlat, sectionOf } from './threads'
 import type { Body } from './types'
 import './model-ops'
 import './solid-ops'
@@ -244,5 +244,54 @@ describe('bolt and nut fit', () => {
     const tight = vol(await run('threadFace', args(b, { clearance: 0 })))
     const loose = vol(await run('threadFace', args(b, { clearance: 0.4 })))
     expect(loose).toBeLessThan(tight)
+  })
+})
+describe('fast preview and fit', () => {
+  const rawPreview = async (b: Body, over: Partial<ThreadOpArgs> = {}) => (await getOp('threadPreview')!(args(b, over) as never, helpers)) as { positions: Float32Array; indices: Uint32Array }
+  const previewOf = async (b: Body, over: Partial<ThreadOpArgs> = {}) => {
+    const m = await rawPreview(b, over)
+    return own(W.Manifold.ofMesh(new W.Mesh({ numProp: 3, vertProperties: m.positions, triVerts: m.indices })))
+  }
+
+  it('a full M8 x 20 preview takes well under a second and a half', async () => {
+    const b = await bolt()
+    await rawPreview(b) // warm up wasm
+    const t0 = performance.now()
+    const raw = await rawPreview(b)
+    const ms = performance.now() - t0
+    expect(ms).toBeLessThan(1500)
+    expect(raw.indices.length / 3).toBeGreaterThan(20000)
+    const m = own(W.Manifold.ofMesh(new W.Mesh({ numProp: 3, vertProperties: raw.positions, triVerts: raw.indices })))
+    expect(m.status()).toBe('NoError')
+    expect(m.decompose().length).toBe(1)
+    expect(m.genus()).toBe(0)
+  })
+  it('the preview is the same thread as the B-rep one (volume within 4%)', async () => {
+    const b = await bolt()
+    const exact = manifoldOf(await M8Bolt()).volume()
+    expect(Math.abs((await previewOf(b)).volume() - exact)).toBeLessThan(exact * 0.04)
+    const n = await nut(NUT_Z, 8)
+    const exactNut = manifoldOf(await M8Nut()).volume()
+    expect(Math.abs((await previewOf(n)).volume() - exactNut)).toBeLessThan(exactNut * 0.04)
+  })
+  it('the fit option says which part gets the clearance', async () => {
+    expect(recessionFor('self', 'external', 0.2)).toBe(0.2)
+    expect(recessionFor('split', 'external', 0.2)).toBeCloseTo(0.1, 9)
+    expect(recessionFor('bolt', 'external', 0.2)).toBe(0.2)
+    expect(recessionFor('bolt', 'internal', 0.2)).toBe(0)
+    expect(recessionFor('nut', 'internal', 0.2)).toBe(0.2)
+    expect(recessionFor('nut', 'external', 0.2)).toBe(0)
+    const b = await bolt(8)
+    const own_ = (await previewOf(b, { fit: 'self' })).volume()
+    const split = (await previewOf(b, { fit: 'split' })).volume()
+    const none = (await previewOf(b, { fit: 'nut' })).volume()
+    expect(own_).toBeLessThan(split)
+    expect(split).toBeLessThan(none)
+  })
+  it('a lone bolt made with the default fit gets the whole clearance in the B-rep too', async () => {
+    const b = await bolt(8)
+    const self = vol(await run('threadFace', args(b, { fit: 'self' })))
+    const split = vol(await run('threadFace', args(b, { fit: 'split' })))
+    expect(self).toBeLessThan(split)
   })
 })

@@ -186,3 +186,41 @@ export function ringSolid(r0: number, r1: number, length: number): AnyShape {
   const inner = makeCylinder(r0, length, [0, 0, 0], [0, 0, 1])
   return outer.cut(inner as unknown as AnyShape)
 }
+
+// ---------------------------------------------------------------- fast mesh version (previews)
+
+export type Fit = 'self' | 'bolt' | 'nut' | 'split'
+
+/** How far the material of the modeled part recedes (mm) for a fit mode: Bolt / Nut give the clearance to that part only, Split halves it. */
+export function recessionFor(fit: Fit, kind: 'external' | 'internal', clearance: number): number {
+  if (fit === 'split') return clearance / 2
+  if (fit === 'self') return clearance
+  return (fit === 'bolt') === (kind === 'external') ? clearance : 0
+}
+
+const wrapU = (u: number, p: number) => u - p * Math.round(u / p)
+
+/**
+ * Polar outline (radius per angle at z = 0) of the threaded rod (external) or of the inner edge of the threaded tube (internal),
+ * from the same profile maths as sectionOf. Twist-extruding it 360 degrees per pitch gives the thread as a mesh in milliseconds.
+ */
+export function polarOutline(b: ThreadBuild, n = 288): [number, number][] {
+  const p = b.profile
+  const t = Math.tan((p.angle * Math.PI) / 360), c = Math.cos((p.angle * Math.PI) / 360)
+  const d = b.clearance / 2
+  const R = b.radius
+  const out: [number, number][] = []
+  for (let k = 0; k < n; k++) {
+    const th = (2 * Math.PI * k) / n
+    const u = Math.abs(wrapU(-(p.pitch * th) / (2 * Math.PI), p.pitch))
+    let r: number
+    if (b.kind === 'external') {
+      r = Math.max(coreRadius(b), Math.min(R - d, R - (u + d / c - p.crest / 2) / t))
+    } else {
+      const rr = R + d, rm = boreRadius(b), g0 = p.crest / 2 + d / c
+      r = u <= g0 ? rr : Math.max(rm, Math.min(rr, rr - (u - g0) / t))
+    }
+    out.push([r * Math.cos(th), r * Math.sin(th)])
+  }
+  return out
+}
