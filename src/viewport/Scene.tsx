@@ -1,7 +1,9 @@
+import { useEffect, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { OrthographicCamera, PerspectiveCamera } from '@react-three/drei'
 import { EffectComposer, N8AO } from '@react-three/postprocessing'
 import { useUi } from '@/store/ui'
+import { useDoc } from '@/doc/store'
 import { DebugProbe } from '@/app/debug'
 import { Bodies } from './Bodies'
 import { CaptureRegistrar, MoveGizmo } from './MoveGizmo'
@@ -11,6 +13,7 @@ import { MeasureOverlay } from './MeasureOverlay'
 import { NavControls, FOV } from './NavControls'
 import { ViewCubeSync } from './ViewCube'
 import { useVpColors } from './colors'
+import { navClock } from './navClock'
 import { ArrowManipulator, PreviewLayer, ProfilePicker } from './preview'
 import { SketchOverlay } from '@/sketch/SketchOverlay'
 import { SketchDisplay } from '@/sketch/SketchDisplay'
@@ -32,15 +35,71 @@ function useAoOverlayMask(enabled: boolean) {
   })
 }
 
+const AO_IDLE_MS = 220
+/** Automated browsers (the e2e runs on software GL) get a cheaper AO sample count; the denoise is the same. */
+const AO_LOW = typeof navigator !== 'undefined' && navigator.webdriver
+
+/**
+ * AO only runs while the camera is at rest: orbiting, panning and zooming draw the plain scene, and the AO fades back in
+ * once the view has been still for a moment. Time comes from the nav clock, so a spec that freezes it never sees AO mid-motion.
+ */
+function useAoIdle(track: boolean): boolean {
+  const [idle, setIdle] = useState(true)
+  const invalidate = useThree((s) => s.invalidate)
+  const last = useRef<number[] | null>(null)
+  const lastMove = useRef(-Infinity)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useFrame((state) => {
+    if (!track) return
+    const m = state.camera.matrixWorld.elements
+    const prev = last.current
+    let moved = !prev
+    if (prev) for (let i = 0; i < 16; i++) if (Math.abs(prev[i] - m[i]) > 1e-9) { moved = true; break }
+    if (!prev) last.current = m.slice()
+    else if (moved) for (let i = 0; i < 16; i++) prev[i] = m[i]
+    const now = navClock.now()
+    if (moved && prev) {
+      lastMove.current = now
+      if (idle) setIdle(false)
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => invalidate(), AO_IDLE_MS + 30)
+    } else if (!idle && now - lastMove.current >= AO_IDLE_MS) setIdle(true)
+    else if (!idle) {
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => invalidate(), AO_IDLE_MS + 30)
+    }
+  })
+  return idle
+}
+
+/** Everything AO: lives in its own component so camera-rest changes do not re-render the whole scene. */
+function AoLayer() {
+  const ssao = useUi((s) => s.ssao)
+  const sectioned = useUi((s) => s.section.on)
+  const setAoActive = useUi((s) => s.setAoActive)
+  const hasBodies = useDoc((s) => s.geometry.length > 0)
+  const wanted = ssao && !sectioned && hasBodies
+  const idle = useAoIdle(wanted)
+  const active = wanted && idle
+  useEffect(() => { setAoActive(active); return () => setAoActive(false) }, [active, setAoActive])
+  useAoOverlayMask(active)
+  if (!active) return null
+  return (
+    <>
+      <HairOverlayPass />
+      <EffectComposer multisampling={4}>
+        <N8AO halfRes depthAwareUpsampling quality={AO_LOW ? 'performance' : 'medium'} aoRadius={14} screenSpaceRadius={false} distanceFalloff={1} intensity={1.6} aoSamples={16} denoiseSamples={8} denoiseRadius={12} />
+      </EffectComposer>
+    </>
+  )
+}
+
 export function Scene() {
   const projection = useUi((s) => s.projection)
-  const ssao = useUi((s) => s.ssao)
   const showOrigin = useUi((s) => s.showOrigin)
   const showGrid = useUi((s) => s.showGrid)
   const sketching = useUi((s) => s.sketchMode)
-  const sectioned = useUi((s) => s.section.on)
   const colors = useVpColors()
-  useAoOverlayMask(ssao)
 
   return (
     <>
@@ -74,12 +133,7 @@ export function Scene() {
       <PrintCanvas />
       <CaptureRegistrar />
       {import.meta.env.DEV && <DebugProbe />}
-      {ssao && !sectioned && <HairOverlayPass />}
-      {ssao && !sectioned && (
-        <EffectComposer multisampling={4}>
-          <N8AO halfRes depthAwareUpsampling quality="medium" aoRadius={14} screenSpaceRadius={false} distanceFalloff={1} intensity={1.6} aoSamples={16} denoiseSamples={8} denoiseRadius={12} />
-        </EffectComposer>
-      )}
+      <AoLayer />
     </>
   )
 }

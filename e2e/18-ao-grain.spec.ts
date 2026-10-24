@@ -60,6 +60,8 @@ test('light theme, AO on, box: flat lit face has near zero variance', async ({ a
   await app.ev((c) => c.bus.emit('view', 'top'))
   await app.cameraStable()
   await app.page.waitForTimeout(600)
+  // the AO pass really is drawing once the camera has settled
+  await expect.poll(() => app.ev((c) => c.ui.getState().aoActive)).toBe(true)
   const p = await app.project(0, 0, 40) // centre of the top face
   const cb = (await app.page.locator('.vp canvas').boundingBox())!
   const face = await blockStats(app, { x: p.x - cb.x - 12, y: p.y - cb.y - 12, w: 24, h: 24 })

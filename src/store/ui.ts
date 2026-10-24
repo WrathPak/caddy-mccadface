@@ -42,6 +42,9 @@ interface UiState {
   displayMode: DisplayMode
   projection: Projection
   ssao: boolean
+  /** AO is drawing right now: wanted, the scene has bodies and the camera is at rest (set by the viewport, never saved) */
+  aoActive: boolean
+  setAoActive: (on: boolean) => void
   showOrigin: boolean
   showGrid: boolean
   theme: Theme
@@ -98,6 +101,8 @@ export const useUi = create<UiState>((set, get) => ({
   displayMode: 'shadedEdges',
   projection: 'perspective',
   ssao: true,
+  aoActive: false,
+  setAoActive: (aoActive) => set((s) => (s.aoActive === aoActive ? s : { aoActive })),
   showOrigin: true,
   showGrid: true,
   theme: 'dark',
