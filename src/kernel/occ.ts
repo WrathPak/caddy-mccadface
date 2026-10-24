@@ -70,7 +70,7 @@ function indexResolver(hashes: number[]) {
 }
 
 /** Tessellate a B-rep into a MeshData with per-triangle B-rep face indices and per-segment B-rep edge indices. */
-export function tessellate(shape: Shape, tolerance = 0.05, angularTolerance = 0.2): MeshData {
+export function tessellate(shape: Shape, tolerance = 0.05, angularTolerance = 0.2, names?: { faces: string[][]; edges: string[][]; vertices?: string[][]; vertexPos?: number[] }): MeshData {
   const topo = topoOf(shape)
   const m = shape.mesh({ tolerance, angularTolerance })
   const e = shape.meshEdges({ tolerance, angularTolerance })
@@ -106,6 +106,10 @@ export function tessellate(shape: Shape, tolerance = 0.05, angularTolerance = 0.
     edgeCount: topo.edges.length,
     faceHashes: Uint32Array.from(topo.faceHashes),
     edgeHashes: Uint32Array.from(topo.edgeHashes),
+    faceNames: names?.faces,
+    edgeNames: names?.edges,
+    vertexNames: names?.vertices,
+    vertexPos: names?.vertexPos ? Float32Array.from(names.vertexPos) : undefined,
   }
 }
 

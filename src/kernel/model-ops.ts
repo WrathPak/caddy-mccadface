@@ -1,8 +1,9 @@
 /** Worker ops for solid modelling: profile extrusion (with taper) / revolution, face extrusion, fillet / chamfer, edge frames. */
-import { Plane, asDir, basicFaceExtrusion, cast, draw, getOC, loft, makeFace, makePln, measureVolume, revolution, Vector, type AnyShape, type Face } from 'replicad'
+import { Plane, asDir, basicFaceExtrusion, cast, isShape3D, makeVertex, measureDistanceBetween, draw, getOC, loft, makeAx1, makeFace, makePln, measureVolume, Vector, DEG2RAD, type AnyShape, type Face } from 'replicad'
 import { registerOp, type OpHelpers } from './store'
 import { topoOf, type Shape } from './occ'
-import type { Loop, PlaneDef, Seg, Vec2, Vec3 } from '../sketch/types'
+import { edgeModNamed, eachInList, finalize, fuseNamed, indexer, type NShape } from './naming'
+import { profileIdOf, type Loop, type PlaneDef, type Seg, type Vec2, type Vec3 } from '../sketch/types'
 import { polyArea, loopPoly, reverseLoop } from '../sketch/geom'
 import { offsetChain, offsetCircle } from '../sketch/offset'
 
@@ -149,24 +150,147 @@ function bothSides(from: number, to: number, side: Spanned): Sh {
   return fuseAll(parts)
 }
 
-/** Solid swept from `face` between the signed offsets [from, to] (0 lies inside the span) along `n`, optionally tapered. */
-function prism(face: Face, n: Vec3, from: number, to: number, taper = 0): Sh {
-  if (!taper) {
-    const f = from === 0 ? face : (face.translate(n[0] * from, n[1] * from, n[2] * from) as Face)
-    return sweep(f, n, to - from)
-  }
-  return bothSides(from, to, (h) => draftedFacePrism(face, n, h, taper))
+/** Labels that name the faces of a swept solid: the source edges (side walls) and the profile / face (caps). */
+interface Labels {
+  edges: string[]
+  start: string
+  end: string
+  /** a point on each source edge (aligned with `edges`): used to find the wall a tapered solid grows from it */
+  pts?: Vec3[]
 }
 
-function profilePrism(g: ProfileGroup, pr: ProfileIn, from: number, to: number, taper: number): Sh {
-  const plane = planeOf(g.plane)
-  if (!taper) return prism(profileFace(plane, pr), g.plane.normal, from, to)
-  // straight-edged profiles: OCC's draft keeps the walls exact planes. Anything else (arcs, circles) or a draft OCC
-  // refuses is built as a ruled loft between the profile and its offset (cones for circles).
-  if ([pr.outer, ...pr.holes].every((l) => l.every((s) => s.k === 'l'))) {
-    try { return bothSides(from, to, (u) => draftedFacePrism(profileFace(plane, pr), g.plane.normal, u, taper)) } catch { /* use the loft */ }
+/** Prism of `face` along `n * d` with persistent names: caps from First / LastShape, walls Generated from the face's edges. */
+function sweepNamed(face: Face, n: Vec3, d: number, lab: Labels | undefined, fid: string): NShape {
+  const oc = getOC()
+  const vec = new Vector([n[0] * d, n[1] * d, n[2] * d])
+  const mk = new oc.BRepPrimAPI_MakePrism(face.wrapped, vec.wrapped, false, true)
+  try {
+    const shape = cast(mk.Shape()) as unknown as Sh
+    const topo = topoOf(shape as unknown as AnyShape)
+    const claims: string[][] = topo.faces.map(() => [])
+    const edges = face.edges
+    if (lab && lab.edges.length === edges.length) {
+      const find = indexer(topo.faces, topo.faceHashes)
+      const f0 = find(mk.FirstShape() as never), f1 = find(mk.LastShape() as never)
+      if (f0 >= 0) claims[f0].push(`${fid}:start:${lab.start}`)
+      if (f1 >= 0) claims[f1].push(`${fid}:end:${lab.end}`)
+      edges.forEach((e, i) => eachInList(mk.Generated(e.wrapped) as never, (sh) => { const j = find(sh); if (j >= 0) claims[j].push(`${fid}:side:${lab.edges[i] || 'e' + i}`) }))
+    }
+    return { shape, faces: claims }
+  } finally {
+    mk.delete()
+    vec.delete()
   }
-  return bothSides(from, to, (u) => taperedProfileSide(plane, g.plane, pr, u, taper))
+}
+
+/** Names for the caps of a tapered solid (planar faces facing along `n`: lowest = start, highest = end). */
+function capClaims(shape: Sh, n: Vec3, lab: Labels | undefined, fid: string): string[][] {
+  const topo = topoOf(shape as unknown as AnyShape)
+  const claims: string[][] = topo.faces.map(() => [])
+  if (!lab) return claims
+  const h = (f: Face) => { const c = f.center; return c.x * n[0] + c.y * n[1] + c.z * n[2] }
+  const caps = topo.faces.map((f, i) => ({ f, i })).filter(({ f }) => f.geomType === 'PLANE' && Math.abs(dot3(norm3(vec(f.normalAt())), n)) > 1 - 1e-9)
+  if (caps.length < 2) return claims
+  const lo = Math.min(...caps.map((c) => h(c.f))), hi = Math.max(...caps.map((c) => h(c.f)))
+  for (const { f, i } of caps) {
+    if (Math.abs(h(f) - lo) < 1e-6) claims[i].push(`${fid}:start:${lab.start}`)
+    else if (Math.abs(h(f) - hi) < 1e-6) claims[i].push(`${fid}:end:${lab.end}`)
+  }
+  return claims
+}
+
+/**
+ * Names for the walls of a tapered solid. OCC's draft / ruled loft give no usable history, so each wall is found
+ * geometrically: a point on a source edge lies on the wall that grows out of it (distance 0), which is deterministic.
+ */
+function wallClaims(shape: Sh, n: Vec3, lab: Labels | undefined, fid: string, claims: string[][]) {
+  if (!lab?.pts) return
+  const topo = topoOf(shape as unknown as AnyShape)
+  const walls = topo.faces.map((f, i) => ({ f, i })).filter(({ f }) => !(f.geomType === 'PLANE' && Math.abs(dot3(norm3(vec(f.normalAt())), n)) > 1 - 1e-9))
+  lab.pts.forEach((p, k) => {
+    const label = lab.edges[k]
+    if (!label) return
+    const v = makeVertex(p)
+    let best = -1, bd = Infinity
+    for (const { f, i } of walls) {
+      const d = measureDistanceBetween(f as never, v as never)
+      if (d < bd - 1e-9) { bd = d; best = i }
+    }
+    if (best >= 0 && bd < 1e-4) claims[best].push(`${fid}:side:${label}`)
+  })
+}
+
+/** Solid swept from `face` between the signed offsets [from, to] (0 lies inside the span) along `n`, optionally tapered. */
+function prism(face: Face, n: Vec3, from: number, to: number, taper = 0, lab?: Labels, fid = ''): NShape {
+  if (!taper) {
+    const f = from === 0 ? face : (face.translate(n[0] * from, n[1] * from, n[2] * from) as Face)
+    return sweepNamed(f, n, to - from, lab, fid)
+  }
+  const shape = bothSides(from, to, (h) => draftedFacePrism(face, n, h, taper))
+  const faces = capClaims(shape, n, lab, fid)
+  wallClaims(shape, n, lab, fid, faces)
+  return { shape, faces }
+}
+
+const cross3 = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+
+/** The sketch entity id of every edge of a profile face (aligned with `face.edges`), found by proximity in the sketch plane. */
+function edgeSegIds(pl: PlaneDef, face: Face, pr: ProfileIn): string[] {
+  return labelEdges(pl, face.edges, pr)
+}
+
+/** Same for any list of edges lying on the sketch plane (e.g. the edges of a profile wire). */
+export function labelEdges(pl: PlaneDef, edges: { pointAt(t: number): { x: number; y: number; z: number } }[], pr: ProfileIn): string[] {
+  const segs = [pr.outer, ...pr.holes].flat()
+  const ex = pl.xDir, ey = cross3(pl.normal, pl.xDir)
+  const near = (p: Vec2, s: Seg) => {
+    if (s.k === 'l') {
+      const dx = s.b[0] - s.a[0], dy = s.b[1] - s.a[1]
+      const t = Math.max(0, Math.min(1, ((p[0] - s.a[0]) * dx + (p[1] - s.a[1]) * dy) / (dx * dx + dy * dy || 1)))
+      return Math.hypot(p[0] - s.a[0] - dx * t, p[1] - s.a[1] - dy * t)
+    }
+    return Math.abs(Math.hypot(p[0] - s.c[0], p[1] - s.c[1]) - s.r)
+  }
+  return edges.map((e) => {
+    const m = e.pointAt(0.5)
+    const d: Vec3 = [m.x - pl.origin[0], m.y - pl.origin[1], m.z - pl.origin[2]]
+    const p: Vec2 = [dot3(d, ex), dot3(d, ey)]
+    let best = '', bd = Infinity
+    for (const s of segs) {
+      const dd = near(p, s)
+      if (dd < bd - 1e-9) { bd = dd; best = s.id ?? '' }
+    }
+    return best
+  })
+}
+
+function profilePrism(g: ProfileGroup, pr: ProfileIn, from: number, to: number, taper: number, fid: string): NShape {
+  const plane = planeOf(g.plane)
+  const pid = profileIdOf(pr.outer) || 'p'
+  if (!taper) {
+    const face = profileFace(plane, pr)
+    return prism(face, g.plane.normal, from, to, 0, { edges: edgeSegIds(g.plane, face, pr), start: pid, end: pid }, fid)
+  }
+  const solid = (): Sh => {
+    // straight-edged profiles: OCC's draft keeps the walls exact planes. Anything else (arcs, circles) or a draft OCC
+    // refuses is built as a ruled loft between the profile and its offset (cones for circles).
+    if ([pr.outer, ...pr.holes].every((l) => l.every((s) => s.k === 'l'))) {
+      try { return bothSides(from, to, (u) => draftedFacePrism(profileFace(plane, pr), g.plane.normal, u, taper)) } catch { /* use the loft */ }
+    }
+    return bothSides(from, to, (u) => taperedProfileSide(plane, g.plane, pr, u, taper))
+  }
+  const shape = solid()
+  // one label + a point on the edge per loop segment, in world space
+  const ey = cross3(g.plane.normal, g.plane.xDir)
+  const w = (p: Vec2): Vec3 => [g.plane.origin[0] + g.plane.xDir[0] * p[0] + ey[0] * p[1], g.plane.origin[1] + g.plane.xDir[1] * p[0] + ey[1] * p[1], g.plane.origin[2] + g.plane.xDir[2] * p[0] + ey[2] * p[1]]
+  const segs = [pr.outer, ...pr.holes].flat().filter((s) => s.id)
+  const lab: Labels = {
+    edges: segs.map((s) => s.id!), start: pid, end: pid,
+    pts: segs.map((s) => w(s.k === 'l' ? [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2] : s.k === 'a' ? s.m : [s.c[0] + s.r, s.c[1]])),
+  }
+  const faces = capClaims(shape, g.plane.normal, lab, fid)
+  wallClaims(shape, g.plane.normal, lab, fid, faces)
+  return { shape, faces }
 }
 
 export interface ExtrudeArgs {
@@ -195,21 +319,31 @@ registerOp<ExtrudeArgs>('extrudeTool', (a, h: OpHelpers) => {
   if (Math.abs(to - from) < 1e-9) throw new Error('Distance must not be zero')
   const taper = a.taper ?? 0
   if (Math.abs(taper) >= 89) throw new Error('Taper angle must be between -89° and 89°')
-  const solids: Sh[] = []
+  const parts: NShape[] = []
+  const named = (p: NShape, tag: string): NShape => ({ shape: p.shape, faces: finalize(p.shape as unknown as AnyShape, p.faces, a.id, tag) })
   for (const g of a.groups) {
-    for (const pr of g.profiles) solids.push(profilePrism(g, pr, from, to, taper))
+    for (const pr of g.profiles) parts.push(named(profilePrism(g, pr, from, to, taper, a.id), 'p' + parts.length))
   }
   for (const f of a.faces) {
     const body = h.getBrep(f.key)
+    const names = h.getNames(f.key)
+    const topo = topoOf(body as unknown as AnyShape)
+    const src = topo.faces[f.index]
+    if (!src) throw new Error('Face not found')
+    const eIdx = indexer(topo.edges, topo.edgeHashes)
+    const srcEdges = src.edges
+    const edgeLabels = srcEdges.map((e) => names.edges[eIdx(e.wrapped as never)]?.[0] ?? '')
+    const edgePts = srcEdges.map((e): Vec3 => { const m = e.pointAt(0.5); return [m.x, m.y, m.z] })
+    const fn = names.faces[f.index]?.[0] ?? 'f' + f.index
     // topology faces are cached and shared: work on a clone, because replicad's translate() / innerWires() consume their receiver
-    const face = topoOf(body as unknown as AnyShape).faces[f.index]?.clone()
-    if (!face) throw new Error('Face not found')
+    const face = src.clone()
     const nv = face.normalAt()
     const n: Vec3 = [nv.x * a.faceDir, nv.y * a.faceDir, nv.z * a.faceDir]
-    solids.push(prism(face, n, from, to, taper))
+    parts.push(named(prism(face, n, from, to, taper, { edges: edgeLabels, start: fn, end: fn, pts: edgePts }, a.id), 'f' + parts.length))
   }
-  if (!solids.length) throw new Error('Nothing to extrude')
-  return h.sendBody(h.bodyFromShape(a.id, a.name, fuseAll(solids)))
+  if (!parts.length) throw new Error('Nothing to extrude')
+  const r = fuseNamed(parts, a.id)
+  return h.sendBody(h.bodyFromShape(a.id, a.name, r.shape, r.faces))
 })
 
 export interface RevolveArgs {
@@ -222,19 +356,57 @@ export interface RevolveArgs {
   angle: number
 }
 
+/** Revolution of a profile face with persistent names (walls Generated from the face's edges, caps from First / LastShape). */
+function revolveNamed(face: Face, origin: Vec3, dir: Vec3, angle: number, lab: Labels, fid: string): NShape {
+  const oc = getOC()
+  const ax = makeAx1(origin, dir)
+  const mk = new oc.BRepPrimAPI_MakeRevol(face.wrapped, ax, angle * DEG2RAD, false)
+  try {
+    const shape = cast(mk.Shape()) as unknown as Sh
+    if (!isShape3D(shape as never)) throw new Error('Could not revolve to a 3d shape')
+    const topo = topoOf(shape as unknown as AnyShape)
+    const claims: string[][] = topo.faces.map(() => [])
+    const find = indexer(topo.faces, topo.faceHashes)
+    const edges = face.edges
+    if (lab.edges.length === edges.length) {
+      const f0 = find(mk.FirstShape() as never), f1 = find(mk.LastShape() as never)
+      if (f0 >= 0) claims[f0].push(`${fid}:start:${lab.start}`)
+      if (f1 >= 0 && f1 !== f0) claims[f1].push(`${fid}:end:${lab.end}`)
+      edges.forEach((e, i) => eachInList(mk.Generated(e.wrapped) as never, (sh) => { const j = find(sh); if (j >= 0) claims[j].push(`${fid}:rev:${lab.edges[i] || 'e' + i}`) }))
+      // OCC reports no history for a profile edge that sweeps out a planar face (perpendicular to the axis): the face
+      // that contains the edge's midpoint is the one it made
+      topo.faces.forEach((f, j) => {
+        if (claims[j].length || f.geomType !== 'PLANE') return
+        edges.forEach((e, i) => {
+          if (claims[j].length) return
+          const m = e.pointAt(0.5), c = f.center, nv = f.normalAt()
+          if (Math.abs((m.x - c.x) * nv.x + (m.y - c.y) * nv.y + (m.z - c.z) * nv.z) < 1e-6) claims[j].push(`${fid}:rev:${lab.edges[i] || 'e' + i}`)
+        })
+      })
+    }
+    return { shape, faces: claims }
+  } finally {
+    ax.delete()
+    mk.delete()
+  }
+}
+
 registerOp<RevolveArgs>('revolveTool', (a, h) => {
   if (Math.abs(a.angle) < 1e-9) throw new Error('Angle must not be zero')
-  const solids: Sh[] = []
+  const parts: NShape[] = []
   for (const g of a.groups) {
     const plane = planeOf(g.plane)
     for (const pr of g.profiles) {
       const face = profileFace(plane, pr)
       const dir: Vec3 = a.angle < 0 ? [-a.axisDir[0], -a.axisDir[1], -a.axisDir[2]] : a.axisDir
-      solids.push(revolution(face, a.axisOrigin, dir, Math.min(360, Math.abs(a.angle))) as unknown as Sh)
+      const pid = profileIdOf(pr.outer) || 'p'
+      const part = revolveNamed(face, a.axisOrigin, dir, Math.min(360, Math.abs(a.angle)), { edges: edgeSegIds(g.plane, face, pr), start: pid, end: pid }, a.id)
+      parts.push({ shape: part.shape, faces: finalize(part.shape as unknown as AnyShape, part.faces, a.id, 'p' + parts.length) })
     }
   }
-  if (!solids.length) throw new Error('Nothing to revolve')
-  return h.sendBody(h.bodyFromShape(a.id, a.name, fuseAll(solids)))
+  if (!parts.length) throw new Error('Nothing to revolve')
+  const r = fuseNamed(parts, a.id)
+  return h.sendBody(h.bodyFromShape(a.id, a.name, r.shape, r.faces))
 })
 
 export interface EdgeModArgs {
@@ -245,22 +417,23 @@ export interface EdgeModArgs {
   edges: number[]
   size: number
   mode: 'fillet' | 'chamfer'
+  /** the feature running the op (names of the faces it creates are rooted there) */
+  fid?: string
 }
 
 registerOp<EdgeModArgs>('edgeMod', (a, h) => {
-  const shape = h.getBrep(a.key)
-  const body = shape as unknown as { fillet(r: number, f: (e: never) => unknown): Sh; chamfer(r: number, f: (e: never) => unknown): Sh }
-  const all = topoOf(shape as unknown as AnyShape).edges
+  const src = h.getNamed(a.key)
+  const names = h.getNames(a.key)
+  const all = topoOf(src.shape as unknown as AnyShape).edges
   const list = a.edges.map((i) => all[i]).filter(Boolean)
   if (!list.length || list.length !== a.edges.length) throw new Error('Some of the selected edges no longer exist')
-  const filter = (e: { inList(l: AnyShape[]): unknown }) => e.inList(list)
-  let out: Sh
+  let out: NShape
   try {
-    out = a.mode === 'fillet' ? body.fillet(a.size, filter as never) : body.chamfer(a.size, filter as never)
+    out = edgeModNamed(src, names.edges, a.edges, a.size, a.mode, a.fid ?? a.id)
   } catch (e) {
     throw new Error(`${a.mode === 'fillet' ? 'Fillet' : 'Chamfer'} of ${a.size} mm is not possible on the selected edges (${e instanceof Error ? e.message : e})`)
   }
-  return h.sendBody(h.bodyFromShape(a.id, a.name, out))
+  return h.sendBody(h.bodyFromShape(a.id, a.name, out.shape, out.faces))
 })
 
 export interface EdgeFrame { mid: Vec3; /** outward bisector of the faces meeting at the edge */ dir: Vec3 }

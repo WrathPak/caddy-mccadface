@@ -3,7 +3,7 @@ import { Cylinder, Package, Path, Shapes, Unite } from '@phosphor-icons/react'
 import { registerFeature } from '@/doc/registry'
 import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
-import { bodyIdsOf, decodeRef, encodeSelection, resolveFace } from '@/doc/refs'
+import { RefError, RefReport, bodyIdsOf, decodeRef, encodeSelection, resolveFace } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
 import type { PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel, type KernelClient } from '@/kernel/client'
@@ -70,20 +70,20 @@ const opOptions = [
 /** Plane-local sketch curves -> one connected chain of world-space segments. */
 export function sketchPath(data: SketchData): PathSeg[] {
   const model = { entities: data.entities, constraints: data.constraints, next: 0 }
-  interface L { a: Vec2; b: Vec2; m?: Vec2 }
+  interface L { a: Vec2; b: Vec2; m?: Vec2; id?: string }
   const segs: L[] = []
   for (const e of data.entities) {
     if (e.construction || e.type === 'point') continue
     if (e.type === 'line') {
       const [a, b] = lineEnds(model, e)
-      if (dist(a, b) > 1e-9) segs.push({ a, b })
+      if (dist(a, b) > 1e-9) segs.push({ a, b, id: e.id })
     } else if (e.type === 'arc') {
       const i = arcOf(model, e)
-      segs.push({ a: pos(model, e.s), b: pos(model, e.e), m: polar(pos(model, e.c), i.r, i.a0 + i.span / 2) })
+      segs.push({ a: pos(model, e.s), b: pos(model, e.e), m: polar(pos(model, e.c), i.r, i.a0 + i.span / 2), id: e.id })
     } else {
       const c = pos(model, e.c)
       const p0: Vec2 = [c[0] + e.r, c[1]], p1: Vec2 = [c[0] - e.r, c[1]]
-      segs.push({ a: p0, b: p1, m: [c[0], c[1] + e.r] }, { a: p1, b: p0, m: [c[0], c[1] - e.r] })
+      segs.push({ a: p0, b: p1, m: [c[0], c[1] + e.r], id: e.id }, { a: p1, b: p0, m: [c[0], c[1] - e.r], id: e.id })
     }
   }
   if (!segs.length) throw new Error('The path sketch has no curves')
@@ -92,20 +92,20 @@ export function sketchPath(data: SketchData): PathSeg[] {
   const startIdx = Math.max(0, segs.findIndex((s) => degree(s.a) === 1 || degree(s.b) === 1))
   const used = new Set<number>([startIdx])
   let first = segs[startIdx]
-  if (degree(first.b) === 1 && degree(first.a) !== 1) first = { a: first.b, b: first.a, m: first.m }
+  if (degree(first.b) === 1 && degree(first.a) !== 1) first = { a: first.b, b: first.a, m: first.m, id: first.id }
   const chain: L[] = [first]
   for (let end = first.b; ;) {
     const k = segs.findIndex((s, i) => !used.has(i) && (same(s.a, end) || same(s.b, end)))
     if (k < 0) break
     used.add(k)
     const s = segs[k]
-    const oriented: L = same(s.a, end) ? s : { a: s.b, b: s.a, m: s.m }
+    const oriented: L = same(s.a, end) ? s : { a: s.b, b: s.a, m: s.m, id: s.id }
     chain.push(oriented)
     end = oriented.b
   }
   if (used.size !== segs.length) throw new Error('The path sketch curves must form one connected chain')
   const w = (p: Vec2): Vec3 => toWorld(data.plane, p)
-  return chain.map((s): PathSeg => (s.m ? { k: 'a', a: w(s.a), m: w(s.m), b: w(s.b) } : { k: 'l', a: w(s.a), b: w(s.b) }))
+  return chain.map((s): PathSeg => (s.m ? { k: 'a', a: w(s.a), m: w(s.m), b: w(s.b), id: s.id } : { k: 'l', a: w(s.a), b: w(s.b), id: s.id }))
 }
 
 function pathOf(refs: string[], env: Env): PathSeg[] {
@@ -163,9 +163,11 @@ export const sweepSchema: ParamSchema = {
   ],
 }
 
-async function buildSweep(p: ParamValues, env: Env, kernel: KernelClient, id: string, name: string): Promise<Body> {
+async function buildSweep(p: ParamValues, env: Env, kernel: KernelClient, id: string, name: string, report = new RefReport()): Promise<Body> {
   const inp = resolveInputs(p.profiles as string[], env)
-  if (!inp.groups.length) throw new Error(inp.missing ? 'The profile no longer exists' : 'Select a profile to sweep')
+  inp.report.rebound.forEach((v, k) => report.rebound.set(k, v))
+  inp.report.upgrades.forEach((v, k) => report.upgrades.set(k, v))
+  if (!inp.groups.length) throw new RefError(inp.missing ? 'The profile no longer exists (an edit upstream removed it). Pick it again.' : 'Select a profile to sweep', inp.report.lostRefs)
   const path = pathOf(p.path as string[], env)
   return (await kernel.call('sweepTool', { id, name, groups: inp.groups, path })) as Body
 }
@@ -176,8 +178,10 @@ registerFeature({
   icon: Path,
   schema: sweepSchema,
   async compute(ctx, p) {
-    const tool = await buildSweep(p, ctxEnv(ctx), ctx.kernel, ctx.newBodyId(), ctx.feature.name)
-    return combine(ctx, tool, p.operation as string, p.targets as string[])
+    const report = new RefReport()
+    const tool = await buildSweep(p, ctxEnv(ctx), ctx.kernel, ctx.newBodyId(), ctx.feature.name, report)
+    const res = await combine(ctx, tool, p.operation as string, p.targets as string[])
+    return { ...res, warning: report.warning ?? res.warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
   },
   preview: (ctx) => toolPreview(sweepSchema, (p, env, k) => buildSweep(p, env, k, 'preview', 'preview'), ctx),
 })
@@ -195,12 +199,14 @@ export const loftSchema: ParamSchema = {
   ],
 }
 
-async function buildLoft(p: ParamValues, env: Env, kernel: KernelClient, id: string, name: string): Promise<Body> {
+async function buildLoft(p: ParamValues, env: Env, kernel: KernelClient, id: string, name: string, report = new RefReport()): Promise<Body> {
   const sections: LoftSection[] = []
   for (const ref of p.profiles as string[]) {
     const inp = resolveInputs([ref], env)
+    inp.report.rebound.forEach((v, k) => report.rebound.set(k, v))
+    inp.report.upgrades.forEach((v, k) => report.upgrades.set(k, v))
     const g = inp.groups[0]
-    if (!g) throw new Error('A loft profile no longer exists')
+    if (!g) throw new RefError('A loft profile no longer exists (an edit upstream removed it). Pick it again.', inp.report.lostRefs)
     sections.push({ plane: g.plane, profile: g.profiles[0] })
   }
   if (sections.length < 2) throw new Error('A loft needs at least two profiles')
@@ -213,8 +219,10 @@ registerFeature({
   icon: Shapes,
   schema: loftSchema,
   async compute(ctx, p) {
-    const tool = await buildLoft(p, ctxEnv(ctx), ctx.kernel, ctx.newBodyId(), ctx.feature.name)
-    return combine(ctx, tool, p.operation as string, p.targets as string[])
+    const report = new RefReport()
+    const tool = await buildLoft(p, ctxEnv(ctx), ctx.kernel, ctx.newBodyId(), ctx.feature.name, report)
+    const res = await combine(ctx, tool, p.operation as string, p.targets as string[])
+    return { ...res, warning: report.warning ?? res.warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
   },
   preview: (ctx) => toolPreview(loftSchema, (p, env, k) => buildLoft(p, env, k, 'preview', 'preview'), ctx),
 })
@@ -235,7 +243,7 @@ export function startSweep() {
   const path = chosen.length === 1 ? [chosen[0]] : openOnes.length === 1 ? [openOnes[0].id] : []
   // the profile is the one sketch with a single closed region (other than the path)
   const others = sketches.filter((s) => !path.includes(s.id) && s.data.profiles.length)
-  const profiles = others.length === 1 && others[0].data.profiles.length === 1 ? [profileRef(others[0].id, others[0].data.profiles[0].key)] : []
+  const profiles = others.length === 1 && others[0].data.profiles.length === 1 ? [profileRef(others[0].id, others[0].data.profiles[0].key, others[0].data.profiles[0].id)] : []
   createFeature('sweep', { profiles, path }, 'solid.sweep')
 }
 
@@ -244,7 +252,7 @@ export function startLoft() {
   const chosen = selectedSketchIds()
   const pool = chosen.length >= 2 ? sketches.filter((s) => chosen.includes(s.id)) : sketches
   // one profile from every sketch, but only when that is unambiguous
-  const profiles = pool.length >= 2 && pool.every((s) => s.data.profiles.length === 1) ? pool.map((s) => profileRef(s.id, s.data.profiles[0].key)) : []
+  const profiles = pool.length >= 2 && pool.every((s) => s.data.profiles.length === 1) ? pool.map((s) => profileRef(s.id, s.data.profiles[0].key, s.data.profiles[0].id)) : []
   createFeature('loft', { profiles }, 'solid.loft')
 }
 
@@ -319,12 +327,12 @@ export const shellSchema: ParamSchema = {
   ],
 }
 
-function shellGroups(refs: string[], bodies: Body[]): { body: Body; faces: number[] }[] {
+function shellGroups(refs: string[], bodies: Body[], report = new RefReport()): { body: Body; faces: number[] }[] {
   const by = new Map<string, { body: Body; faces: number[] }>()
   for (const s of refs) {
     const ref = decodeRef(s)
-    const r = ref && ref.kind === 'face' ? resolveFace(ref, bodies) : null
-    if (!r) throw new Error('A selected face no longer exists')
+    const r = ref && ref.kind === 'face' ? resolveFace(ref, bodies, report) : null
+    if (!r) throw new RefError('A face to remove no longer exists (an edit upstream removed it). Pick it again.', report.lostRefs)
     const g = by.get(r.body.id) ?? by.set(r.body.id, { body: r.body, faces: [] }).get(r.body.id)!
     if (!g.faces.includes(r.index)) g.faces.push(r.index)
   }
@@ -333,10 +341,10 @@ function shellGroups(refs: string[], bodies: Body[]): { body: Body; faces: numbe
   return [...by.values()]
 }
 
-async function runShell(kernel: KernelClient, p: ParamValues, bodies: Body[], idOf?: (b: Body) => string): Promise<Body[]> {
+async function runShell(kernel: KernelClient, p: ParamValues, bodies: Body[], idOf?: (b: Body) => string, fid = 'preview', report = new RefReport()): Promise<Body[]> {
   const out: Body[] = []
-  for (const g of shellGroups(p.faces as string[], bodies)) {
-    out.push((await kernel.call('shellOp', { id: idOf ? idOf(g.body) : g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, thickness: p.thickness as number, side: p.side as string })) as Body)
+  for (const g of shellGroups(p.faces as string[], bodies, report)) {
+    out.push((await kernel.call('shellOp', { id: idOf ? idOf(g.body) : g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, thickness: p.thickness as number, side: p.side as string, fid })) as Body)
   }
   return out
 }
@@ -347,7 +355,9 @@ registerFeature({
   icon: Package,
   schema: shellSchema,
   async compute(ctx, p) {
-    return { bodies: await runShell(ctx.kernel, p, ctx.bodies) }
+    const report = new RefReport()
+    const bodies = await runShell(ctx.kernel, p, ctx.bodies, undefined, ctx.feature.id, report)
+    return { bodies, warning: report.warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
   },
   preview({ values }) {
     let cur = values

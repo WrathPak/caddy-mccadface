@@ -2,9 +2,10 @@
 import * as Comlink from 'comlink'
 import { DEFAULT_CREASE_DEG, meshDisplay, weld } from './meshutil'
 import { tessellate, type Shape } from './occ'
+import { finalize, namesOf, rootNames, type NShape, type Names } from './naming'
 import type { Body, MeshData, TopoMesh } from './types'
 
-export type Stored = { kind: 'brep'; shape: Shape } | { kind: 'mesh'; topo: TopoMesh; /** dihedral angle (deg) that separates faces */ crease: number }
+export type Stored = { kind: 'brep'; shape: Shape; names: Names } | { kind: 'mesh'; topo: TopoMesh; /** dihedral angle (deg) that separates faces */ crease: number }
 
 const store = new Map<string, Stored>()
 let counter = 0
@@ -18,6 +19,17 @@ export function getBrep(key: string): Shape {
   const s = getStored(key)
   if (s.kind !== 'brep') throw new Error('Expected a B-rep body')
   return s.shape
+}
+/** The persistent face / edge names of a B-rep (see naming.ts), as a named shape. */
+export function getNamed(key: string): NShape {
+  const s = getStored(key)
+  if (s.kind !== 'brep') throw new Error('Expected a B-rep body')
+  return { shape: s.shape, faces: s.names.faces }
+}
+export const getNames = (key: string): Names => {
+  const s = getStored(key)
+  if (s.kind !== 'brep') throw new Error('Expected a B-rep body')
+  return s.names
 }
 /** Welded triangle mesh for any body (B-reps are tessellated and welded). */
 export function getTopo(key: string): TopoMesh {
@@ -45,9 +57,15 @@ const buffers = (m: MeshData): Transferable[] =>
 export const sendBody = (b: Body) => Comlink.transfer(b, buffers(b.mesh))
 export const sendBodies = (bs: Body[]) => Comlink.transfer(bs, bs.flatMap((b) => buffers(b.mesh)))
 
-export function bodyFromShape(id: string, name: string, shape: Shape): Body {
-  const key = putStored({ kind: 'brep', shape })
-  return { id, name, kind: 'brep', key, mesh: tessellate(shape) }
+/**
+ * Store a B-rep and tessellate it. `faces` are the persistent names of its faces (see naming.ts); when an op has no
+ * history for its result they are rooted at `id` (`${id}:face:${k}`).
+ */
+export function bodyFromShape(id: string, name: string, shape: Shape, faces?: string[][]): Body {
+  const fn = faces && faces.length === shape.faces.length ? finalize(shape, faces, id) : rootNames(shape, id)
+  const names = namesOf(shape, fn)
+  const key = putStored({ kind: 'brep', shape, names })
+  return { id, name, kind: 'brep', key, mesh: tessellate(shape, 0.05, 0.2, names) }
 }
 export function bodyFromTopo(id: string, name: string, topo: TopoMesh, crease: number = DEFAULT_CREASE_DEG): Body {
   const key = putStored({ kind: 'mesh', topo, crease })
@@ -57,13 +75,15 @@ export function bodyFromTopo(id: string, name: string, topo: TopoMesh, crease: n
 export type OpFn = (args: never, ctx: OpHelpers) => Promise<unknown> | unknown
 export interface OpHelpers {
   getBrep: typeof getBrep
+  getNamed: typeof getNamed
+  getNames: typeof getNames
   getTopo: typeof getTopo
   bodyFromShape: typeof bodyFromShape
   bodyFromTopo: typeof bodyFromTopo
   sendBody: typeof sendBody
   sendBodies: typeof sendBodies
 }
-export const helpers: OpHelpers = { getBrep, getTopo, bodyFromShape, bodyFromTopo, sendBody, sendBodies }
+export const helpers: OpHelpers = { getBrep, getNamed, getNames, getTopo, bodyFromShape, bodyFromTopo, sendBody, sendBodies }
 
 const ops = new Map<string, OpFn>()
 /** Register a custom worker operation, callable from features as `ctx.kernel.call(name, args)`. */

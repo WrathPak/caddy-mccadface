@@ -77,15 +77,18 @@ export const emptyModel = (): SketchModel => ({ entities: [], constraints: [], n
 
 // ---- profiles
 
+/** `id`: the sketch entity the segment came from (the root of persistent face names; absent for hand-built loops). */
 export type Seg =
-  | { k: 'l'; a: Vec2; b: Vec2 }
+  | { k: 'l'; a: Vec2; b: Vec2; id?: string }
   /** arc from a to b through m (centre c, radius r; ccw when traversed a -> b counter-clockwise) */
-  | { k: 'a'; a: Vec2; m: Vec2; b: Vec2; c: Vec2; r: number; ccw: boolean }
-  | { k: 'c'; c: Vec2; r: number }
+  | { k: 'a'; a: Vec2; m: Vec2; b: Vec2; c: Vec2; r: number; ccw: boolean; id?: string }
+  | { k: 'c'; c: Vec2; r: number; id?: string }
 export type Loop = Seg[]
 export interface Profile {
   /** stable-ish key: centroid + area (see profileKey) */
   key: string
+  /** persistent id: the entity ids of the outer loop (root of the names of the caps built from it) */
+  id?: string
   outer: Loop
   holes: Loop[]
   area: number
@@ -99,5 +102,8 @@ export interface SketchData {
   constraints: Constraint[]
   profiles: Profile[]
 }
+
+/** Persistent id of a profile: the sorted, de-duplicated entity ids of its outer loop (empty when the loop carries none). */
+export const profileIdOf = (loop: Loop) => [...new Set(loop.map((s) => s.id).filter((x): x is string => !!x))].sort().join('+')
 
 export const profileKey = (cx: number, cy: number, area: number) => `${+cx.toFixed(3)},${+cy.toFixed(3)},${+area.toFixed(2)}`

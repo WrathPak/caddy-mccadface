@@ -68,7 +68,7 @@ export function ProfilePicker() {
       const d = data[f.id]
       if (f.type !== 'sketch' || !d || i >= rollback || f.suppressed || hidden[f.id]) return
       const q = planeQuaternion(d.plane)
-      for (const p of d.profiles) out.push({ ref: `prof:${f.id}:${p.key}`, geo: profileGeometry(p), q, origin: d.plane.origin, normal: d.plane.normal })
+      for (const p of d.profiles) out.push({ ref: `prof:${f.id}:${p.key}${p.id ? '@' + p.id : ''}`, geo: profileGeometry(p), q, origin: d.plane.origin, normal: d.plane.normal })
     })
     return out
   }, [features, rollback, hidden, data])

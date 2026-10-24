@@ -2,7 +2,7 @@
 import { Parallelogram } from '@phosphor-icons/react'
 import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
-import { decodeRef, encodeSelection, faceSigs, resolveFace } from '@/doc/refs'
+import { RefError, RefReport, decodeRef, encodeSelection, faceSigs, resolveFace } from '@/doc/refs'
 import { registerFeature } from '@/doc/registry'
 import { useDoc } from '@/doc/store'
 import type { Body } from '@/kernel/types'
@@ -24,13 +24,13 @@ export const offsetPlaneSchema: ParamSchema = {
 }
 
 /** The plane for the given values; throws if the base face is missing or not planar. */
-export function offsetPlaneDef(p: ParamValues, bodies: Body[]): PlaneDef {
+export function offsetPlaneDef(p: ParamValues, bodies: Body[], report = new RefReport()): PlaneDef {
   let base: PlaneDef
   if (p.base === 'face') {
     const ref = (p.face as string[])[0] ? decodeRef((p.face as string[])[0]) : null
     if (!ref || ref.kind !== 'face') throw new Error('Select a planar face')
-    const hit = resolveFace(ref, bodies)
-    if (!hit) throw new Error('The base face no longer exists')
+    const hit = resolveFace(ref, bodies, report)
+    if (!hit) throw new RefError('The base face no longer exists (an edit upstream removed it). Pick it again.', report.lostRefs)
     if (!isPlanarFace(hit.body, hit.index)) throw new Error('The base face is not planar')
     const sig = faceSigs(hit.body)[hit.index]
     base = planeFromNormal(sig.centroid, sig.normal)
@@ -46,9 +46,10 @@ registerFeature({
   icon: Parallelogram,
   schema: offsetPlaneSchema,
   async compute(ctx, p) {
-    const plane = offsetPlaneDef(p, ctx.bodies)
+    const report = new RefReport()
+    const plane = offsetPlaneDef(p, ctx.bodies, report)
     usePlanes.getState().set(ctx.feature.id, plane)
-    return { data: { plane } }
+    return { data: { plane }, warning: report.warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
   },
   preview({ values }) {
     const show = (v: ParamValues) => {

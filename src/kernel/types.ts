@@ -20,6 +20,16 @@ export interface MeshData {
   /** OCC shape hash of every face / edge, indexed by topology index (diagnostics and cross-checks) */
   faceHashes?: Uint32Array
   edgeHashes?: Uint32Array
+  /**
+   * Persistent names (see kernel/naming.ts), indexed by topology index. Each entry lists the names of that face / edge:
+   * the first is its primary name, the rest are aliases (what it was merged with, or the parent of a split). Absent for
+   * plain meshes.
+   */
+  faceNames?: string[][]
+  edgeNames?: string[][]
+  /** vertices named from the faces meeting there, and their xyz positions (3 numbers per vertex) */
+  vertexNames?: string[][]
+  vertexPos?: Float32Array
 }
 
 const maxOf = (a: ArrayLike<number>) => {

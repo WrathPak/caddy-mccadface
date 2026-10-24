@@ -24,6 +24,8 @@ export const DEFAULT_HIDDEN: Record<string, true> = { planeXY: true, planeXZ: tr
 export interface InspectorSession {
   schema: ParamSchema
   values: ParamValues
+  /** the timeline feature being edited (its re-bound / lost references are highlighted); absent when creating one */
+  featureId?: string
   /** called on every change for live preview */
   onChange?: (values: ParamValues) => void
   onOk: (values: ParamValues) => void

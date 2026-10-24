@@ -167,6 +167,6 @@ export function pointInPoly(pt: Vec2, p: Vec2[]): boolean {
 /** Reverse a loop's direction (segments reversed and each flipped). */
 export function reverseLoop(loop: Loop): Loop {
   return loop
-    .map((s): Seg => (s.k === 'l' ? { k: 'l', a: s.b, b: s.a } : s.k === 'a' ? { ...s, a: s.b, b: s.a, ccw: !s.ccw } : { ...s }))
+    .map((s): Seg => (s.k === 'l' ? { ...s, a: s.b, b: s.a } : s.k === 'a' ? { ...s, a: s.b, b: s.a, ccw: !s.ccw } : { ...s }))
     .reverse()
 }

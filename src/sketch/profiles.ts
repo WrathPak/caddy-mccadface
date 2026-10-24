@@ -8,14 +8,14 @@ import {
   pointInPoly, polyArea, polyCentroid, relAngle,
 } from './geom'
 import { arcOf, circleOf, lineEnds, pos } from './model'
-import { profileKey, type Loop, type Profile, type Seg, type SketchModel, type Vec2 } from './types'
+import { profileIdOf, profileKey, type Loop, type Profile, type Seg, type SketchModel, type Vec2 } from './types'
 
 const EPS = 1e-6
 
 export type Curve =
-  | { k: 'l'; a: Vec2; b: Vec2 }
-  | { k: 'a'; c: Vec2; r: number; a0: number; span: number }
-  | { k: 'c'; c: Vec2; r: number }
+  | { k: 'l'; a: Vec2; b: Vec2; src?: string }
+  | { k: 'a'; c: Vec2; r: number; a0: number; span: number; src?: string }
+  | { k: 'c'; c: Vec2; r: number; src?: string }
 
 /** Parameter of a point on a curve (line t in [0,1], arc/circle angle offset from a0 / 0). */
 export function paramOn(cv: Curve, p: Vec2): number {
@@ -57,13 +57,13 @@ export function detectProfiles(m: SketchModel): Profile[] {
     if (e.construction) continue
     if (e.type === 'line') {
       const [a, b] = lineEnds(m, e)
-      if (dist(a, b) > EPS) curves.push({ k: 'l', a, b })
+      if (dist(a, b) > EPS) curves.push({ k: 'l', a, b, src: e.id })
     } else if (e.type === 'circle') {
       const { c, r } = circleOf(m, e)
-      if (r > EPS) curves.push({ k: 'c', c, r })
+      if (r > EPS) curves.push({ k: 'c', c, r, src: e.id })
     } else if (e.type === 'arc') {
       const i = arcOf(m, e)
-      if (i.r > EPS) curves.push({ k: 'a', c: pos(m, e.c), r: i.r, a0: i.a0, span: i.span })
+      if (i.r > EPS) curves.push({ k: 'a', c: pos(m, e.c), r: i.r, a0: i.a0, span: i.span, src: e.id })
     }
   }
   if (!curves.length) return []
@@ -103,15 +103,15 @@ export function detectProfiles(m: SketchModel): Profile[] {
       if (ts.length === 0) { standaloneCircles.push(cv); return }
       for (let k = 0; k < ts.length; k++) {
         const t0 = ts[k], t1 = k + 1 < ts.length ? ts[k + 1] : ts[0] + TAU
-        pushEdge(pointAt(cv, t0), pointAt(cv, t1), { k: 'a', c: cv.c, r: cv.r, a0: t0, span: t1 - t0 })
+        pushEdge(pointAt(cv, t0), pointAt(cv, t1), { k: 'a', c: cv.c, r: cv.r, a0: t0, span: t1 - t0, src: cv.src })
       }
       return
     }
     const bounds = [0, ...ts, max]
     for (let k = 0; k + 1 < bounds.length; k++) {
       const t0 = bounds[k], t1 = bounds[k + 1]
-      if (cv.k === 'l') pushEdge(pointAt(cv, t0), pointAt(cv, t1), { k: 'l', a: pointAt(cv, t0), b: pointAt(cv, t1) })
-      else pushEdge(pointAt(cv, t0), pointAt(cv, t1), { k: 'a', c: cv.c, r: cv.r, a0: cv.a0 + t0, span: t1 - t0 })
+      if (cv.k === 'l') pushEdge(pointAt(cv, t0), pointAt(cv, t1), { k: 'l', a: pointAt(cv, t0), b: pointAt(cv, t1), src: cv.src })
+      else pushEdge(pointAt(cv, t0), pointAt(cv, t1), { k: 'a', c: cv.c, r: cv.r, a0: cv.a0 + t0, span: t1 - t0, src: cv.src })
     }
   })
 
@@ -152,9 +152,9 @@ export function detectProfiles(m: SketchModel): Profile[] {
   const segOf = (h: HalfEdge): Seg => {
     const s = h.edge.seg
     const a = verts[h.from], b = verts[h.to]
-    if (s.k === 'l') return { k: 'l', a, b }
-    if (s.k === 'a') return { k: 'a', a, b, m: polar(s.c, s.r, s.a0 + s.span / 2), c: s.c, r: s.r, ccw: h.fwd }
-    return { k: 'c', c: s.c, r: s.r }
+    if (s.k === 'l') return { k: 'l', a, b, id: s.src }
+    if (s.k === 'a') return { k: 'a', a, b, m: polar(s.c, s.r, s.a0 + s.span / 2), c: s.c, r: s.r, ccw: h.fwd, id: s.src }
+    return { k: 'c', c: s.c, r: s.r, id: s.src }
   }
 
   interface FaceRec { loop: Loop; poly: Vec2[]; area: number; comp: number }
@@ -188,11 +188,11 @@ export function detectProfiles(m: SketchModel): Profile[] {
   // standalone circles: disc (positive) + outer boundary (negative)
   for (const c of standaloneCircles) {
     const cc = nComp++
-    const disc: Seg = { k: 'c', c: c.c, r: c.r }
+    const disc: Seg = { k: 'c', c: c.c, r: c.r, id: c.src }
     const poly = loopPoly([disc])
     faces.push({ loop: [disc], poly, area: polyArea(poly), comp: cc })
     const rev = [...poly].reverse()
-    faces.push({ loop: [{ k: 'c', c: c.c, r: c.r }], poly: rev, area: -polyArea(poly), comp: cc })
+    faces.push({ loop: [{ k: 'c', c: c.c, r: c.r, id: c.src }], poly: rev, area: -polyArea(poly), comp: cc })
   }
 
   // 6. nesting
@@ -215,7 +215,7 @@ export function detectProfiles(m: SketchModel): Profile[] {
     let area = f.area
     for (const h of holes) area -= Math.abs(polyArea(loopPoly(h)))
     const cen = polyCentroid(f.poly)
-    res.push({ key: profileKey(cen[0], cen[1], area), outer: f.loop, holes, area, centroid: cen })
+    res.push({ key: profileKey(cen[0], cen[1], area), id: profileIdOf(f.loop), outer: f.loop, holes, area, centroid: cen })
   }
   return res
 }
