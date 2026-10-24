@@ -32,7 +32,7 @@ pnpm exec playwright test   # browser tests, takes a while
 
 the browser tests fail on any console error, so keep the console clean. if you only touched one area, running just the relevant spec while you work is fine, e.g. `pnpm exec playwright test e2e/02-box.spec.ts`.
 
-`scripts/slice-check.mjs` needs a local slicer, so it isn't part of CI. run it yourself if you touch export code.
+`scripts/slice-check.mjs` (hair) and `scripts/slice-check-print.mjs` (the print 3MF) need a local OrcaSlicer, so they aren't part of CI. run them yourself if you touch export code.
 
 ## style
 
