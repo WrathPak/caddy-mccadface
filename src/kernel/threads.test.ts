@@ -5,7 +5,7 @@ import { weld } from './meshutil'
 import { initManifold } from './mesh'
 import { initOcc, tessellate, topoOf, type Shape } from './occ'
 import { bodyFromShape, getBrep, getOp, helpers } from './store'
-import { ISO_SIZES, recessionFor, boreRadius, checkProfile, coreRadius, isoProfile, nearestIso, rootFlat, sectionOf } from './threads'
+import { ISO_SIZES, recessionFor, boreRadius, checkProfile, coreRadius, isoProfile, nearestIso, rootFlat, radiusAt } from './threads'
 import type { Body } from './types'
 import './model-ops'
 import './solid-ops'
@@ -24,7 +24,7 @@ const cylFace = (b: Body) => topoOf(getBrep(b.key)).faces.findIndex((f) => f.geo
 
 /** A manifold from a fine tessellation of a B-rep body. */
 function manifoldOf(b: Body): Manifold {
-  const m = tessellate(getBrep(b.key), 0.004, 0.08)
+  const m = tessellate(getBrep(b.key), 0.03, 0.15)
   const w = weld(m.positions, m.indices)
   return own(W.Manifold.ofMesh(new W.Mesh({ numProp: 3, vertProperties: w.positions, triVerts: w.indices })))
 }
@@ -77,19 +77,21 @@ describe('ISO profile', () => {
   })
   it('the clearance slims the bolt tooth, widens the nut groove and lowers the bolt crest', () => {
     const base = { radius: 4, profile: M8, length: 10, leftHand: false } as const
-    const toothWidth = (pts: [number, number][]) => Math.abs(pts[pts.length - 2][1] - pts[1][1])
-    const tight = sectionOf({ ...base, kind: 'external', clearance: 0 }), loose = sectionOf({ ...base, kind: 'external', clearance: 0.2 })
-    expect(toothWidth(loose)).toBeLessThan(toothWidth(tight))
-    expect(Math.max(...loose.map((p) => p[0]))).toBeCloseTo(4 - 0.1, 6)
-    expect(Math.max(...tight.map((p) => p[0]))).toBeCloseTo(4, 6)
-    expect(coreRadius({ ...base, kind: 'external', clearance: 0.2 })).toBeLessThan(coreRadius({ ...base, kind: 'external', clearance: 0 }))
-    // the groove of the nut is wider at its root and sits deeper in the wall
-    const rootWidth = (pts: [number, number][]) => Math.abs(pts[pts.length - 1][1] - pts[0][1])
-    const nutTight = sectionOf({ ...base, kind: 'internal', clearance: 0 }), nutLoose = sectionOf({ ...base, kind: 'internal', clearance: 0.2 })
-    expect(rootWidth(nutLoose)).toBeGreaterThan(rootWidth(nutTight))
-    expect(nutLoose[0][0]).toBeCloseTo(nutTight[0][0] + 0.1, 6)
-    expect(boreRadius({ ...base, kind: 'internal', clearance: 0.2 })).toBeGreaterThan(boreRadius({ ...base, kind: 'internal', clearance: 0 }))
-  })
+    const ext = (clearance: number) => ({ ...base, kind: 'external', clearance }) as const
+    const int = (clearance: number) => ({ ...base, kind: 'internal', clearance }) as const
+    // a bolt tooth is slimmer, its crest lower and its core smaller; measured at the middle of the flank
+    const flankS = 0.3
+    expect(radiusAt(ext(0.2), flankS)).toBeLessThan(radiusAt(ext(0), flankS))
+    expect(radiusAt(ext(0.2), 0)).toBeCloseTo(4 - 0.1, 6)
+    expect(radiusAt(ext(0), 0)).toBeCloseTo(4, 6)
+    expect(coreRadius(ext(0.2))).toBeLessThan(coreRadius(ext(0)))
+    // the groove of a nut is wider at its root, sits deeper in the wall and leaves a bigger bore
+    expect(radiusAt(int(0.2), 0)).toBeCloseTo(4 + 0.1, 6)
+    expect(radiusAt(int(0.2), 0.3)).toBeGreaterThan(radiusAt(int(0), 0.3))
+    expect(boreRadius(int(0.2))).toBeGreaterThan(boreRadius(int(0)))
+    // the outline is the profile: crest flat, flank, root, symmetric about the tooth
+    expect(radiusAt(ext(0), 0.2)).toBeCloseTo(radiusAt(ext(0), -0.2), 9)
+    expect(radiusAt(ext(0), 0.625)).toBeCloseTo(coreRadius(ext(0)), 6)  })
 })
 
 describe('external thread', () => {

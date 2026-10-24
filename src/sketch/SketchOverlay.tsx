@@ -13,6 +13,9 @@ import { dimText, layoutDim } from './dims'
 import { curvePoints, entityPolylines, profileGeometry } from './draw'
 import { circumcircle, arcInfo, cross, dist, perp, polar, sampleArc, sub, TAU } from './geom'
 import { circleOf, entityById, lineEnds, pos } from './model'
+import { splineMid } from './curves'
+import { relGlyph } from './infer'
+import { ToolsOverlay } from './ToolsOverlay'
 import { previewPolys } from './offsetTool'
 import { fieldsFor, liveValues, resolveEnd, valuesOf, hasText, arcThrough, type DrawTool, type Typed } from './typed'
 import { planeQuaternion, toLocal } from './plane'
@@ -293,9 +296,10 @@ function draftPreview(d: SketchState['draft'], cur: Snap | null, typed: Typed | 
   }
 }
 
-const KIND_TEXT: Record<string, string> = { point: 'Endpoint', origin: 'Origin', center: 'Center', mid: 'Midpoint', on: 'On curve', axis: 'On axis' }
+const KIND_TEXT: Record<string, string> = { quad: 'Quadrant', int: 'Intersection', point: 'Endpoint', origin: 'Origin', center: 'Center', mid: 'Midpoint', on: 'On curve', axis: 'On axis' }
 
 function snapHint(s: Snap): string | null {
+  if (s.hint) return s.hint
   if (KIND_TEXT[s.kind]) return KIND_TEXT[s.kind]
   if (s.h) return 'Horizontal'
   if (s.v) return 'Vertical'
@@ -304,6 +308,7 @@ function snapHint(s: Snap): string | null {
 
 function Marker({ snap, wpp }: { snap: Snap; wpp: number }) {
   const c = useSketchColors()
+  const model = useSketch((s) => s.model)
   const r = wpp * 6
   const [x, y] = snap.pos
   const shapes: Vec2[][] = []
@@ -312,7 +317,8 @@ function Marker({ snap, wpp }: { snap: Snap; wpp: number }) {
     case 'center': { const pts: Vec2[] = []; for (let i = 0; i <= 24; i++) pts.push(polar([x, y], r, (i / 24) * TAU)); shapes.push(pts); break }
     case 'mid': shapes.push([[x - r, y - r], [x + r, y - r], [x, y + r], [x - r, y - r]]); break
     case 'on': shapes.push([[x - r, y - r], [x + r, y + r]], [[x - r, y + r], [x + r, y - r]]); break
-    case 'axis': shapes.push([[x - r, y], [x, y + r], [x + r, y], [x, y - r], [x - r, y]]); break
+    case 'axis': case 'quad': shapes.push([[x - r, y], [x, y + r], [x + r, y], [x, y - r], [x - r, y]]); break
+    case 'int': shapes.push([[x - r, y - r], [x + r, y + r]], [[x - r, y + r], [x + r, y - r]]); break
     default: shapes.push([[x - r * 0.5, y], [x + r * 0.5, y]], [[x, y - r * 0.5], [x, y + r * 0.5]])
   }
   const hint = snapHint(snap)
@@ -326,9 +332,20 @@ function Marker({ snap, wpp }: { snap: Snap; wpp: number }) {
       ))}
       {hint && (
         <Html position={v3(snap.pos)} zIndexRange={[30, 0]} style={{ pointerEvents: 'none' }}>
-          <div className="sk-hint">{hint}</div>
+          <div className="sk-hint" style={snap.kind === 'infer' ? { transform: 'translate(14px, -30px)', borderColor: c.sel } : undefined}>{hint}</div>
         </Html>
       )}
+      {/* the same glyph on the geometry the relation refers to, as the constraint will show once it is placed */}
+      {(snap.rel ?? []).map((r, i) => {
+        const ref = 'ref' in r ? r.ref : null
+        const at = ref ? anchorOf(model, ref) : null
+        if (!at) return null
+        return (
+          <Html key={'g' + i} position={v3(at)} zIndexRange={[28, 0]} style={{ pointerEvents: 'none' }}>
+            <div className="sk-glyphs"><span className="sk-glyph" data-sel="true" data-testid="infer-glyph">{relGlyph(r)}</span></div>
+          </Html>
+        )
+      })}
     </>
   )
 }
@@ -410,7 +427,7 @@ function SelectionBox() {
 
 const GLYPH: Partial<Record<Constraint['type'], string>> = {
   horizontal: 'H', vertical: 'V', parallel: '∥', perpendicular: '⊥', equal: '=', tangent: 'T', tangentAt: 'T', midpoint: 'M', fix: '■',
-  pointOnLine: '○', pointOnCurve: '○', onAxis: '○', coincident: '◉',
+  pointOnLine: '○', pointOnCurve: '○', onAxis: '○', coincident: '◉', splineTangent: 'T', mirror: '⇋', rotated: '↻',
 }
 
 function anchorOf(m: SketchModel, id: string): Vec2 | null {
@@ -420,6 +437,9 @@ function anchorOf(m: SketchModel, id: string): Vec2 | null {
   if (e.type === 'point') return [e.x, e.y]
   if (e.type === 'line') { const [a, b] = lineEnds(m, e); return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }
   if (e.type === 'circle') { const { c, r } = circleOf(m, e); return [c[0], c[1] + r] }
+  if (e.type === 'spline') return splineMid(m, e)
+  if (e.type === 'ellipse') { const c = pos(m, e.c); return [c[0], c[1] + e.r] }
+  if (e.type === 'text') return pos(m, e.p)
   const i = arcInfo(pos(m, e.c), pos(m, e.s), pos(m, e.e))
   return polar(pos(m, e.c), i.r, i.a0 + (i.a1 - i.a0) / 2)
 }
@@ -431,7 +451,7 @@ function Glyphs() {
     const map = new Map<string, { at: Vec2; items: Constraint[] }>()
     for (const c of model.constraints) {
       if (isDim(c) || !GLYPH[c.type]) continue
-      const targets = c.type === 'pointOnLine' || c.type === 'pointOnCurve' || c.type === 'midpoint' || c.type === 'coincident' ? [c.refs[0]] : c.type === 'tangentAt' ? [c.refs[2]] : c.refs
+      const targets = c.type === 'pointOnLine' || c.type === 'pointOnCurve' || c.type === 'midpoint' || c.type === 'coincident' ? [c.refs[0]] : c.type === 'tangentAt' || c.type === 'splineTangent' ? [c.refs[2]] : c.type === 'mirror' ? [c.refs[1]] : c.type === 'rotated' ? [c.refs[2]] : c.refs
       for (const t of targets) {
         const at = anchorOf(model, t)
         if (!at) continue
@@ -636,6 +656,7 @@ export function SketchOverlay() {
       <Draft wpp={wpp} />
       <TrimPreview wpp={wpp} />
       <OffsetPreview wpp={wpp} />
+      <ToolsOverlay wpp={wpp} />
       <SelectionBox />
       {cursor && <Marker snap={cursor} wpp={wpp} />}
       <InputController />

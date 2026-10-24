@@ -16,6 +16,10 @@ interface CacheEntry { hash: string; bodies: Body[]; data?: unknown; error?: str
 /** Names written back into legacy (signature-only) refs; applied after the pass. */
 type Upgrades = Record<string, string>
 const cache = new Map<string, CacheEntry>()
+/** Bodies before / after every feature of the last pass (features like Pattern repeat the effect of earlier ones). */
+let around = new Map<string, { before: Body[]; after: Body[] }>()
+/** The state around a feature as of the last regeneration. */
+export const stateAround = (id: string) => around.get(id)
 
 function hash(s: string): string {
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57
@@ -71,6 +75,7 @@ async function pass() {
   const stat = (e: CacheEntry | undefined): FeatureStatus =>
     e?.error ? { state: 'error', error: e.error, lostRefs: e.lost } : e?.warning ? { state: 'warning', warning: e.warning, reboundRefs: e.rebound } : { state: 'ok' }
   let state: Body[] = []
+  const nextAround = new Map<string, { before: Body[]; after: Body[] }>()
   const upgrades: Upgrades = {}
   let chain = ''
   const seen = new Set<string>()
@@ -110,6 +115,7 @@ async function pass() {
         newBodyId: (n) => (n ? `${f.id}.${n}` : f.id),
         dataOf: (id) => cache.get(id)?.data,
         featureById: (id) => features.find((x) => x.id === id),
+        stateAround: (id) => nextAround.get(id),
       }
       try {
         const r = await def.compute(ctx, params)
@@ -123,10 +129,12 @@ async function pass() {
       if (again) return // a newer edit arrived; restart from the top
     }
     chain = hash(chain + entry.hash)
+    nextAround.set(f.id, { before: state, after: entry.bodies })
     state = entry.bodies
     status[f.id] = stat(entry)
   }
 
+  around = nextAround
   for (const id of [...cache.keys()]) if (!seen.has(id)) cache.delete(id)
   const live = new Set<string>()
   for (const e of cache.values()) for (const b of e.bodies) live.add(b.key)

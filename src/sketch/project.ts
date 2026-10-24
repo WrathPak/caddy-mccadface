@@ -8,7 +8,7 @@ import { decodeRef, resolveEdge, resolveFace, type RefReport } from '@/doc/refs'
 import type { Body } from '@/kernel/types'
 import type { ProjectedCurve } from '@/kernel/sketch-ops'
 import { dist } from './geom'
-import { addArc, addCircle, addLine, addPoint, entityById, pos, removeIds } from './model'
+import { addArc, addCircle, addLine, addPoint, deps, entityById, pos, removeIds } from './model'
 import type { Entity, PlaneDef, Projection, SketchModel, Vec2 } from './types'
 
 /** worker op call, e.g. `getKernel().call` */
@@ -56,7 +56,7 @@ function addCurve(m: SketchModel, c: ProjectedCurve): string {
 
 /** Entity ids an entity is made of (itself and its points). */
 function partsOf(e: Entity): string[] {
-  return e.type === 'point' ? [e.id] : e.type === 'line' ? [e.id, e.p1, e.p2] : e.type === 'circle' ? [e.id, e.c] : [e.id, e.c, e.s, e.e]
+  return e.type === 'point' ? [e.id] : [e.id, ...deps(e)]
 }
 
 function setBroken(m: SketchModel, p: Projection, broken: boolean) {

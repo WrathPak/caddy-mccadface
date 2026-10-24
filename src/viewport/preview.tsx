@@ -20,10 +20,11 @@ import { useVpColors } from './colors'
 // ---------------------------------------------------------------- mesh previews
 
 export interface PreviewItem { mesh: MeshData; kind: 'add' | 'cut' | 'result' }
-interface PreviewState { items: PreviewItem[]; hidden: string[] }
-export const usePreview = create<PreviewState>(() => ({ items: [], hidden: [] }))
-export const setPreview = (items: PreviewItem[], hidden: string[] = []) => usePreview.setState({ items, hidden })
-export const clearPreview = () => usePreview.setState({ items: [], hidden: [] })
+/** `hidden`: bodies not drawn while the preview stands in for them. `dim`: bodies drawn faint but still pickable, so more faces can be clicked while the dialog is open. */
+interface PreviewState { items: PreviewItem[]; hidden: string[]; dim: string[] }
+export const usePreview = create<PreviewState>(() => ({ items: [], hidden: [], dim: [] }))
+export const setPreview = (items: PreviewItem[], hidden: string[] = [], dim: string[] = []) => usePreview.setState({ items, hidden, dim })
+export const clearPreview = () => usePreview.setState({ items: [], hidden: [], dim: [] })
 
 function PreviewMesh({ item }: { item: PreviewItem }) {
   const colors = useVpColors()

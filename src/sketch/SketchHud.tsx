@@ -2,6 +2,7 @@
 import { Check, X } from '@phosphor-icons/react'
 import { useSketch, finishSketch, cancelSketch } from './store'
 import { useSketchPick } from './create'
+import { SketchToolBar } from './ToolBar'
 import './sketch.css'
 
 export function SketchHud() {
@@ -16,6 +17,7 @@ export function SketchHud() {
   const state = info.ok ? (info.dof === 0 ? 'Fully constrained' : 'Under-constrained') : 'Conflict'
   return (
     <>
+      <SketchToolBar />
       {text && <div className="sk-status" data-kind={status ? 'warn' : 'info'}>{text}</div>}
       {active && (
         <div className="sk-bar">

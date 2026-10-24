@@ -12,6 +12,7 @@ import './hair-ops'
 import './solid-ops'
 import './mesh-ops'
 import './detail-ops'
+import './modeling-ops'
 import './print-ops'
 
 export {}

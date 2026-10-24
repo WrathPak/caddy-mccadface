@@ -92,11 +92,20 @@ function arcPoints(a: Vec3, m: Vec3, b: Vec3, steps = 24): Vec3[] {
   return out
 }
 
-/** World points of a sketch path (lines and arcs). */
+function bezPoints(a: Vec3, c1: Vec3, c2: Vec3, b: Vec3): Vec3[] {
+  const out: Vec3[] = []
+  for (let i = 0; i <= 16; i++) {
+    const t = i / 16, u = 1 - t
+    out.push([0, 1, 2].map((k) => u * u * u * a[k] + 3 * u * u * t * c1[k] + 3 * u * t * t * c2[k] + t * t * t * b[k]) as Vec3)
+  }
+  return out
+}
+
+/** World points of a sketch path (lines, arcs and splines). */
 export function pathPoints(path: PathSeg[]): Vec3[] {
   const pts: Vec3[] = []
   for (const s of path) {
-    const seg = s.k === 'l' ? [s.a, s.b] : arcPoints(s.a, s.m, s.b)
+    const seg = s.k === 'l' ? [s.a, s.b] : s.k === 'a' ? arcPoints(s.a, s.m, s.b) : bezPoints(s.a, s.c1, s.c2, s.b)
     pts.push(...(pts.length ? seg.slice(1) : seg))
   }
   return pts

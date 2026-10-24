@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import * as CM from '@radix-ui/react-context-menu'
-import { CaretDown, CaretRight, Cube, Eye, EyeSlash, FileText, Folder, GridFour, LineSegment, PencilSimpleLine, Planet, Parallelogram } from '@phosphor-icons/react'
+import { CaretDown, CaretRight, DotOutline, Cube, Eye, EyeSlash, FileText, Folder, GridFour, LineSegment, PencilSimpleLine, Planet, Parallelogram } from '@phosphor-icons/react'
 import { useUi, type EntityKind } from '@/store/ui'
 import { useDoc, type TreeEntity } from '@/doc/store'
+import { PLANE_FEATURES } from '@/sketch/planes'
+import { ConfigurationsGroup } from '@/features/modeling-tools/ConfigUi'
 
 interface RowProps {
   id: string
@@ -109,12 +111,17 @@ export function BrowserTree() {
           <Group label="Origin" depth={1} icon={<Planet size={13} />}>
             <Group label="Planes" depth={2} icon={<Folder size={13} />} defaultOpen={false}>
               {['XY', 'XZ', 'YZ'].map((p) => <Row key={p} id={'plane' + p} name={p + ' plane'} depth={3} kind="plane" icon={<Parallelogram size={13} />} />)}
-              {doc.features.filter((f) => f.type === 'offsetPlane').map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="plane" coll="sketches" icon={<Parallelogram size={13} />} />)}
+              {doc.features.filter((f) => PLANE_FEATURES.has(f.type)).map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="plane" coll="sketches" icon={<Parallelogram size={13} />} />)}
             </Group>
             <Group label="Axes" depth={2} icon={<Folder size={13} />} defaultOpen={false}>
               {['X', 'Y', 'Z'].map((a) => <Row key={a} id={'axis' + a} name={a + ' axis'} depth={3} kind="axis" icon={<LineSegment size={13} />} />)}
+              {doc.features.filter((f) => f.type === 'constructAxis').map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="axis" coll="sketches" icon={<LineSegment size={13} />} />)}
             </Group>
           </Group>
+          <Group label="Points" depth={1} icon={<Folder size={13} />} defaultOpen={false}>
+            {doc.features.filter((f) => f.type === 'constructPoint').map((f) => <Row key={f.id} id={f.id} name={f.name} depth={2} kind="point" coll="sketches" icon={<DotOutline size={13} />} />)}
+          </Group>
+          <ConfigurationsGroup depth={1} />
           <Group label="Bodies" depth={1} icon={<Folder size={13} />}>
             <Items items={doc.bodies} depth={2} kind="body" coll="bodies" icon={<Cube size={13} />} />
           </Group>

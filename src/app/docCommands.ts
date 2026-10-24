@@ -29,6 +29,7 @@ import { useDoc } from '@/doc/store'
 import { exportDialog, importDialog, newDocument, openDocument, saveDocument } from '@/io/actions'
 import { useParamsDialog } from '@/ui/DocUi'
 import { useUi } from '@/store/ui'
+import '@/features/modeling-tools/register'
 
 function override(id: string, run: () => void, patch: Partial<Command> = {}) {
   const c = getCommand(id)

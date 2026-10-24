@@ -1,13 +1,13 @@
 /**
- * Modeled threads. The thread is a profile swept along a true helix with OpenCascade, so it stays an exact B-rep:
- *  - external thread on a shaft: a helical groove is cut into the cylinder (and, with a printing clearance, the crest is
- *    turned down a little),
- *  - internal thread in a hole: the hole is opened up by the clearance and a helical ridge is fused into the wall.
- * The selected cylindrical face is always the nominal (major) diameter of the thread.
- *
- * All geometry is built about the +Z axis starting at z = 0 and then moved onto the real axis.
+ * Modeled threads, the one implementation behind the Thread feature and the Hole tool. A thread is the twisted extrusion of ONE
+ * cross-section (a disc whose radius follows the thread profile around the circumference: two arcs and two spiral flanks), which
+ * OpenCascade turns into exact helical faces with a single sweep, so one boolean is all it takes:
+ *  - external thread on a shaft: the shaft is turned down to the root, then the twisted tooth is fused on,
+ *  - internal thread in a hole: the hole is closed in to the crest, then the twisted groove is cut out.
+ * The selected cylindrical face is the nominal (major) diameter. polarOutline gives the same outline as a manifold mesh for instant
+ * previews. Geometry is built about +Z from z = 0 and then moved onto the real axis.
  */
-import { Wire, cast, getOC, isShape3D, makeCylinder, makePolygon, type AnyShape } from 'replicad'
+import { draw, drawCircle, makeCylinder, type AnyShape, type Solid } from 'replicad'
 import type { Shape } from './occ'
 import type { Vec3 } from './types'
 
@@ -85,101 +85,93 @@ export interface ThreadBuild {
   phase?: number
 }
 
-type V2 = [number, number]
-
 /** Radius of the cylinder an external thread is turned down to before its tooth is added: the root of the thread. */
 export const coreRadius = (b: ThreadBuild) => b.radius - b.profile.depth - b.clearance / 2
 
-/**
- * The cross section swept along the helix, as (radius, z) points centred on z = 0: one tooth, buried a little in the material
- * it grows from.
- *  - External: the tooth of the bolt, standing on the turned-down core ({@link coreRadius}).
- *  - Internal: the ridge of the nut, standing on the wall of the opened-up bore.
- * Each part's material recedes by half the printing clearance, measured square to the flanks (the crest and root too).
- */
-export function sectionOf(b: ThreadBuild): V2[] {
-  const p = b.profile
-  const t = Math.tan((p.angle * Math.PI) / 360), c = Math.cos((p.angle * Math.PI) / 360)
-  const d = b.clearance / 2
-  const R = b.radius
-  // neighbouring turns of the sweep must stay clear of each other: never wider than 90% of the pitch
-  const cap = 0.45 * p.pitch
-  const embed = 0.5
-  if (b.kind === 'external') {
-    // half width of a tooth at radius r: half the crest flat at the crest level, wider toward the root
-    const lin = (r: number) => p.crest / 2 + (R - r) * t - d / c
-    const core = coreRadius(b)
-    // the crest sits lower by the clearance; if the flanks meet before that, the tooth ends in a point just above where they meet
-    const tip = R - (d / c - p.crest / 2) / t
-    const top = d / c - p.crest / 2 > 0 ? Math.min(R - d, tip + 0.02) : R - d
-    const rk = core - 0.1 // the flank is carried a little into the core so it crosses the core surface square, not along an edge
-    const rb = core - embed
-    const hk = Math.min(cap, lin(rk))
-    const ht = Math.max(0.01, lin(top))
-    return [[rb, -Math.min(hk, 0.4 * p.pitch)], [rk, -hk], [top, -ht], [top, ht], [rk, hk], [rb, Math.min(hk, 0.4 * p.pitch)]]
-  }
-  // internal: the groove between two ridges of the nut, cut outward into the wall of a bore that was first closed in to the minor radius
-  const rr = R + d // root of the nut thread
-  const g0 = p.crest / 2 + d / c
-  const rm = boreRadius(b)
-  const rIn = rm - 0.15 // the groove opens into the bore, which is air here
-  let rCap = rr - (cap - g0) / t
-  if (Math.abs(rCap - rm) < 0.04) rCap = rm - 0.05
-  const gIn = Math.min(cap, g0 + (rr - rIn) * t)
-  if (rCap > rIn) return [[rr, -g0], [rCap, -cap], [rIn, -cap], [rIn, cap], [rCap, cap], [rr, g0]]
-  return [[rr, -g0], [rIn, -gIn], [rIn, gIn], [rr, g0]]
-}
-
 /** Radius of the bore of a nut thread before the groove is cut: the minor radius, crest of the ridge. */
 export const boreRadius = (b: ThreadBuild) => b.radius - b.profile.depth + b.clearance / 2
-/** Deviation allowed when the helix and the swept flanks are approximated by splines: far below the resolution of a printer. */
-const SPLINE_TOL = 0.004
 
-/** A helix wire about +Z (replicad's makeHelix with a tolerance we control; the default is far tighter than a print needs and much slower). */
-function helixWire(pitch: number, height: number, radius: number, zStart: number, left: boolean): Wire {
-  const oc = getOC() as unknown as Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
-  const line = new oc.Geom2d_Line(new oc.gp_Pnt2d(0, 0), new oc.gp_Dir2d((left ? -1 : 1) * 2 * Math.PI, pitch))
-  const a = line.Value(0), b = line.Value((height / pitch) * Math.sqrt((2 * Math.PI) ** 2 + pitch ** 2))
-  const seg = new oc.GC_MakeSegment2d(a, b)
-  const surf = new oc.Geom_CylindricalSurface(new oc.gp_Ax3(new oc.gp_Pnt(0, 0, zStart), new oc.gp_Dir(0, 0, 1)), radius)
-  const e = new oc.BRepBuilderAPI_MakeEdge(seg.Value(), surf).Edge()
-  const w = new oc.BRepBuilderAPI_MakeWire(e).Wire()
-  oc.BRepLib.BuildCurves3d(w, SPLINE_TOL, oc.GeomAbs_Shape.GeomAbs_C1, 8, 400)
-  return new Wire(w)
-}
+const halfAngle = (p: ThreadProfile) => ({ t: Math.tan((p.angle * Math.PI) / 360), c: Math.cos((p.angle * Math.PI) / 360) })
 
 /**
- * Sweep the section along a helix; a screw motion, so the profile keeps its place relative to the axis all the way round.
- * With `trim` the ends are cut flat at z = 0 and z = length, otherwise the groove / ridge simply runs past them.
+ * The radius of the thread's outline at axial offset `s` from the centre of the tooth (external) or of the groove (internal), in mm.
+ * External: the radius of the threaded rod. Internal: the radius of the void (the hole with its grooves). Each part's material
+ * recedes by half the clearance, measured square to the flanks (the crest and root too). `floor` is how deep the flank may run.
  */
-export function helixSolid(b: ThreadBuild, trim = true): AnyShape {
-  const P = b.profile.pitch
-  const sec = sectionOf(b)
-  const zStart = -P + (b.phase ?? 0) * P
-  const turns = Math.ceil((b.length + 2.5 * P) / P)
-  const r0 = sec.reduce((s, q) => s + q[0], 0) / sec.length
-  const oc = getOC() as unknown as Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
-  const wire = makePolygon(sec.map(([r, z]) => [r, 0, zStart + z] as [number, number, number])).outerWire()
-  const mk = new oc.BRepOffsetAPI_MakePipeShell(helixWire(P, turns * P, r0, zStart, b.leftHand).wrapped)
-  let sweep: Shape
-  try {
-    mk.SetMode(true) // Frenet frame: for a helix this is exactly the screw motion
-    mk.SetTolerance(SPLINE_TOL, SPLINE_TOL, 1e-2)
-    mk.Add(wire.wrapped, false, false)
-    mk.Build()
-    mk.MakeSolid()
-    sweep = cast(mk.Shape()) as unknown as Shape
-  } finally {
-    mk.delete()
+export function radiusAt(b: ThreadBuild, s: number, floor?: number): number {
+  const p = b.profile
+  const { t, c } = halfAngle(p)
+  const d = b.clearance / 2
+  const R = b.radius
+  s = Math.abs(s)
+  if (b.kind === 'external') {
+    return Math.max(floor ?? coreRadius(b), Math.min(R - d, R - (s + d / c - p.crest / 2) / t))
   }
-  if (!isShape3D(sweep as never)) throw new Error('The thread profile could not be swept along the helix')
-  if (!trim) return sweep as unknown as AnyShape
-  const rmax = Math.max(...sec.map((q) => q[0])) + 1
-  const slab = makeCylinder(rmax, b.length, [0, 0, 0], [0, 0, 1]) as unknown as Shape
-  return sweep.intersect(slab as unknown as AnyShape)
+  const rr = R + d, g0 = p.crest / 2 + d / c
+  return s <= g0 ? rr : Math.max(floor ?? boreRadius(b), Math.min(rr, rr - (s - g0) / t))
 }
 
-/** A tube r in [r0, r1] over z in [0, length] (the clearance relief ring). */
+/** Axial offsets where the outline changes from arc to flank to arc, within 0..pitch/2. */
+function breaks(b: ThreadBuild, floor: number): number[] {
+  const p = b.profile
+  const { t, c } = halfAngle(p)
+  const d = b.clearance / 2
+  const R = b.radius
+  const half = p.pitch / 2
+  const clamp = (x: number) => Math.min(half, Math.max(0, x))
+  if (b.kind === 'external') {
+    const raw = (r: number) => t * (R - r) - d / c + p.crest / 2
+    return [0, clamp(raw(R - d)), clamp(raw(floor)), half]
+  }
+  const g0 = p.crest / 2 + d / c
+  return [0, clamp(g0), clamp(g0 + t * (R + d - floor)), half]
+}
+
+type P2 = [number, number]
+
+/**
+ * The twisted solid of a thread along +Z over `length`: the rod with its tooth (external) or the void with its grooves (internal).
+ * `floor` is the radius the flank runs down to (a little past the root / crest so surfaces cross cleanly instead of touching).
+ */
+export function twistedThread(b: ThreadBuild, floor: number, phase = 0, around = 0): Solid {
+  const P = b.profile.pitch
+  const bk = breaks(b, floor)
+  const rs = bk.map((s) => radiusAt(b, s, floor))
+  const pt = (r: number, u: number): P2 => [r * Math.cos(2 * Math.PI * u), r * Math.sin(2 * Math.PI * u)]
+  const segs: { a: P2; mid: P2 | null; ctl: [P2, P2] | null; b: P2 }[] = []
+  /** one piece from (rA at uA) to (rB at uB): an arc of constant radius or a spiral flank as three cubic Beziers */
+  const piece = (rA: number, rB: number, uA: number, uB: number) => {
+    if (Math.abs(uB - uA) < 1e-9) return
+    if (Math.abs(rA - rB) < 1e-7) { segs.push({ a: pt(rA, uA), mid: pt(rA, (uA + uB) / 2), ctl: null, b: pt(rB, uB) }); return }
+    const r = (u: number) => rA + ((rB - rA) * (u - uA)) / (uB - uA)
+    const rp = (rB - rA) / (uB - uA)
+    const d = (u: number): P2 => {
+      const a = 2 * Math.PI * u
+      return [rp * Math.cos(a) - r(u) * 2 * Math.PI * Math.sin(a), rp * Math.sin(a) + r(u) * 2 * Math.PI * Math.cos(a)]
+    }
+    const n = 3
+    for (let i = 0; i < n; i++) {
+      const u0 = uA + ((uB - uA) * i) / n, u1 = uA + ((uB - uA) * (i + 1)) / n
+      const h = (u1 - u0) / 3
+      const p0 = pt(r(u0), u0), p3 = pt(r(u1), u1), d0 = d(u0), d3 = d(u1)
+      segs.push({ a: p0, mid: null, ctl: [[p0[0] + d0[0] * h, p0[1] + d0[1] * h], [p3[0] - d3[0] * h, p3[1] - d3[1] * h]], b: p3 })
+    }
+  }
+  // counter-clockwise from the middle of the tooth: out to half a pitch, then back the other way round
+  for (let i = 0; i + 1 < bk.length; i++) piece(rs[i], rs[i + 1], bk[i] / P, bk[i + 1] / P)
+  for (let i = bk.length - 2; i >= 0; i--) piece(rs[i + 1], rs[i], 1 - bk[i + 1] / P, 1 - bk[i] / P)
+  let pen = draw(segs[0].a)
+  for (const sg of segs) pen = sg.mid ? pen.threePointsArcTo(sg.b, sg.mid) : pen.cubicBezierCurveTo(sg.b, sg.ctl![0], sg.ctl![1])
+  const twist = (b.leftHand ? -1 : 1) * (b.length / P) * 360
+  const outline = pen.close()
+  // round > 0: the ring of material outside the outline instead of the disc inside it
+  const face = around > 0 ? drawCircle(around).cut(outline) : outline
+  let solid = face.sketchOnPlane('XY').extrude(b.length, { twistAngle: twist }) as unknown as AnyShape
+  if (phase) solid = (solid as unknown as { rotate(a: number, p: Vec3, d: Vec3): AnyShape }).rotate(phase * 360, [0, 0, 0], [0, 0, 1])
+  return solid as unknown as Solid
+}
+
+/** A tube r in [r0, r1] over z in [0, length] (r0 = 0 gives a solid cylinder). */
 export function ringSolid(r0: number, r1: number, length: number): AnyShape {
   const outer = makeCylinder(r1, length, [0, 0, 0], [0, 0, 1]) as unknown as Shape
   if (r0 <= 1e-9) return outer as unknown as AnyShape
@@ -187,7 +179,40 @@ export function ringSolid(r0: number, r1: number, length: number): AnyShape {
   return outer.cut(inner as unknown as AnyShape)
 }
 
-// ---------------------------------------------------------------- fast mesh version (previews)
+/** How far the twisted flank runs below the root / past the crest, so it crosses the neighbouring cylinder instead of touching it. */
+const OVERRUN = 0.25
+
+/** The material an external thread removes from a shaft: the ring outside the thread outline (one cut makes the thread). */
+export const externalVoid = (b: ThreadBuild, phase = 0) => twistedThread({ ...b, kind: 'external' }, coreRadius(b), phase, b.radius + 0.5)
+/** The void of an internal thread (cut out of a body whose hole was first closed in to {@link boreRadius}). */
+export const internalVoid = (b: ThreadBuild, phase = 0) => twistedThread({ ...b, kind: 'internal' }, boreRadius(b) - 0.05, phase)
+
+// ---------------------------------------------------------------- the Hole tool's tapped threads
+
+export interface ThreadSpec {
+  /** distance between crests, mm */
+  pitch: number
+  /** nominal (major) diameter, mm */
+  major: number
+  /** left-handed thread */
+  left?: boolean
+}
+
+/** Minor diameter of an ISO metric internal thread (the tap drill size). */
+export const minorDia = (s: ThreadSpec) => s.major - 1.0825 * s.pitch
+
+/** Diameter of the bore that goes with the cutter: a hair under the minor diameter, so the two never share a surface. */
+export const boreDia = (s: ThreadSpec) => minorDia(s) - 0.08
+
+/** The material a tap removes: an internal ISO thread of `length` along +Z from z = 0 (the caller places it). */
+export function tapCutter(s: ThreadSpec, length: number): Solid {
+  if (!(length > 0)) throw new Error('The thread length must be greater than zero')
+  const profile = isoProfile(s.pitch)
+  if (!(s.pitch > 0) || !(s.major / 2 - profile.depth > 0.2)) throw new Error('This thread size is not valid')
+  // the cutter's crest sits a hair inside the bore, so the grooves open into it without leaving a skin
+  const b: ThreadBuild = { kind: 'internal', radius: s.major / 2, profile, clearance: 0, length, leftHand: !!s.left }
+  return twistedThread(b, boreDia(s) / 2 - 0.03)
+}
 
 export type Fit = 'self' | 'bolt' | 'nut' | 'split'
 
@@ -200,26 +225,13 @@ export function recessionFor(fit: Fit, kind: 'external' | 'internal', clearance:
 
 const wrapU = (u: number, p: number) => u - p * Math.round(u / p)
 
-/**
- * Polar outline (radius per angle at z = 0) of the threaded rod (external) or of the inner edge of the threaded tube (internal),
- * from the same profile maths as sectionOf. Twist-extruding it 360 degrees per pitch gives the thread as a mesh in milliseconds.
- */
+/** The outline as polygon points (radius per angle at z = 0): twist-extruded with manifold it is the thread mesh, for previews. */
 export function polarOutline(b: ThreadBuild, n = 288): [number, number][] {
-  const p = b.profile
-  const t = Math.tan((p.angle * Math.PI) / 360), c = Math.cos((p.angle * Math.PI) / 360)
-  const d = b.clearance / 2
-  const R = b.radius
+  const P = b.profile.pitch
   const out: [number, number][] = []
   for (let k = 0; k < n; k++) {
     const th = (2 * Math.PI * k) / n
-    const u = Math.abs(wrapU(-(p.pitch * th) / (2 * Math.PI), p.pitch))
-    let r: number
-    if (b.kind === 'external') {
-      r = Math.max(coreRadius(b), Math.min(R - d, R - (u + d / c - p.crest / 2) / t))
-    } else {
-      const rr = R + d, rm = boreRadius(b), g0 = p.crest / 2 + d / c
-      r = u <= g0 ? rr : Math.max(rm, Math.min(rr, rr - (u - g0) / t))
-    }
+    const r = radiusAt(b, wrapU(-(P * th) / (2 * Math.PI), P))
     out.push([r * Math.cos(th), r * Math.sin(th)])
   }
   return out

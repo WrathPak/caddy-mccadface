@@ -16,7 +16,7 @@ import { tessellate, topoOf, type Shape } from './occ'
 import { registerOp } from './store'
 import { applyTexture, type TextureInput } from './texture/displace'
 import type { HeightImage, PatternId } from './texture/patterns'
-import { boreRadius, checkProfile, coreRadius, helixSolid, placeOnAxis, polarOutline, recessionFor, ringSolid, type Fit, type ThreadProfile } from './threads'
+import { boreRadius, checkProfile, coreRadius, externalVoid, internalVoid, placeOnAxis, polarOutline, recessionFor, ringSolid, type Fit, type ThreadProfile } from './threads'
 import type { Body, MeshData, TopoMesh, Vec3 } from './types'
 
 const buffers = (m: MeshData): ArrayBuffer[] =>
@@ -384,19 +384,18 @@ registerOp<ThreadOpArgs>('threadFace', (a, h) => {
   const attempt = (phase: number): NShape | null => {
     const build = { ...base, phase }
     if (kind === 'external') {
-      // turn the shaft down to the root of the thread, then grow the tooth on it
-      const turned = boolNamed('cut', named, tool(ringSolid(coreRadius(build), cyl.radius + 1.5, length)), a.id)
-      const toothShape = tool(helixSolid(build, true))
-      const tooth = volume(toothShape)
-      const grown = boolNamed('fuse', turned, toothShape, a.id)
-      return volume(grown) > volume(turned) + 0.15 * tooth ? grown : null
+      // one cut removes the ring of material outside the twisted thread outline
+      const voidShape = tool(externalVoid(build, phase) as unknown as AnyShape)
+      const gone = volume(voidShape)
+      const cut = boolNamed('cut', named, voidShape, a.id)
+      return volume(cut) < v0 - 0.05 * gone ? cut : null
     }
-    // close the hole in to the crest of the nut thread, then cut the groove outward into the wall
-    const closed = boolNamed('fuse', named, tool(ringSolid(boreRadius(build), cyl.radius + 0.6, length)), a.id)
-    const grooveShape = tool(helixSolid(build, true))
-    const groove = volume(grooveShape)
-    const cut = boolNamed('cut', closed, grooveShape, a.id)
-    return volume(cut) < volume(closed) - 0.1 * groove ? cut : null
+    // fill the hole, then cut the twisted void (the bore with its grooves) back out
+    const closed = boolNamed('fuse', named, tool(ringSolid(0, cyl.radius + build.clearance / 2 + 0.3, length)), a.id)
+    const voidShape = tool(internalVoid(build, phase) as unknown as AnyShape)
+    const gone = volume(voidShape)
+    const cut = boolNamed('cut', closed, voidShape, a.id)
+    return volume(cut) < volume(closed) - 0.1 * gone ? cut : null
   }
   let body: NShape | null = null
   for (const phase of PHASES) { body = attempt(phase); if (body) break }
@@ -404,5 +403,6 @@ registerOp<ThreadOpArgs>('threadFace', (a, h) => {
   const v1 = volume(body)
   if (kind === 'external' ? !(v1 < v0 * 1.0001 && v1 > v0 * 0.3) : !(v1 > v0 * 0.8 && v1 < v0 * 3)) {
     throw new Error('The thread could not be built on this face. Try a different pitch or depth, or a longer or wider face')
-  }  return h.sendBody(h.bodyFromShape(a.id, a.name, body.shape, body.faces))
+  }
+  return h.sendBody(h.bodyFromShape(a.id, a.name, body.shape, body.faces))
 })

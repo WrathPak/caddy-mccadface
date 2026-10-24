@@ -2,6 +2,7 @@ import * as D from '@radix-ui/react-dropdown-menu'
 import { useUi, type SelectionFilter } from '@/store/ui'
 import { useHairView } from '@/features/hair/store'
 import { SettingsPopover } from './SettingsPopover'
+import { SnapPopover } from '@/sketch/SnapPopover'
 
 const FILTERS: SelectionFilter[] = ['body', 'face', 'edge']
 
@@ -23,6 +24,7 @@ export function StatusBar() {
         </D.Portal>
       </D.Root>
       <button type="button" className="cell" onClick={toggleSnap}>Snap: <span className="num" style={{ color: snap ? 'var(--accent)' : undefined }}>{snap ? 'On' : 'Off'}</span></button>
+      <SnapPopover />
       <D.Root>
         <D.Trigger asChild>
           <button type="button" className="cell">Select: <span className="num" style={{ textTransform: 'capitalize' }}>{selectionFilter}</span></button>
