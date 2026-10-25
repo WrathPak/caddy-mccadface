@@ -55,9 +55,10 @@ export async function pickProject(): Promise<{ bytes: Uint8Array; name: string; 
 
 /** Write to `handle`, or ask where to save. Returns the handle used (null for download fallback), undefined on cancel. */
 export async function writeProject(bytes: Uint8Array, suggested: string, handle: FileHandleLike | null): Promise<FileHandleLike | null | undefined> {
-  if (w.showSaveFilePicker) {
+  // a handle only exists where the File System Access API works (the Projects panel gives one too), so it is always usable
+  if (handle || w.showSaveFilePicker) {
     try {
-      const h = handle ?? (await w.showSaveFilePicker({ suggestedName: suggested + '.caddy', types: PROJECT_TYPES }))
+      const h = handle ?? (await w.showSaveFilePicker!({ suggestedName: suggested + '.caddy', types: PROJECT_TYPES }))
       const wr = await h.createWritable()
       await wr.write(bytes as BufferSource)
       await wr.close()

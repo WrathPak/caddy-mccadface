@@ -16,7 +16,7 @@ export interface FeatureStatus { state: FeatureState; error?: string; warning?: 
 export interface TreeEntity { id: string; name: string }
 type Coll = 'bodies' | 'sketches' | 'meshes' | 'features'
 
-interface HistoryItem { label: string; data: DocData }
+export interface HistoryItem { label: string; data: DocData }
 
 interface DocState extends DocData {
   selectedFeatureId: string | null
@@ -31,6 +31,8 @@ interface DocState extends DocData {
   regenerating: boolean
   undoDepth: number
   redoDepth: number
+  /** a past version is on show (History panel): nothing can be edited until it is closed */
+  readOnly: boolean
 
   // timeline
   setRollback: (n: number) => void
@@ -56,6 +58,10 @@ interface DocState extends DocData {
   loadDocument: (data: DocData, blobs: Record<string, Uint8Array>) => void
   getData: () => DocData
   markClean: () => void
+  setReadOnly: (on: boolean) => void
+  /** the undo / redo stacks as they are, and putting them back (used around a read-only preview) */
+  takeStacks: () => { past: HistoryItem[]; future: HistoryItem[] }
+  putStacks: (s: { past: HistoryItem[]; future: HistoryItem[] }) => void
   // engine hooks
   setGeometry: (g: Body[]) => void
   applyStatus: (s: Record<string, FeatureStatus>) => void
@@ -111,8 +117,10 @@ export const useDoc = create<DocState>((set, get) => {
     regenerating: false,
     undoDepth: 0,
     redoDepth: 0,
+    readOnly: false,
 
     setRollback: (n) => {
+      if (get().readOnly) return
       set({ rollback: Math.max(0, Math.min(get().features.length, n)) })
       regenHandler()
     },
@@ -157,6 +165,7 @@ export const useDoc = create<DocState>((set, get) => {
     setActiveConfig: (name) => get().commit(name ? `Switch to ${name}` : 'Switch to base parameters', (d) => (d.activeConfig === name ? d : { ...d, activeConfig: name })),
 
     commit: (label, fn) => {
+      if (get().readOnly) return
       const before = pick()
       const after = fn(before)
       if (after === before) return
@@ -166,12 +175,14 @@ export const useDoc = create<DocState>((set, get) => {
       apply(after, { dirty: true })
     },
     undo: () => {
+      if (get().readOnly) return
       const h = past.pop()
       if (!h) return
       future.push({ label: h.label, data: pick() })
       apply(h.data, { dirty: true })
     },
     redo: () => {
+      if (get().readOnly) return
       const h = future.pop()
       if (!h) return
       past.push({ label: h.label, data: pick() })
@@ -179,6 +190,7 @@ export const useDoc = create<DocState>((set, get) => {
     },
 
     addBlob: (bytes) => {
+      if (get().readOnly) throw new Error('A past version is on show: close the preview first')
       const id = 'b' + (Object.keys(get().blobs).length + 1) + '_' + Math.random().toString(36).slice(2, 7)
       set((s) => ({ blobs: { ...s.blobs, [id]: bytes } }))
       return id
@@ -197,6 +209,15 @@ export const useDoc = create<DocState>((set, get) => {
     },
     getData: pick,
     markClean: () => set({ dirty: false }),
+    setReadOnly: (readOnly) => set({ readOnly }),
+    takeStacks: () => ({ past: [...past], future: [...future] }),
+    putStacks: (s) => {
+      past.length = 0
+      future.length = 0
+      past.push(...s.past)
+      future.push(...s.future)
+      set({ undoDepth: past.length, redoDepth: future.length })
+    },
 
     setGeometry: (geometry) => set((s) => ({ geometry, ...derive({ geometry, bodyNames: s.bodyNames, features: s.features }) })),
     applyStatus: (st) =>

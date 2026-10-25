@@ -30,6 +30,7 @@ import { exportDialog, importDialog, newDocument, openDocument, saveDocument } f
 import { useParamsDialog } from '@/ui/DocUi'
 import { useUi } from '@/store/ui'
 import '@/features/modeling-tools/register'
+import './platformCommands'
 
 function override(id: string, run: () => void, patch: Partial<Command> = {}) {
   const c = getCommand(id)

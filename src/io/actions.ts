@@ -8,7 +8,8 @@ import { useUi } from '@/store/ui'
 import { toast } from '@/ui/Modal'
 import { viewportBus } from '@/viewport/bus'
 import { downloadFile, MODEL_EXTS, pickFiles, pickProject, writeProject, type FileHandleLike } from './files'
-import { loadProject, serializeProject } from './project'
+import { commitSavedHistory, loadProject, serializeProject } from './project'
+import { resetHistory } from '@/history/store'
 import { rememberSource } from './meshImport'
 import { write3mf } from './threemf'
 import { writeStl } from './stl'
@@ -21,7 +22,12 @@ const fail = (what: string, e: unknown) => {
   toast(`${what}: ${e instanceof Error ? e.message : String(e)}`, 'error')
 }
 
+/** The History panel registers how to close a version preview, so New / Open can put the real project back before they ask about it. */
+let closePreview: (() => void) | null = null
+export const onClosePreview = (fn: () => void) => { closePreview = fn }
+
 function confirmDiscard() {
+  if (useDoc.getState().readOnly) closePreview?.()
   return !useDoc.getState().dirty || window.confirm('Discard unsaved changes?')
 }
 
@@ -30,6 +36,7 @@ export async function newDocument() {
   handle = null
   clearCache()
   useDoc.getState().newDocument()
+  resetHistory()
   void del(AUTOSAVE_KEY)
 }
 
@@ -42,23 +49,45 @@ export async function openDocument() {
   if (!confirmDiscard()) return
   try {
     const f = await pickProject()
-    if (!f) return
-    loadProject(f.bytes)
-    handle = f.handle
-    useDoc.setState({ name: baseName(f.name) })
-    void del(AUTOSAVE_KEY)
-    await frameWhenReady()
+    if (f) await openProjectBytes(f.bytes, f.name, f.handle)
   } catch (e) {
     fail('Open failed', e)
   }
 }
 
-export async function saveDocument(asNew = false) {
+/** Open a project whose bytes are already in hand (the Projects panel reads them from its folder); saving goes back to `h`. */
+export async function openProjectFile(bytes: Uint8Array, name: string, h: FileHandleLike | null) {
+  if (!confirmDiscard()) return false
   try {
-    const bytes = await serializeProject()
+    await openProjectBytes(bytes, name, h)
+    return true
+  } catch (e) {
+    fail('Open failed', e)
+    return false
+  }
+}
+
+async function openProjectBytes(bytes: Uint8Array, name: string, h: FileHandleLike | null) {
+  loadProject(bytes)
+  handle = h
+  useDoc.setState({ name: baseName(name) })
+  void del(AUTOSAVE_KEY)
+  await frameWhenReady()
+}
+
+/** The file the open project saves to, if it has one. */
+export const currentFile = () => handle
+export function setCurrentFile(h: FileHandleLike | null) { handle = h }
+
+/** Save to the open file (or ask where). `note` is the optional text for this version in the History panel. */
+export async function saveDocument(asNew = false, note?: string) {
+  if (useDoc.getState().readOnly) return toast('A past version is on show: close the preview before saving', 'error')
+  try {
+    const bytes = await serializeProject(true, { note, append: true })
     const name = useDoc.getState().name || 'Untitled'
     const h = await writeProject(bytes, name, asNew ? null : handle)
     if (h === undefined) return // cancelled
+    commitSavedHistory()
     handle = h
     if (h) useDoc.setState({ name: baseName(h.name) })
     useDoc.getState().markClean()

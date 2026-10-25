@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IDockviewPanelProps } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { SquaresFour } from '@phosphor-icons/react'
@@ -7,8 +8,9 @@ import { Timeline } from '@/ui/Timeline'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
 import { Viewport } from '@/viewport/Viewport'
 import { registerCommand } from './commands'
+import { panelComponents, setPanelDock } from './panels'
 
-const components = {
+const baseComponents = {
   browser: (_: IDockviewPanelProps) => <ErrorBoundary name="Browser"><BrowserTree /></ErrorBoundary>,
   inspector: (_: IDockviewPanelProps) => <ErrorBoundary name="Inspector"><Inspector /></ErrorBoundary>,
   timeline: (_: IDockviewPanelProps) => <ErrorBoundary name="Timeline"><Timeline /></ErrorBoundary>,
@@ -78,6 +80,7 @@ registerCommand({ id: 'view.resetLayout', label: 'Reset Layout', icon: SquaresFo
 
 function onReady(e: DockviewReadyEvent) {
   dock = e.api
+  setPanelDock(e.api)
   if (!restore(e.api)) buildDefault(e.api)
   let t: ReturnType<typeof setTimeout> | undefined
   e.api.onDidLayoutChange(() => {
@@ -89,5 +92,6 @@ function onReady(e: DockviewReadyEvent) {
 }
 
 export function Layout() {
+  const components = useMemo(() => ({ ...baseComponents, ...panelComponents() }), [])
   return <DockviewReact className="dockview-theme-caddy" components={components} onReady={onReady} />
 }

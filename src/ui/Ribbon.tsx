@@ -1,5 +1,5 @@
 import * as D from '@radix-ui/react-dropdown-menu'
-import { CaretDown, Moon, Sun } from '@phosphor-icons/react'
+import { CaretDown, Moon, SidebarSimple, Sun } from '@phosphor-icons/react'
 import { RIBBON_TABS, type RibbonItem } from '@/app/ribbon'
 import { getCommand, runCommand } from '@/app/commands'
 import { useUi } from '@/store/ui'
@@ -59,7 +59,36 @@ function Large({ item }: { item: RibbonItem }) {
   )
 }
 
-const FILE_ITEMS = ['file.new', 'file.open', 'file.save', 'file.saveAs', '-', 'file.import', 'file.export']
+/** The dockable panels (History, Projects, Plugins, Script): one compact menu at the right of the tab strip. */
+const PANEL_ITEMS = ['view.projects', 'view.history', 'view.plugins', 'view.script']
+
+function PanelsMenu() {
+  return (
+    <D.Root>
+      <Tip label="Panels" side="bottom">
+        <D.Trigger asChild>
+          <button type="button" className="rbtn small" aria-label="Panels" style={{ minWidth: 0, padding: '1px 5px' }}>
+            <SidebarSimple size={13} />
+          </button>
+        </D.Trigger>
+      </Tip>
+      <D.Portal>
+        <D.Content className="menu" sideOffset={2} align="end">
+          {PANEL_ITEMS.map((id) => {
+            const c = getCommand(id)
+            return c ? (
+              <D.Item key={id} className="menu-item" onSelect={() => runCommand(id)}>
+                <c.icon size={14} /> {c.label}
+              </D.Item>
+            ) : null
+          })}
+        </D.Content>
+      </D.Portal>
+    </D.Root>
+  )
+}
+
+const FILE_ITEMS = ['file.new', 'file.open', 'file.save', 'file.saveNote', 'file.saveAs', '-', 'file.import', 'file.export']
 
 function FileMenu() {
   return (
@@ -113,6 +142,7 @@ export function Ribbon() {
         ))}
         <div className="ribbon-spacer" />
         <div className="ribbon-right">
+          <PanelsMenu />
           <Tip label="Toggle theme" side="bottom">
             <button type="button" className="rbtn small" style={{ minWidth: 0, padding: '1px 5px' }} onClick={toggleTheme}>
               {theme === 'dark' ? <Moon size={13} /> : <Sun size={13} />}

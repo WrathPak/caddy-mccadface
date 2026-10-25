@@ -7,6 +7,7 @@ import { Layout } from './Layout'
 import { installShortcuts } from './shortcuts'
 import { DocUi } from '@/ui/DocUi'
 import { Toast } from '@/ui/Modal'
+import { NoteDialog, PreviewBanner } from '@/history/HistoryUi'
 
 export function App() {
   useEffect(() => installShortcuts(), [])
@@ -16,10 +17,12 @@ export function App() {
         <Ribbon />
         <div style={{ minHeight: 0, position: 'relative' }}>
           <Layout />
+          <PreviewBanner />
         </div>
         <StatusBar />
         <CommandPalette />
         <DocUi />
+        <NoteDialog />
         <Toast />
       </div>
     </TooltipProvider>

@@ -181,6 +181,11 @@ export class App {
   async tab(name: string) {
     await this.page.locator('.ribbon-tabs').getByRole('tab', { name }).click()
   }
+  /** Open a dockable panel (History, Projects, Plugins, Script) from the Panels menu. */
+  async openPanel(name: string) {
+    await this.page.getByRole('button', { name: 'Panels' }).click()
+    await this.page.getByRole('menuitem', { name }).click()
+  }
   inspector() {
     return this.page.locator('.panel', { has: this.page.locator('.inspector-foot') })
   }
