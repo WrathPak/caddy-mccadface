@@ -9,6 +9,8 @@ import { toast } from '@/ui/Modal'
 import { viewportBus } from '@/viewport/bus'
 import { downloadFile, MODEL_EXTS, pickFiles, pickProject, writeProject, type FileHandleLike } from './files'
 import { loadProject, serializeProject } from './project'
+import { shouldAutosave, worthRecovering } from './autosave'
+import { parseProject } from './projectParse'
 import { write3mf } from './threemf'
 import { writeStl } from './stl'
 import { assemblyObjects, exportAssemblyStep, mergePlaced } from '@/assembly/exportAssembly'
@@ -236,13 +238,21 @@ export function discardRecovery() {
 
 /** Call once at startup: offer crash recovery, then autosave every 30 s while there are unsaved edits. */
 export async function initPersistence() {
+  // (the e2e fixture sets this flag so a test never meets the recovery prompt of an earlier page load)
+  if ((window as unknown as { __e2eNoAutosave?: boolean }).__e2eNoAutosave) return
   try {
     const r = await get<AutosaveRecord>(AUTOSAVE_KEY)
-    if (r?.bytes) useRecovery.setState({ record: r })
+    if (r?.bytes) {
+      // a copy with nothing in it is not worth a prompt
+      let keep = false
+      try { keep = worthRecovering(parseProject(r.bytes).data) } catch { /* unreadable: drop it */ }
+      if (keep) useRecovery.setState({ record: r })
+      else void del(AUTOSAVE_KEY)
+    }
   } catch { /* IndexedDB unavailable */ }
   setInterval(async () => {
     const d = useDoc.getState()
-    if (!d.dirty || useRecovery.getState().record) return
+    if (!shouldAutosave(d) || useRecovery.getState().record) return
     try {
       await set(AUTOSAVE_KEY, { bytes: await serializeProject(false), name: d.name, savedAt: Date.now() } satisfies AutosaveRecord)
     } catch { /* quota or private mode */ }
