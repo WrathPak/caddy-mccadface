@@ -1,8 +1,13 @@
-/** Worker ops for assemblies: interference between placed bodies (manifold intersection) and the STEP assembly writer (OCC XDE). */
-import { GCWithScope, getOC, type AnyShape } from 'replicad'
+/**
+ * Worker ops for assemblies: interference and clearance between placed bodies and the STEP assembly writer (OCC XDE).
+ * B-rep bodies are measured exactly with OpenCascade (boolean common volume, BRepExtrema_DistShapeShape); only mesh bodies
+ * (and a mesh against a B-rep) go through manifold / the triangle distance.
+ */
+import { GCWithScope, cast, getOC, measureVolume, type AnyShape } from 'replicad'
 import { initOcc } from './occ'
 import { fromManifold, toManifold } from './mesh'
-import { getBrep, getTopo, registerOp } from './store'
+import { getBrep, getStored, getTopo, registerOp } from './store'
+import { minClearance } from '../assembly/clearance'
 import type { TopoMesh, Vec3 } from './types'
 
 // ---------------------------------------------------------------- interference
@@ -48,12 +53,33 @@ export function meshVolume(m: TopoMesh): number {
   return Math.abs(v)
 }
 
+/** A B-rep moved by a column-major rigid matrix (a new shape, the stored one is untouched). */
+function placedShape(key: string, m: number[]): AnyShape {
+  const oc = getOC() as unknown as Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  const t = new oc.gp_Trsf()
+  t.SetValues(m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14])
+  const tr = new oc.BRepBuilderAPI_Transform(getBrep(key).wrapped, t, true)
+  return cast(tr.Shape()) as AnyShape
+}
+const isBrep = (key: string) => getStored(key).kind === 'brep'
+
+/** Exact common volume of two placed B-reps, with the overlap solid in world coordinates. */
+function exactCommon(a: InterferenceItem, b: InterferenceItem): { volume: number; positions: Float32Array; indices: Uint32Array } | null {
+  const common = (placedShape(a.key, a.matrix) as unknown as { intersect(o: AnyShape): AnyShape }).intersect(placedShape(b.key, b.matrix))
+  let volume = 0
+  try { volume = Math.abs(measureVolume(common as never)) } catch { return null }
+  if (!(volume > 0)) return null
+  const m = (common as unknown as { mesh(o: object): { triangles: number[]; vertices: number[] } }).mesh({ tolerance: 0.05, angularTolerance: 0.2 })
+  return { volume, positions: Float32Array.from(m.vertices), indices: Uint32Array.from(m.triangles) }
+}
+
 /**
  * Overlapping volumes between placed bodies of different groups. Touching faces are not an overlap (the volume must be above `minVolume`).
  * With `focus`, only pairs that include one of those item ids are checked.
  */
 export async function interference(items: InterferenceItem[], minVolume = 1e-3, focus?: string[]): Promise<{ hits: InterferenceHit[]; checked: number }> {
   const meshes = items.map((it) => placed(getTopo(it.key), it.matrix))
+  const exact = items.map((it) => isBrep(it.key))
   const boxes = meshes.map((m) => boundsOf(m.positions))
   const hits: InterferenceHit[] = []
   let checked = 0
@@ -64,6 +90,12 @@ export async function interference(items: InterferenceItem[], minVolume = 1e-3, 
       const A = boxes[i], B = boxes[j]
       if ([0, 1, 2].some((k) => A.max[k] < B.min[k] - 1e-6 || B.max[k] < A.min[k] - 1e-6)) continue
       checked++
+      if (exact[i] && exact[j]) {
+        // B-rep against B-rep: the exact boolean common
+        const r = exactCommon(items[i], items[j])
+        if (r && r.volume > minVolume) hits.push({ a: items[i].id, b: items[j].id, volume: r.volume, ...boundsOf(r.positions), positions: r.positions, indices: r.indices })
+        continue
+      }
       const ma = await toManifold(meshes[i])
       const mb = await toManifold(meshes[j])
       const x = ma.intersect(mb)
@@ -82,6 +114,38 @@ export async function interference(items: InterferenceItem[], minVolume = 1e-3, 
 }
 
 registerOp<{ items: InterferenceItem[]; minVolume?: number; focus?: string[] }, { hits: InterferenceHit[]; checked: number }>('assemblyInterference', (a) => interference(a.items, a.minVolume, a.focus))
+
+// ---------------------------------------------------------------- clearance
+
+export interface ClearanceItem { key: string; matrix: number[] }
+export interface ClearanceResult { distance: number; pa: Vec3; pb: Vec3 }
+
+/**
+ * Smallest distance between any body of `a` and any of `b` (each placed by its matrix). Two B-reps use BRepExtrema_DistShapeShape,
+ * which is exact; a pair with a mesh body is measured triangle to triangle.
+ */
+export function clearance(a: ClearanceItem[], b: ClearanceItem[]): ClearanceResult | null {
+  const oc = getOC() as unknown as Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  let best: ClearanceResult | null = null
+  const take = (r: ClearanceResult | null) => { if (r && (!best || r.distance < best.distance)) best = r }
+  for (const x of a) {
+    for (const y of b) {
+      if (isBrep(x.key) && isBrep(y.key)) {
+        const sx = placedShape(x.key, x.matrix), sy = placedShape(y.key, y.matrix)
+        const d = new oc.BRepExtrema_DistShapeShape(sx.wrapped, sy.wrapped)
+        if (!d.Perform() || !d.IsDone() || d.NbSolution() < 1) continue
+        const p = d.PointOnShape1(1), q = d.PointOnShape2(1)
+        take({ distance: d.Value(), pa: [p.X(), p.Y(), p.Z()], pb: [q.X(), q.Y(), q.Z()] })
+      } else {
+        const tx = getTopo(x.key), ty = getTopo(y.key)
+        take(minClearance([{ positions: tx.positions, indices: tx.indices, matrix: x.matrix }], [{ positions: ty.positions, indices: ty.indices, matrix: y.matrix }]))
+      }
+    }
+  }
+  return best
+}
+
+registerOp<{ a: ClearanceItem[]; b: ClearanceItem[] }, ClearanceResult | null>('assemblyClearance', (x) => clearance(x.a, x.b))
 
 // ---------------------------------------------------------------- STEP with the assembly structure
 

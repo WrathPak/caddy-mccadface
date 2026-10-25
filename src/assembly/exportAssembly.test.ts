@@ -86,6 +86,48 @@ describe('STEP assembly structure', () => {
     expect(bb.min[0]).toBeCloseTo(-30, 3) // the plate is 60 wide, centred
   })
 
+  it('instances of a component are occurrences of one shared product, checked in the STEP text and by reading it back', async () => {
+    const c = newComponent('Pair')
+    await addBox(10, 10, 4, 'Left')
+    await addBox(10, 10, 4, 'Right', [20, 0, 0])
+    activateOcc(null)
+    instanceOf(c.occ, 50)
+    instanceOf(c.occ, 100)
+    const { bytes } = await exportAssemblyStep()
+    const text = new TextDecoder().decode(bytes)
+    const products = [...text.matchAll(/\bPRODUCT\('([^']*)'/g)].map((m) => m[1])
+    // the document, ONE Pair, and its two solids: three instances do not make three Pair products
+    expect(products.filter((n) => n === 'Pair')).toHaveLength(1)
+    expect(products.sort()).toEqual(['Left', 'Pair', 'Right', 'Untitled'])
+    // three occurrences of Pair in the document, and two parts in Pair
+    expect((text.match(/NEXT_ASSEMBLY_USAGE_OCCURRENCE/g) ?? []).length).toBe(3 + 2)
+    for (const n of ["'Pair:1'", "'Pair:2'", "'Pair:3'"]) expect(text).toContain(n)
+    // read back, every instance is where it was placed: Left spans -5..5 in the first Pair, Right ends at 25 + 100 in the last
+    const shape = await importSTEP(new Blob([bytes]))
+    const m = shape.mesh({ tolerance: 0.1, angularTolerance: 0.3 })
+    const bb = bbox(Float32Array.from(m.vertices))
+    expect(bb.min[0]).toBeCloseTo(-5, 3)
+    expect(bb.max[0]).toBeCloseTo(125, 3)
+    expect(shape.faces.length).toBe(6 * 2 * 3)
+  })
+
+  it('instances whose insides are placed differently get a product each', async () => {
+    const c = newComponent('Arm')
+    await addBox(10, 10, 4, 'Base')
+    newComponent('Tip') // inside Arm
+    await addBox(4, 4, 4, 'Cap', [0, 0, 4])
+    activateOcc(null)
+    const second = instanceOf(c.occ, 50)!
+    // move the Tip of the second instance only (a joint inside one instance would do the same)
+    const tip = doc().assembly.occurrences.find((o) => o.component === 'c2')!
+    const worlds = placeAssembly(doc().assembly).worlds
+    const moved = { ...worlds, [second + '/' + tip.id]: [...worlds[second + '/' + tip.id].slice(0, 12), 0, 30, 4, 1] }
+    const { defs } = buildStepDefs({ assembly: doc().assembly, geometry: doc().geometry, bodyNames: {}, docName: 'D', worlds: moved })
+    expect(defs.filter((d) => d.name === 'Arm')).toHaveLength(2)
+    const same = buildStepDefs({ assembly: doc().assembly, geometry: doc().geometry, bodyNames: {}, docName: 'D', worlds })
+    expect(same.defs.filter((d) => d.name === 'Arm')).toHaveLength(1)
+  })
+
   it('leaves out hidden components and says which mesh bodies it skipped', async () => {
     const { second } = await build()
     const worlds = placeAssembly(doc().assembly).worlds

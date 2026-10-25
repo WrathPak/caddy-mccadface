@@ -271,10 +271,10 @@ function CheckTab() {
     setBusy(true)
     try { await runInterference(selectedInstances()) } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') } finally { setBusy(false) }
   }
-  const measure = () => {
+  const measure = async () => {
     const sel = selectedInstances()
     if (sel.length !== 2) return void toast('Select exactly two components (Browser or viewport) to measure the clearance between them.', 'error')
-    const r = runClearance(sel[0], sel[1])
+    const r = await runClearance(sel[0], sel[1])
     if (!r) toast('One of the components has no geometry.', 'error')
   }
   const total = report?.hits.reduce((n, h) => n + h.volume, 0) ?? 0
@@ -303,7 +303,7 @@ function CheckTab() {
       )}
       <div className="asm-section">Clearance</div>
       <div className="asm-row">
-        <button type="button" className="btn" data-testid="clearance-run" onClick={measure}>Measure between selected</button>
+        <button type="button" className="btn" data-testid="clearance-run" onClick={() => void measure()}>Measure between selected</button>
         {clearance && <button type="button" className="btn" onClick={() => setClearance(null)}>Clear</button>}
       </div>
       {clearance && (
@@ -311,7 +311,7 @@ function CheckTab() {
           {clearance.a.name} to {clearance.b.name}: {clearance.distance === 0 ? 'touching or overlapping' : `${+clearance.distance.toFixed(3)} mm apart`}
         </div>
       )}
-      <div className="asm-sub">Measured on the tessellated surfaces, so it is accurate to about 0.05 mm on curved parts.</div>
+      <div className="asm-sub">Exact for solid bodies; a mesh body is measured on its triangles.</div>
     </div>
   )
 }

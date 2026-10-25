@@ -24,17 +24,19 @@ export interface StepInput {
 }
 
 /**
- * The component structure as STEP definitions. The document is the root product; every instance of a component is a product
- * named like its Browser node ("Peg:2") placed relative to the instance it sits in, and every solid is one shared part, so
- * instances of a component reference the same geometry. Bodies that are not B-reps (meshes) cannot go into a STEP file.
+ * The component structure as STEP definitions, the way XDE assemblies are normally built: the document is the root product, every
+ * component is ONE product (a definition) and each instance of it is an occurrence of that product placed relative to the product
+ * it sits in, named like its Browser node ("Peg:2"). Every solid is one shared part too. Two instances share a product when what is
+ * inside them is placed the same way; instances whose insides differ (a joint moved something inside only one of them) get a
+ * product each. Bodies that are not B-reps (meshes) cannot go into a STEP file.
  */
 export function buildStepDefs(i: StepInput): { defs: StepDef[]; root: string; skipped: string[] } {
   const hidden = i.hidden ?? {}
   const skipped: string[] = []
   const nodes = flatten(i.assembly).filter((n) => !n.id.split('/').some((p) => hidden[p]))
-  const ok = new Set(nodes.map((n) => n.id))
   const label = (path: string) => occLabel(i.assembly, path)
   const nameOf = (b: Body) => i.bodyNames[b.id] ?? b.name
+  const compName = (c: string) => i.assembly.components.find((x) => x.id === c)?.name ?? c
   const bodiesOf = (def: string) => i.geometry.filter((b) => ownerOf(b, i.assembly) === def && !hidden[b.id])
   const defs: StepDef[] = [{ id: 'root', name: i.docName || 'Assembly', bodies: [], children: [] }]
   const parts = new Set<string>()
@@ -46,31 +48,38 @@ export function buildStepDefs(i: StepInput): { defs: StepDef[]; root: string; sk
     }
     return id
   }
-  const addBodies = (target: StepDef, def: string, instanceName: (b: Body) => string) => {
+  const bodyChildren = (def: string) => {
+    const out: StepDef['children'] = []
     for (const b of bodiesOf(def)) {
       if (b.kind !== 'brep') { skipped.push(nameOf(b)); continue }
-      target.children.push({ def: part(b), name: instanceName(b), matrix: b.placement ?? identity() })
+      out.push({ def: part(b), name: nameOf(b), matrix: b.placement ?? identity() })
     }
+    return out
   }
-  addBodies(defs[0], ROOT, nameOf)
-  for (const n of nodes) {
-    if (n.parent && !ok.has(n.parent)) continue
-    const def: StepDef = { id: 'n:' + n.id, name: label(n.id), bodies: [], children: [] }
-    addBodies(def, n.component, nameOf)
-    const up = n.parent ? defs.find((d) => d.id === 'n:' + n.parent)! : defs[0]
+  const round = (m: number[]) => m.map((v) => Math.round(v * 1e6) / 1e6)
+  const byParent = new Map<string | null, typeof nodes>()
+  for (const n of nodes) (byParent.get(n.parent) ?? byParent.set(n.parent, []).get(n.parent)!).push(n)
+  const bySig = new Map<string, string>()
+  /** The occurrence of an instance inside the product it sits in. */
+  const place = (n: (typeof nodes)[number]): StepDef['children'][number] => {
     const parentWorld = n.parent ? i.worlds[n.parent] ?? identity() : identity()
-    const local = multiply(invert(parentWorld), i.worlds[n.id] ?? identity())
-    // a component with a single body and nothing inside is that part, placed: the instance takes the part's place
-    const single = def.children.length === 1 && !nodes.some((m) => m.parent === n.id) && def.children[0].matrix.every((v, k) => v === identity()[k])
-    if (single) {
-      // the instance is the part itself
-      up.children.push({ def: def.children[0].def, name: def.name, matrix: local })
-    } else {
-      defs.push(def)
-      up.children.push({ def: def.id, name: def.name, matrix: local })
+    const matrix = multiply(invert(parentWorld), i.worlds[n.id] ?? identity())
+    const kids = byParent.get(n.id) ?? []
+    const own = bodyChildren(n.component)
+    // a component with a single body and nothing inside is that part, placed: its instances are occurrences of the part
+    if (!kids.length && own.length === 1 && own[0].matrix.every((v, k) => v === identity()[k])) return { def: own[0].def, name: label(n.id), matrix }
+    const children = [...own, ...kids.map(place)]
+    const sig = n.component + '|' + JSON.stringify(children.map((c) => [c.def, round(c.matrix)]))
+    let id = bySig.get(sig)
+    if (!id) {
+      id = 'n:' + n.id
+      bySig.set(sig, id)
+      defs.push({ id, name: compName(n.component), bodies: [], children })
     }
+    return { def: id, name: label(n.id), matrix }
   }
-  return { defs, root: 'root', skipped }
+  defs[0].children.push(...bodyChildren(ROOT), ...(byParent.get(null) ?? []).map(place))
+  return { defs, root: 'root', skipped: [...new Set(skipped)] }
 }
 
 export async function exportAssemblyStep(): Promise<{ bytes: ArrayBuffer; parts: number; skipped: string[] }> {

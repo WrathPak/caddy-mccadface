@@ -4,7 +4,6 @@ import { getKernel } from '@/kernel/client'
 import type { Vec3 } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import { occLabel, subtree } from './actions'
-import { minClearance, type PlacedMesh } from './clearance'
 import { expandInstances, placeAssembly, type Instance } from './instances'
 import { useAssemblyRuntime, type ClearanceReport, type InterferenceHit, type InterferenceReport } from './runtime'
 
@@ -47,14 +46,14 @@ export async function runInterference(occs: string[] = []): Promise<Interference
 }
 
 /** Smallest distance between two components (everything inside each counts). */
-export function runClearance(occA: string, occB: string): ClearanceReport | null {
+export async function runClearance(occA: string, occB: string): Promise<ClearanceReport | null> {
   const a = useDoc.getState().assembly
   const all = assembledInstances()
-  const meshes = (occ: string): PlacedMesh[] => {
+  const items = (occ: string) => {
     const set = new Set(subtree(a, occ))
-    return all.filter((i) => i.path.split('/').some((o) => set.has(o))).map((i) => ({ positions: i.body.mesh.positions, indices: i.body.mesh.indices, matrix: i.world }))
+    return all.filter((i) => i.path.split('/').some((o) => set.has(o))).map((i) => ({ key: i.body.key, matrix: i.world }))
   }
-  const r = minClearance(meshes(occA), meshes(occB))
+  const r = (await getKernel().call('assemblyClearance', { a: items(occA), b: items(occB) })) as { distance: number; pa: number[]; pb: number[] } | null
   if (!r) return null
   const report: ClearanceReport = {
     a: { occ: occA, name: labelOf(occA) },

@@ -1,10 +1,10 @@
 /** Interference and the STEP assembly writer on real OpenCascade + manifold. */
 import { beforeAll, describe, expect, it } from 'vitest'
-import { importSTEP } from 'replicad'
+import { importSTEP, makeCylinder } from 'replicad'
 import { box, initOcc } from './occ'
 import { initManifold } from './mesh'
-import { bodyFromShape } from './store'
-import { interference, writeStepAssembly } from './assembly-ops'
+import { bodyFromShape, bodyFromTopo, getTopo } from './store'
+import { clearance, interference, writeStepAssembly } from './assembly-ops'
 import { translation } from '@/assembly/matrix'
 import { bbox } from './types'
 
@@ -51,6 +51,48 @@ describe('interference', () => {
     ])
     expect(inst.hits).toHaveLength(1)
     expect(inst.hits[0].volume).toBeCloseTo(5 * 10 * 10, 3)
+  })
+})
+
+describe('exact clearance and interference of B-reps', () => {
+  const cyl = (id: string) => bodyFromShape(id, id, makeCylinder(5, 10) as never)
+
+  it('two cylinders 0.2 mm apart report 0.200, not a tessellation guess', () => {
+    const a = cyl('c1'), b = cyl('c2')
+    const r = clearance([{ key: a.key, matrix: translation([0, 0, 0]) }], [{ key: b.key, matrix: translation([10.2, 0, 0]) }])!
+    expect(r.distance).toBeGreaterThan(0.199)
+    expect(r.distance).toBeLessThan(0.201)
+    expect(r.pa[0]).toBeCloseTo(5, 3)
+    expect(r.pb[0]).toBeCloseTo(5.2, 3)
+    // rotated about its own axis nothing changes, turned on its side the gap is to the flat end
+    expect(clearance([{ key: a.key, matrix: translation([0, 0, 0]) }], [{ key: b.key, matrix: translation([0, 0, 10.2]) }])!.distance).toBeCloseTo(0.2, 6)
+  })
+
+  it('touching and overlapping B-reps are at distance 0, and the smallest pair of several wins', () => {
+    const a = cyl('c1'), b = cyl('c2')
+    expect(clearance([{ key: a.key, matrix: translation([0, 0, 0]) }], [{ key: b.key, matrix: translation([10, 0, 0]) }])!.distance).toBeCloseTo(0, 6)
+    expect(clearance([{ key: a.key, matrix: translation([0, 0, 0]) }], [{ key: b.key, matrix: translation([3, 0, 0]) }])!.distance).toBe(0)
+    const r = clearance([{ key: a.key, matrix: translation([0, 0, 0]) }], [{ key: b.key, matrix: translation([40, 0, 0]) }, { key: b.key, matrix: translation([12, 0, 0]) }])!
+    expect(r.distance).toBeCloseTo(2, 6)
+    expect(clearance([], [{ key: b.key, matrix: translation([0, 0, 0]) }])).toBeNull()
+  })
+
+  it('a mesh body is measured on its triangles', () => {
+    const a = cyl('c1')
+    const boxBody = bodyFromShape('bx', 'bx', box([4, 4, 4], [0, 0, 0]))
+    const mesh = bodyFromTopo('m', 'm', getTopo(boxBody.key))
+    const r = clearance([{ key: a.key, matrix: translation([0, 0, 0]) }], [{ key: mesh.key, matrix: translation([9, 0, 0]) }])!
+    expect(r.distance).toBeCloseTo(2, 3) // cylinder surface at 5, box face at 9 - 2
+  })
+
+  it('the overlap of two cylinders is the exact lens volume', async () => {
+    const a = cyl('c1'), b = cyl('c2')
+    const r = await interference([{ id: 'a', key: a.key, matrix: translation([0, 0, 0]), group: 'a' }, { id: 'b', key: b.key, matrix: translation([6, 0, 0]), group: 'b' }])
+    expect(r.hits).toHaveLength(1)
+    // two circles of radius 5, centres 6 apart: lens area 2 r^2 acos(d/2r) - (d/2) sqrt(4r^2 - d^2), times the height 10
+    const d = 6, R = 5
+    const lens = 2 * R * R * Math.acos(d / (2 * R)) - (d / 2) * Math.sqrt(4 * R * R - d * d)
+    expect(r.hits[0].volume).toBeCloseTo(lens * 10, 3)
   })
 })
 
