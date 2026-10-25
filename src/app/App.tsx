@@ -8,9 +8,11 @@ import { installShortcuts } from './shortcuts'
 import { DocUi } from '@/ui/DocUi'
 import { Toast } from '@/ui/Modal'
 import { NoteDialog, PreviewBanner } from '@/history/HistoryUi'
+import { initPlugins } from '@/api/pluginStore'
 
 export function App() {
   useEffect(() => installShortcuts(), [])
+  useEffect(() => { void initPlugins() }, [])
   return (
     <TooltipProvider>
       <div className="app">

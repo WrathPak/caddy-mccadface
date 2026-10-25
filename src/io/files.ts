@@ -6,7 +6,8 @@ interface PickerWindow {
   showOpenFilePicker?: (o: unknown) => Promise<FileHandleLike[]>
   showSaveFilePicker?: (o: unknown) => Promise<FileHandleLike>
 }
-const w = window as unknown as PickerWindow
+// (the unit tests import this module in Node, where there is no window)
+const w = (typeof window === 'undefined' ? {} : window) as unknown as PickerWindow
 
 const PROJECT_TYPES = [{ description: 'CADdy McCADFace project', accept: { 'application/zip': ['.caddy'] } }]
 export const MODEL_EXTS = ['.stl', '.3mf', '.step', '.stp']

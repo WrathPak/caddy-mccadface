@@ -39,6 +39,10 @@ const registry = new Map<string, Command>()
 export function registerCommand(c: Command) {
   registry.set(c.id, c)
 }
+/** Take a command away again (a plugin that was switched off). */
+export function unregisterCommand(id: string) {
+  registry.delete(id)
+}
 export function getCommand(id: string) {
   return registry.get(id)
 }

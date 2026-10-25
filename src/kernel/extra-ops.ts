@@ -14,5 +14,6 @@ import './mesh-ops'
 import './detail-ops'
 import './modeling-ops'
 import './print-ops'
+import './plugin-ops'
 
 export {}

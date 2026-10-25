@@ -1,6 +1,8 @@
 import * as D from '@radix-ui/react-dropdown-menu'
 import { CaretDown, Moon, SidebarSimple, Sun } from '@phosphor-icons/react'
+import { useMemo } from 'react'
 import { RIBBON_TABS, type RibbonItem } from '@/app/ribbon'
+import { useRibbonExtras, withExtras } from '@/app/ribbonExtras'
 import { getCommand, runCommand } from '@/app/commands'
 import { useUi } from '@/store/ui'
 import { Tip } from './Tooltip'
@@ -122,6 +124,8 @@ export function Ribbon() {
   const setWorkspace = useUi((s) => s.setWorkspace)
   const selected = sketchMode ? 'sketch' : workspace
   const tab = RIBBON_TABS.find((t) => t.id === selected)!
+  const extras = useRibbonExtras((s) => s.items)
+  const groups = useMemo(() => withExtras(tab, extras), [tab, extras])
 
   return (
     <div className="ribbon">
@@ -151,7 +155,7 @@ export function Ribbon() {
         </div>
       </div>
       <div className="ribbon-body">
-        {tab.groups.map((g) => (
+        {groups.map((g) => (
           <div className="rgroup" key={g.label}>
             <div className="rgroup-tools">
               {g.items.map((it, i) =>

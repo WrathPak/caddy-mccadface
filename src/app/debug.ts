@@ -17,6 +17,7 @@ import { viewportBus } from '@/viewport/bus'
 import { navClock } from '@/viewport/navClock'
 import { lodState, useMotion } from '@/viewport/motion'
 import { useProjects } from '@/projects/store'
+import { usePlugins, hostOf } from '@/api/pluginStore'
 
 const frameHook: { redraw: (() => void) | null } = { redraw: null }
 
@@ -46,7 +47,7 @@ const navTools = {
 
 export function installDebugHandle() {
   ;(window as unknown as { __caddy: unknown }).__caddy = {
-    doc: useDoc, ui: useUi, sketch: useSketch, hair: useHairView, preview: usePreview, planes: usePlanes, paint: useHairPaint, bus: viewportBus, motion: useMotion, lodState, projects: useProjects,
+    doc: useDoc, ui: useUi, sketch: useSketch, hair: useHairView, preview: usePreview, planes: usePlanes, paint: useHairPaint, bus: viewportBus, motion: useMotion, lodState, projects: useProjects, plugins: usePlugins, pluginHost: hostOf,
     ...((window as unknown as { __caddyExtra?: object }).__caddyExtra ?? {}),
     nav: navTools, runCommand, regenerate, importFiles, saveDocument, serializeProject, parseProject,
   }
