@@ -105,7 +105,7 @@ export async function createProjectedView(sheetId: string, parentId: string, sid
   const pax = viewAxes(parent, sheet)
   const ax = projectedAxes({ ...parent, ...pax }, side, sheet.projection)
   const name = orientationName(ax.eye, ax.right)
-  const draft = blank({ kind: 'projected', label: name === 'custom' ? 'VIEW' : name.toUpperCase(), items: parent.items, eye: ax.eye, right: ax.right, orientation: name, parentId, showHidden: parent.showHidden, showTangent: parent.showTangent, showCenter: parent.showCenter, scale: parent.scale, align: side === 'left' || side === 'right' ? 'v' : 'h' })
+  const draft = blank({ kind: 'projected', label: name === 'custom' ? 'VIEW' : name.toUpperCase(), items: parent.items, eye: ax.eye, right: ax.right, orientation: name, parentId, showHidden: parent.showHidden, showTangent: parent.showTangent, showCenter: parent.showCenter, scale: parent.scale, align: side === 'left' || side === 'right' ? 'h' : 'v' })
   const g = await computeGeom({ ...draft, id: 'tmp' }, { views: [] })
   if (!g?.bounds) throw new Error('The projected view is empty')
   const pg = useViewGeoms.getState().geoms[sheetId + '/' + parentId]
@@ -113,15 +113,12 @@ export async function createProjectedView(sheetId: string, parentId: string, sid
   const w = (g.bounds[2] - g.bounds[0]) * parent.scale, h = (g.bounds[3] - g.bounds[1]) * parent.scale
   const gap = 18
   const c = boundsCenter(g)
-  const pc: V2 = [(pr[0] + pr[2]) / 2, (pr[1] + pr[3]) / 2]
   // the projected view's centre sits level / plumb with the parent's centre
-  let cx = pc[0], cy = pc[1]
+  let cx = parent.pos[0], cy = parent.pos[1]
   if (side === 'right') cx = pr[2] + gap + w / 2
   else if (side === 'left') cx = pr[0] - gap - w / 2
   else if (side === 'above') cy = pr[3] + gap + h / 2 + (draft.showLabel ? 9 : 0)
   else cy = pr[1] - gap - h / 2 - 9
-  if (side === 'above' || side === 'below') cx = pc[0]
-  else cy = pc[1]
   const id = drawingActions.addView(sheetId, { ...draft, pos: [cx, cy], anchor: c })
   await refreshGeoms(useDrawing.getState().doc.sheets)
   return id
@@ -150,12 +147,11 @@ export async function createSectionView(sheetId: string, parentId: string, a: V2
   const dir2: V2 = sheet.projection === 'third' ? sight : [-sight[0], -sight[1]]
   const horizontal = Math.abs(dir2[0]) >= Math.abs(dir2[1])
   const gap = 18
-  const pc: V2 = [(pr[0] + pr[2]) / 2, (pr[1] + pr[3]) / 2]
-  let cx = pc[0], cy = pc[1]
+  let cx = parent.pos[0], cy = parent.pos[1]
   if (horizontal) cx = dir2[0] > 0 ? pr[2] + gap + w / 2 : pr[0] - gap - w / 2
   else cy = dir2[1] > 0 ? pr[3] + gap + h / 2 : pr[1] - gap - h / 2 - 9
   const c = boundsCenter(g)
-  const id = drawingActions.addView(sheetId, { ...draft, pos: [cx, cy], anchor: c, align: horizontal ? 'v' : 'h' })
+  const id = drawingActions.addView(sheetId, { ...draft, pos: [cx, cy], anchor: c, align: horizontal ? 'h' : 'v' })
   await refreshGeoms(useDrawing.getState().doc.sheets)
   return id
 }

@@ -28,7 +28,7 @@ export interface DrawingView {
   /** a point in the view's own plane coordinates (model mm) that is pinned to `pos` */
   anchor: Vec2
   parentId?: string
-  /** projected / section views slide along one axis of the sheet to stay aligned with their parent */
+  /** projected / section views slide along one axis of the sheet to stay aligned with their parent: 'h' slides sideways, 'v' up and down */
   align?: 'h' | 'v'
   showHidden: boolean
   showTangent: boolean

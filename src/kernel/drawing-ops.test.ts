@@ -44,6 +44,23 @@ describe('hidden line removal', () => {
     const right = await hlr(b.key, [1, 0, 0], [0, 1, 0])
     expect(right.bounds).toEqual([expect.closeTo(-15, 5), expect.closeTo(0, 5), expect.closeTo(15, 5), expect.closeTo(10, 5)])
   })
+  it('a section plane a hair off the hole axis still gives the two strips', async () => {
+    const key = blockWithHole().key
+    for (const off of [-5.03e-6, 5.03e-6, 0.3]) {
+      const r = await hlr(key, [0, -1, 0], [1, 0, 0], { origin: [-24, off, 0], normal: [0, -1, 0] })
+      expect(r.cut.length, String(off)).toBe(2)
+      const widths = r.cut.map((f) => { const xs = f[0].filter((_, i) => i % 2 === 0); return Math.max(...xs) - Math.min(...xs) }).sort((a, b) => a - b)
+      expect(widths[0]).toBeCloseTo(16, 3)
+      expect(widths[1]).toBeCloseTo(16, 3)
+    }
+  })
+  it('a section through the hole gives two section faces from either side', async () => {
+    const key = blockWithHole().key
+    for (const n of [[0, -1, 0], [0, 1, 0]]) {
+      const r = await hlr(key, n, [n[1] < 0 ? 1 : -1, 0, 0], { origin: [0, 0, 0], normal: n })
+      expect(r.cut.length, JSON.stringify(n)).toBe(2)
+    }
+  })
   it('section: a cut through the hole makes a hatched face and keeps the hole visible', async () => {
     const r = await hlr(blockWithHole().key, [0, -1, 0], [1, 0, 0], { origin: [0, 0, 0], normal: [0, -1, 0] })
     // two section faces (left and right of the hole), each one loop

@@ -121,6 +121,12 @@ describe('extrude', () => {
     checkMapping(out)
   })
 
+  it('a circular hole is a real hole (the circle is wound against the outer loop)', async () => {
+    const out = await run<Body>('extrudeTool', ext({ outer: rectLoop(-20, -15, 20, 15), holes: [[{ k: 'c', c: [0, 0], r: 4 }]], d1: 10 }))
+    near(vol(out), (1200 - Math.PI * 16) * 10)
+    checkMapping(out)
+  })
+
   it('symmetric and two-sided spans', async () => {
     const b = await run<Body>('extrudeTool', ext({ outer: rectLoop(0, 0, 10, 10), mode: 'sym', d1: 8 }))
     near(vol(b), 800)

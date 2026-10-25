@@ -24,6 +24,8 @@ export interface SheetOutput {
   broken: Record<string, string>
   /** measured values of the dimensions, by id */
   values: Record<string, number>
+  /** how to drag each dimension to change its offset */
+  drags: Record<string, V2>
 }
 
 const path = (pts: number[], style: LineStyle, owner: string, extra: Partial<Extract<Prim, { k: 'path' }>> = {}): Prim => ({ k: 'path', pts, style, owner, ...extra })
@@ -147,6 +149,7 @@ export function buildSheet(inp: SheetInput): SheetOutput {
   const prims: Prim[] = []
   const broken: Record<string, string> = {}
   const values: Record<string, number> = {}
+  const drags: Record<string, V2> = {}
   prims.push(...borderPrims(sheet), ...titleBlockPrims(sheet, doc.template, idx < 0 ? 0 : idx, doc.sheets.length))
   for (const v of sheet.views) {
     const g = geoms[sheet.id + '/' + v.id]
@@ -168,8 +171,9 @@ export function buildSheet(inp: SheetInput): SheetOutput {
     const r = dimPrims(d, v, sheet, bodies, doc.settings)
     if (r.broken) broken[d.id] = r.broken
     if (r.value !== null) values[d.id] = r.value
+    if (r.drag) drags[d.id] = r.drag
     prims.push(...r.prims)
   }
   for (const n of sheet.notes) prims.push(...annotationPrims(n, doc.settings, parts))
-  return { prims, broken, values }
+  return { prims, broken, values, drags }
 }

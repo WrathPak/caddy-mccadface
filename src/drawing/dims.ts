@@ -36,6 +36,8 @@ export interface DimResult {
   value: number | null
   /** why nothing is drawn, when the model lost one of the points */
   broken?: string
+  /** dragging the dimension by this vector (sheet mm) moves it away from the part by that much: offset += dot(drag, delta) */
+  drag?: V2
 }
 
 function tolPrims(d: Dimension, x: number, y: number, size: number, anchor: 'start' | 'middle' | 'end', owner: string): Prim[] {
@@ -102,7 +104,7 @@ export function dimPrims(d: Dimension, view: DrawingView, sheet: Pick<Sheet, 'vi
       }
       prims.push(...tolPrims(d, P2[0] + u[0] * (arrow + tw + 4), P2[1], size, 'start', owner))
     }
-    return { prims, value }
+    return { prims, value, drag: u }
   }
 
   if (d.type === 'angular') {
@@ -133,9 +135,11 @@ export function dimPrims(d: Dimension, view: DrawingView, sheet: Pick<Sheet, 'vi
     }
     const mid = a0 + sweep / 2
     const text = dimText(d, value)
-    const tr = rad + size * 0.9
+    // the text sits just outside the arc: clear of it whichever way the angle opens
+    const tw = textWidth(text, size)
+    const tr = rad + 1.5 + (tw / 2) * Math.abs(Math.cos(mid)) + (size / 2) * Math.abs(Math.sin(mid))
     prims.push({ k: 'text', x: V[0] + Math.cos(mid) * tr, y: V[1] + Math.sin(mid) * tr - size * 0.35, text, size, anchor: 'middle', owner })
-    return { prims, value }
+    return { prims, value, drag: [Math.cos(mid), Math.sin(mid)] }
   }
 
   // point based, measured along an axis or along the line between the points
@@ -157,22 +161,27 @@ export function dimPrims(d: Dimension, view: DrawingView, sheet: Pick<Sheet, 'vi
       prims.push(line([P[0] + (level >= P[0] ? gap : -gap), P[1]], [level, P[1]], owner))
       prims.push({ k: 'text', x: level + (dir > 0 ? 1 : -1), y: P[1] - size * 0.35, text, size, anchor: dir > 0 ? 'start' : 'end', owner })
     }
-    return { prims, value }
+    return { prims, value, drag: h ? [0, 1] : [1, 0] }
   }
 
   const targets = d.type === 'baseline' ? pts.slice(1) : [pts[1]]
   const base = pts[0]
   let first = 0
+  let drag: V2 = [0, 1]
+  // baseline dimensions stack away from the outermost of all their points
+  const acrossOf = (p: V2) => (d.axis === 'h' ? p[1] : p[0])
+  const all = d.type === 'baseline' ? pts.map(acrossOf) : []
+  const common = all.length ? (d.offset >= 0 ? Math.max(...all) : Math.min(...all)) : undefined
   targets.forEach((T, i) => {
     const off = d.type === 'baseline' ? d.offset + (d.offset >= 0 ? 1 : -1) * i * size * 2.6 : d.offset
-    const r = linearOne(d, base, T, off, sc, size, arrow, gap, over, owner, i === 0 || d.type !== 'baseline')
+    const r = linearOne(d, base, T, off, sc, size, arrow, gap, over, owner, i === 0 || d.type !== 'baseline', common)
     prims.push(...r.prims)
-    if (i === 0) first = r.value
+    if (i === 0) { first = r.value; drag = r.drag }
   })
-  return { prims, value: first }
+  return { prims, value: first, drag }
 }
 
-function linearOne(d: Dimension, A: V2, B: V2, offset: number, sc: number, size: number, arrow: number, gap: number, over: number, owner: string, extA: boolean): { prims: Prim[]; value: number } {
+function linearOne(d: Dimension, A: V2, B: V2, offset: number, sc: number, size: number, arrow: number, gap: number, over: number, owner: string, extA: boolean, commonExtent?: number): { prims: Prim[]; value: number; drag: V2 } {
   const prims: Prim[] = []
   // frame: u along the dimension line, n across it (towards the dimension line when the offset is positive)
   let u: V2, n: V2
@@ -190,7 +199,7 @@ function linearOne(d: Dimension, A: V2, B: V2, offset: number, sc: number, size:
   const sgn = offset >= 0 ? 1 : -1
   const along = (p: V2, from: V2) => (p[0] - from[0]) * u[0] + (p[1] - from[1]) * u[1]
   const across = (p: V2) => p[0] * n[0] + p[1] * n[1]
-  const extent = sgn > 0 ? Math.max(across(A), across(B)) : Math.min(across(A), across(B))
+  const extent = commonExtent ?? (sgn > 0 ? Math.max(across(A), across(B)) : Math.min(across(A), across(B)))
   const levelAcross = extent + offset
   const value = Math.abs(along(B, A)) / sc
   const onLevel = (p: V2): V2 => {
@@ -211,7 +220,8 @@ function linearOne(d: Dimension, A: V2, B: V2, offset: number, sc: number, size:
   const len = Math.abs(along(LB, LA))
   const inside = len >= 2 * arrow + tw + 2
   const uAB: V2 = [(LB[0] - LA[0]) / (len || 1), (LB[1] - LA[1]) / (len || 1)]
-  if (len < 1e-9) return { prims, value }
+  const drag: V2 = [n[0] * sgn, n[1] * sgn]
+  if (len < 1e-9) return { prims, value, drag }
   if (inside || len >= 2 * arrow + 1) {
     prims.push(line(LA, LB, owner), arrowPrim(LA, uAB, arrow, owner), arrowPrim(LB, [-uAB[0], -uAB[1]], arrow, owner))
   } else {
@@ -241,5 +251,5 @@ function linearOne(d: Dimension, A: V2, B: V2, offset: number, sc: number, size:
     ty = far[1] + textNormal[1] * lift
     prims.push({ k: 'text', x: tx, y: ty, text, size, anchor: Math.cos(th) * uAB[0] + Math.sin(th) * uAB[1] >= 0 ? 'start' : 'end', rot: rot === 0 ? undefined : rot, owner })
   }
-  return { prims, value }
+  return { prims, value, drag }
 }

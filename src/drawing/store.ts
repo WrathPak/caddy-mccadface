@@ -19,6 +19,10 @@ interface DrawingState {
   /** run an edit on the document (undoable, marks the project as changed) */
   edit: (label: string, fn: (d: DrawingDoc) => void) => void
   select: (s: Selection) => void
+  /** change the document without an undo step (a dialog that is still open); `commit` or `revert` ends it */
+  preview: (base: DrawingDoc, fn: (d: DrawingDoc) => void) => void
+  commit: (base: DrawingDoc) => void
+  revert: (base: DrawingDoc) => void
   undo: () => void
   redo: () => void
   load: (d: DrawingDoc | null) => void
@@ -43,6 +47,16 @@ export const useDrawing = create<DrawingState>((set, get) => ({
     useDoc.setState({ dirty: true })
   },
   select: (selection) => set({ selection }),
+  preview: (base, fn) => set({ doc: produce(base, fn) }),
+  commit: (base) => {
+    if (get().doc === base) return
+    past.push(base)
+    if (past.length > 100) past.shift()
+    future.length = 0
+    set({ undoDepth: past.length, redoDepth: 0 })
+    useDoc.setState({ dirty: true })
+  },
+  revert: (base) => set({ doc: base }),
   undo: () => {
     const prev = past.pop()
     if (!prev) return
@@ -80,6 +94,25 @@ export function nextId(prefix: string, ids: string[]): string {
 /** Every id used in the document for a kind of thing, so a new id is never reused. */
 const allIds = (d: DrawingDoc, prefix: string) =>
   d.sheets.flatMap((s) => [s.id, ...s.views.map((v) => v.id), ...s.dims.map((x) => x.id), ...s.notes.map((n) => n.id)]).filter((id) => id.startsWith(prefix))
+
+// ---------------------------------------------------------------- edits on a document
+
+/** Move a view to `pos`. Aligned views slide along their axis only; the views projected from it keep their offset. */
+export function moveViewIn(d: DrawingDoc, sheetId: string, id: string, pos: [number, number]) {
+  const s = d.sheets.find((x) => x.id === sheetId)
+  const v = s?.views.find((x) => x.id === id)
+  if (!s || !v) return
+  const parent = v.parentId ? s.views.find((x) => x.id === v.parentId) : undefined
+  let [x, y] = pos
+  if (parent && v.align === 'h') y = v.pos[1]
+  if (parent && v.align === 'v') x = v.pos[0]
+  const dx = x - v.pos[0], dy = y - v.pos[1]
+  v.pos = [x, y]
+  const follow = (pid: string) => {
+    for (const c of s.views) if (c.parentId === pid && c.align) { c.pos = [c.pos[0] + dx, c.pos[1] + dy]; follow(c.id) }
+  }
+  follow(id)
+}
 
 // ---------------------------------------------------------------- actions
 
@@ -144,17 +177,7 @@ export const drawingActions = {
   },
   /** Move a view; views projected from it follow (they keep their offset). */
   moveView(sheetId: string, id: string, pos: [number, number]) {
-    useDrawing.getState().edit('Move view', (d) => {
-      const s = d.sheets.find((x) => x.id === sheetId)
-      const v = s?.views.find((x) => x.id === id)
-      if (!s || !v) return
-      const dx = pos[0] - v.pos[0], dy = pos[1] - v.pos[1]
-      v.pos = pos
-      const follow = (pid: string) => {
-        for (const c of s.views) if (c.parentId === pid && c.align) { c.pos = [c.pos[0] + dx, c.pos[1] + dy]; follow(c.id) }
-      }
-      follow(id)
-    })
+    useDrawing.getState().edit('Move view', (d) => moveViewIn(d, sheetId, id, pos))
   },
   removeView(sheetId: string, id: string) {
     useDrawing.getState().edit('Delete view', (d) => {

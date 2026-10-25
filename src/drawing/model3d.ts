@@ -188,14 +188,15 @@ export function locate(pr: PointRef, bodies: Body[], basis: { x: Vec3; y: Vec3 }
 }
 
 /** The circle radius (model units) a radius / diameter dimension measures, with its centre in the view. */
-export function locateCircle(pr: PointRef, bodies: Body[], basis: { x: Vec3; y: Vec3 }): { center: V2; radius: number; p3: Vec3 } | null {
+export function locateCircle(pr: PointRef, bodies: Body[], basis: { x: Vec3; y: Vec3; z: Vec3 }): { center: V2; radius: number; p3: Vec3; /** the circle is seen face on (drawn as a circle, not an ellipse or a line) */ faceOn: boolean } | null {
   const res = resolveRef(pr.ref, bodies)
   if (!res || pr.ref.kind !== 'edge') return null
   const c = edgeCircle(res.body, res.index)
   if (!c) return null
   const mat = itemMatrix({ bodyId: res.body.id, occ: pr.occ })
   const centre = place(c.center, mat)
-  return { center: project(centre, basis), radius: c.radius, p3: centre }
+  const normal: Vec3 = mat ? unit3([mat[0] * c.normal[0] + mat[4] * c.normal[1] + mat[8] * c.normal[2], mat[1] * c.normal[0] + mat[5] * c.normal[1] + mat[9] * c.normal[2], mat[2] * c.normal[0] + mat[6] * c.normal[1] + mat[10] * c.normal[2]]) : c.normal
+  return { center: project(centre, basis), radius: c.radius, p3: centre, faceOn: Math.abs(dot3(normal, basis.z)) > 0.995 }
 }
 
 // ---------------------------------------------------------------- snapping
