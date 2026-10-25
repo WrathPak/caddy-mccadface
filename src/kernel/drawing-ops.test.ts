@@ -14,7 +14,7 @@ function blockWithHole() {
   return bodyFromShape('b', 'Block', blk.cut(hole) as Shape)
 }
 const hlr = async (key: string, eye: number[], right: number[], section?: unknown) =>
-  (await getOp('drawingHlr')!({ keys: [key], eye, right, section } as never, helpers)) as HlrResult
+  (await getOp('drawingHlr')!({ items: [{ key }], eye, right, section } as never, helpers)) as HlrResult
 
 describe('hidden line removal', () => {
   it('top view of a block with a hole: outline and the hole rim are visible, nothing is hidden', async () => {

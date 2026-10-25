@@ -5,7 +5,8 @@
 import { basicFaceExtrusion, cast, getOC, makePolygon, Vector, type AnyShape, type Edge, type Face } from 'replicad'
 import { getBrep, registerOp } from './store'
 import type { Shape } from './occ'
-import { add3, cross3, dot3, mul3, planeBasis, sub3, unit3 } from './print-geom'
+import { add3, dot3, mul3, planeBasis, sub3, unit3 } from './print-geom'
+import { chainPolylines, viewBasis } from './drawing-geom'
 import type { Vec3 } from './types'
 
 export type EdgeClass = 'visible' | 'hidden' | 'tangent'
@@ -13,8 +14,8 @@ export type EdgeClass = 'visible' | 'hidden' | 'tangent'
 export type Poly2 = number[]
 
 export interface HlrArgs {
-  /** kernel handles (Body.key) of the bodies to project */
-  keys: string[]
+  /** the bodies to project: kernel handle (Body.key) and an optional column-major 4x4 that places the body (assembly instances) */
+  items: { key: string; matrix?: number[] }[]
   /** unit vector from the model towards the viewer */
   eye: Vec3
   /** unit vector pointing to the right of the view */
@@ -29,17 +30,12 @@ export interface HlrResult {
   tangent: Poly2[]
   /** section faces (cut plane), each a list of loops (first is the outer one) */
   cut: Poly2[][]
+  /** index into `keys` of the body each section face belongs to */
+  cutBody: number[]
   /** 2D bounds of everything that was projected */
   bounds: [number, number, number, number] | null
 }
 
-/** world -> view plane for the projector built from (eye, right) */
-export function viewBasis(eye: Vec3, right: Vec3): { x: Vec3; y: Vec3; z: Vec3 } {
-  const z = unit3(eye)
-  const x = unit3(sub3(right, mul3(z, dot3(right, z))))
-  const y = cross3(z, x)
-  return { x, y, z }
-}
 
 function bigPrism(origin: Vec3, normal: Vec3, size: number): Shape {
   const { u, v, n } = planeBasis(normal)
@@ -135,17 +131,22 @@ function cutFaces(shape: AnyShape, origin: Vec3, normal: Vec3, basis: { x: Vec3;
     if (Math.abs(dot3(sub3([c.x, c.y, c.z], origin), n)) > 1e-5) continue
     const loops: Poly2[] = []
     for (const w of f.wires) {
-      const poly: number[] = []
-      for (const e of w.edges) {
+      const parts: Poly2[] = w.edges.map((e) => {
         const pts: Vec3[] = []
-        if (e.geomType === 'LINE') pts.push([e.startPoint.x, e.startPoint.y, e.startPoint.z])
+        if (e.geomType === 'LINE') pts.push([e.startPoint.x, e.startPoint.y, e.startPoint.z], [e.endPoint.x, e.endPoint.y, e.endPoint.z])
         else {
           const k = Math.max(12, Math.min(360, Math.ceil(e.length / 0.7)))
-          for (let i = 0; i < k; i++) { const p = e.pointAt(i / k); pts.push([p.x, p.y, p.z]) }
+          for (let i = 0; i <= k; i++) { const p = e.pointAt(i / k); pts.push([p.x, p.y, p.z]) }
         }
-        for (const p of pts) poly.push(...toView(p, basis))
+        return pts.flatMap((p) => toView(p, basis))
+      })
+      // the edges of a wire come in no fixed order or direction: chain them into the loop
+      const chains = chainPolylines(parts).sort((p, q) => q.length - p.length)
+      if (chains[0]) {
+        const c = chains[0]
+        const closed = Math.hypot(c[0] - c[c.length - 2], c[1] - c[c.length - 1]) < 1e-5
+        loops.push(closed ? c.slice(0, c.length - 2) : c)
       }
-      loops.push(poly)
     }
     // the outer loop is the one that encloses the most area
     const area = (p: Poly2) => {
@@ -159,13 +160,27 @@ function cutFaces(shape: AnyShape, origin: Vec3, normal: Vec3, basis: { x: Vec3;
   return out
 }
 
+/** The shape moved by a rigid 4x4 (column-major). */
+function placed(oc: Record<string, new (...args: unknown[]) => any>, s: Shape, m?: number[]): Shape { // eslint-disable-line
+  if (!m) return s
+  const t = new oc.gp_Trsf()
+  t.SetValues(m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14])
+  const mk = new oc.BRepBuilderAPI_Transform(s.wrapped, t, true)
+  try {
+    return cast(mk.Shape()) as unknown as Shape
+  } finally {
+    t.delete()
+    mk.delete()
+  }
+}
+
 registerOp<HlrArgs, HlrResult>('drawingHlr', (a) => {
   const oc = getOC() as unknown as Record<string, new (...args: unknown[]) => any> // eslint-disable-line
   const b = viewBasis(a.eye, a.right)
-  const result: HlrResult = { visible: [], hidden: [], tangent: [], cut: [], bounds: null }
+  const result: HlrResult = { visible: [], hidden: [], tangent: [], cut: [], cutBody: [], bounds: null }
   const created: { delete(): void }[] = []
   try {
-    let shapes: Shape[] = a.keys.map((k) => getBrep(k))
+    let shapes: Shape[] = a.items.map((i) => placed(oc, getBrep(i.key), i.matrix))
     if (a.section) {
       const sec = a.section
       const cutter = bigPrism(sec.origin, sec.normal, 1e5)
@@ -173,7 +188,11 @@ registerOp<HlrArgs, HlrResult>('drawingHlr', (a) => {
         const r = s.cut(cutter as never) as unknown as Shape
         return r
       })
-      for (const s of shapes) result.cut.push(...cutFaces(s as unknown as AnyShape, sec.origin, sec.normal, b))
+      shapes.forEach((s, i) => {
+        const faces = cutFaces(s as unknown as AnyShape, sec.origin, sec.normal, b)
+        result.cut.push(...faces)
+        result.cutBody.push(...faces.map(() => i))
+      })
     }
     const algo = new oc.HLRBRep_Algo()
     created.push(algo)
