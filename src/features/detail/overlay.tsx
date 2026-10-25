@@ -10,6 +10,7 @@ import { frameAt, spin } from '@/kernel/generators/surface'
 import type { TopoMesh } from '@/kernel/types'
 import { useVpColors } from '@/viewport/colors'
 import { useDetailView, type EmbossView } from './store'
+import { DEBUG_HANDLE } from '@/app/flags'
 
 type V3 = [number, number, number]
 
@@ -193,7 +194,7 @@ function Readout() {
 export function DetailOverlay() {
   // dev builds: expose the preview state to the e2e specs
   useEffect(() => {
-    if (!import.meta.env.DEV) return
+    if (!DEBUG_HANDLE) return
     const handle = (window as unknown as { __caddy?: Record<string, unknown> }).__caddy
     if (handle) handle.detail = useDetailView
   }, [])

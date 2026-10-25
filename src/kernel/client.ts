@@ -2,6 +2,7 @@
 import * as Comlink from 'comlink'
 import type { KernelApi } from './worker'
 import { useUi } from '@/store/ui'
+import { noteBounds, type Body } from './types'
 
 export type { KernelApi }
 export type KernelClient = Comlink.Remote<KernelApi>
@@ -11,6 +12,15 @@ const pool: KernelClient[] = []
 let rr = 0
 let pending = 0
 
+/** Remember the bounds that come with a body from the worker, so the main thread never scans its vertices. */
+export function noteBodyBounds(r: unknown, depth = 0) {
+  if (!r || typeof r !== 'object' || depth > 2) return
+  const b = r as Partial<Body>
+  if (b.mesh?.bounds && b.mesh.positions) noteBounds(b.mesh.positions, b.mesh.bounds)
+  else if (Array.isArray(r)) for (const x of r) noteBodyBounds(x, depth + 1)
+  else for (const x of Object.values(r)) noteBodyBounds(x, depth + 1)
+}
+
 function track<T extends object>(remote: T): T {
   return new Proxy(remote, {
     get(target, prop, recv) {
@@ -19,7 +29,9 @@ function track<T extends object>(remote: T): T {
       return async (...args: unknown[]) => {
         if (pending++ === 0) useUi.getState().setStats({ kernelBusy: true })
         try {
-          return await (v as (...a: unknown[]) => unknown).apply(target, args)
+          const out = await (v as (...a: unknown[]) => unknown).apply(target, args)
+          noteBodyBounds(out)
+          return out
         } finally {
           if (--pending === 0) useUi.getState().setStats({ kernelBusy: false })
         }

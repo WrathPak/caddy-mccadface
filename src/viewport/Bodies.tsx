@@ -1,15 +1,16 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Line } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import {
-  BufferAttribute, BufferGeometry, DoubleSide, LineSegments, Material, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Plane,
+  Box3, BufferAttribute, BufferGeometry, DoubleSide, LineSegments, Material, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Sphere, Vector3, type Plane,
 } from 'three'
 import { useUi, type SelectionRef } from '@/store/ui'
 import { useDoc } from '@/doc/store'
 import { useMove } from '@/features/move'
 import { useHairPaint } from '@/features/hair/paint'
 import { composeTransform, type Body } from '@/kernel/types'
-import { buildBvh } from './bvh'
+import { attachBvh, buildBvh } from './bvh'
+import { registerLodSwap, useMotion } from './motion'
 import { usePreview } from './preview'
 import { useLastPick } from './lastPick'
 import { useVpColors } from './colors'
@@ -30,7 +31,29 @@ function buildGeometry(b: Body): BufferGeometry {
   g.setAttribute('position', new BufferAttribute(b.mesh.positions, 3))
   g.setAttribute('normal', new BufferAttribute(b.mesh.normals, 3))
   g.setIndex(new BufferAttribute(b.mesh.indices, 1))
-  return buildBvh(g)
+  applyKnownBounds(g, b.mesh.bounds)
+  // very large meshes arrive with a BVH a worker built; building one here would freeze the page
+  return b.mesh.bvh ? attachBvh(g, b.mesh.bvh) : buildBvh(g)
+}
+
+/** Set the bounding box / sphere from numbers a worker computed, so three never has to scan millions of vertices for them. */
+function applyKnownBounds(g: BufferGeometry, bounds: Body['mesh']['bounds']) {
+  if (!bounds) return
+  const box = new Box3(new Vector3(...bounds.min), new Vector3(...bounds.max))
+  g.boundingBox = box
+  g.boundingSphere = box.getBoundingSphere(new Sphere())
+}
+
+/** The decimated stand-in drawn while the camera moves (only bodies that came with one). */
+function buildLodGeometry(b: Body): BufferGeometry | null {
+  const l = b.mesh.lod
+  if (!l) return null
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(l.positions, 3))
+  g.setAttribute('normal', new BufferAttribute(l.normals, 3))
+  g.setIndex(new BufferAttribute(l.indices, 1))
+  applyKnownBounds(g, b.mesh.bounds)
+  return g
 }
 
 /** Sub-geometry (shared vertices) holding only the triangles of the given faces. */
@@ -81,16 +104,42 @@ export function Bodies() {
   }, [displayMode, colors, clip])
 
   return (
-    <group name="bodies">
-      {geometry.map((b, i) => (hidden[b.id] ? null : <BodyView key={b.key} body={b} mats={mats} colors={colors} index={i} clip={clip[0]} dimmed={previewDim.includes(b.id)} />))}
-    </group>
+    <>
+      <group name="bodies">
+        {geometry.map((b, i) => (hidden[b.id] ? null : <BodyView key={b.key} body={b} mats={mats} colors={colors} index={i} clip={clip[0]} dimmed={previewDim.includes(b.id)} />))}
+      </group>
+      {geometry.length === 0 && <ShaderWarmup material={mats.base} />}
+    </>
   )
+}
+
+/**
+ * A speck of geometry drawn with the body material while the scene is empty, so the shader programs (and the AO passes that
+ * draw the scene again) are compiled before the first body appears. Software GL takes over a hundred milliseconds to link
+ * them, which would otherwise land in the frame that first shows a big import.
+ */
+function ShaderWarmup({ material }: { material: Material }) {
+  const geo = useMemo(() => {
+    const g = new BufferGeometry()
+    g.setAttribute('position', new BufferAttribute(new Float32Array([0, 0, 0, 1e-4, 0, 0, 0, 1e-4, 0]), 3))
+    g.setAttribute('normal', new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), 3))
+    return g
+  }, [])
+  useEffect(() => () => geo.dispose(), [geo])
+  return <mesh name="warmup" geometry={geo} material={material} frustumCulled={false} raycast={noRaycast} />
 }
 
 function BodyView({ body, mats, colors, index, clip, dimmed }: { body: Body; mats: Mats; colors: ReturnType<typeof useVpColors>; index: number; clip?: Plane; dimmed?: boolean }) {
   const capSize = useSceneHalfSize() * 2
   const geo = useMemo(() => buildGeometry(body), [body])
   useEffect(() => () => geo.dispose(), [geo])
+  const lodGeo = useMemo(() => buildLodGeometry(body), [body])
+  useEffect(() => () => lodGeo?.dispose(), [lodGeo])
+  const fullRef = useRef<Mesh>(null)
+  const lodRef = useRef<Mesh>(null)
+  // the low-res mesh is swapped in by the render loop (see motion.tsx); React only learns about it for the highlight below
+  useEffect(() => (lodGeo && fullRef.current && lodRef.current ? registerLodSwap(fullRef.current, lodRef.current) : undefined), [lodGeo])
+  const showLod = useMotion((s) => s.moving) && !!lodGeo
   const displayMode = useUi((s) => s.displayMode)
   const filter = useUi((s) => s.selectionFilter)
   const hover = useUi((s) => s.hover)
@@ -110,9 +159,11 @@ function BodyView({ body, mats, colors, index, clip, dimmed }: { body: Body; mat
     filter === 'body' ? { kind: 'body', id: body.id } : { kind: 'face', id: body.id, index: body.mesh.faceIds[e.faceIndex ?? 0] ?? 0 }
 
   const highlight = useUi((s) => s.highlight)
-  const active = [...selection, ...highlight, ...(hover ? [hover] : [])].filter((r) => r.id === body.id)
-  const wholeBody = active.some((r) => r.kind === 'body')
+  // a very large mesh is a single face: tinting all of it on hover would draw millions of triangles again for no information
+  const active = [...selection, ...highlight, ...(hover && !body.mesh.lod ? [hover] : [])].filter((r) => r.id === body.id)
   const faceSet = useMemo(() => new Set(active.filter((r) => r.kind === 'face').map((r) => r.index!)), [selection, highlight, hover]) // eslint-disable-line react-hooks/exhaustive-deps
+  // every face picked is the whole body (a very large mesh is one face): tint the geometry as it is instead of copying millions of indices
+  const wholeBody = active.some((r) => r.kind === 'body') || (faceSet.size > 0 && faceSet.size >= (body.mesh.faceCount ?? Infinity))
   const overlayGeo = useMemo(() => (!wholeBody && faceSet.size ? faceSubset(body, geo, faceSet) : null), [wholeBody, faceSet, body, geo])
   useEffect(() => () => overlayGeo?.dispose(), [overlayGeo])
 
@@ -123,7 +174,9 @@ function BodyView({ body, mats, colors, index, clip, dimmed }: { body: Body; mat
 
   return (
     <group matrixAutoUpdate={matrix === null} matrix={matrix ?? undefined}>
+      {lodGeo && <mesh ref={lodRef} geometry={lodGeo} material={dimmed ? mats.dim : mats.base} visible={false} raycast={noRaycast} />}
       <mesh
+        ref={fullRef}
         geometry={geo}
         material={dimmed ? mats.dim : mats.base}
         onPointerMove={pickFaces ? (e) => { e.stopPropagation(); const r = refFor(e); if (!sameRef(useUi.getState().hover, r)) setHover(r) } : undefined}
@@ -131,7 +184,7 @@ function BodyView({ body, mats, colors, index, clip, dimmed }: { body: Body; mat
         onClick={pickFaces ? (e) => { e.stopPropagation(); const r = refFor(e); useLastPick.setState((s) => ({ point: [e.point.x, e.point.y, e.point.z], ref: r, seq: s.seq + 1 })); setSelection([r], e.shiftKey || e.ctrlKey) } : undefined}
       />
       {clip && <SectionCap geometry={geo} plane={clip} color={CAP_COLORS[index % CAP_COLORS.length]} order={20 + index * 4} size={capSize} />}
-      {wholeBody && <mesh geometry={geo} material={mats.hi} raycast={() => null} renderOrder={2} />}
+      {wholeBody && <mesh geometry={showLod ? lodGeo! : geo} material={mats.hi} raycast={() => null} renderOrder={2} />}
       {overlayGeo && <mesh geometry={overlayGeo} material={mats.hi} raycast={() => null} renderOrder={2} />}
       {showEdges && <EdgeLines body={body} color={colors.edge} accent={colors.accent} pickable={filter === 'edge' && !sketching} clip={mats.base.clippingPlanes ?? []} />}
     </group>

@@ -9,6 +9,7 @@ import { settingsOf } from './settings'
 import { useDrains } from './hollow'
 import { runMap, showMap, usePrintView, type MapKind } from './view'
 import './print.css'
+import { DEBUG_HANDLE } from '@/app/flags'
 
 const TITLES: Record<MapKind, string> = { overhang: 'Overhang map', thin: 'Thin walls', small: 'Small features' }
 
@@ -103,7 +104,7 @@ export function PrintHud() {
   useEffect(() => {
     // test handle: the stores
     const w = window as unknown as { __caddy?: Record<string, unknown> }
-    if (import.meta.env.DEV && w.__caddy) w.__caddy.print = { view: usePrintView, drains: useDrains, showMap }
+    if (DEBUG_HANDLE && w.__caddy) w.__caddy.print = { view: usePrintView, drains: useDrains, showMap }
   }, [])
   return (
     <>

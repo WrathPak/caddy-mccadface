@@ -9,6 +9,7 @@ import { toast } from '@/ui/Modal'
 import { viewportBus } from '@/viewport/bus'
 import { downloadFile, MODEL_EXTS, pickFiles, pickProject, writeProject, type FileHandleLike } from './files'
 import { loadProject, serializeProject } from './project'
+import { rememberSource } from './meshImport'
 import { write3mf } from './threemf'
 import { writeStl } from './stl'
 import type { ParamSchema } from '@/ui/schema'
@@ -81,6 +82,7 @@ export async function importFiles(files: File[]) {
         handle = null
         useDoc.setState({ name: baseName(f.name) })
       } else if (ext === '.stl' || ext === '.3mf') {
+        rememberSource(bytes, f)
         const blob = d.addBlob(bytes)
         d.addFeature('importMesh', { blob, format: ext.slice(1), fileName: f.name, scale: 1 }, baseName(f.name))
       } else if (ext === '.step' || ext === '.stp') {

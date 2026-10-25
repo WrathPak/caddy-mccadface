@@ -4,6 +4,7 @@ import { Box3, MathUtils, Matrix4, Mesh, OrthographicCamera, PerspectiveCamera, 
 import { navClock } from './navClock'
 import { viewportBus, type StepKind, type ViewDir } from './bus'
 import { dragAction, useNavSettings, wheelAction } from './navSettings'
+import { DEBUG_HANDLE } from '@/app/flags'
 
 export const FOV = 40
 const Z = new Vector3(0, 0, 1)
@@ -497,7 +498,7 @@ export function NavControls() {
     el.addEventListener('pointercancel', up)
     el.addEventListener('wheel', wheel, { passive: false })
     el.addEventListener('auxclick', block)
-    if (import.meta.env.DEV) {
+    if (DEBUG_HANDLE) {
       ;(window as unknown as { __nav?: unknown }).__nav = {
         pose: () => ({ target: s.current.target.toArray(), dist: s.current.dist, q: s.current.q.toArray() }),
         pivot: () => navDebug.pivot?.toArray() ?? null,

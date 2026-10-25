@@ -1,6 +1,6 @@
 /** Worker-side geometry store: B-reps and welded meshes keyed by handle. Worker-only. */
 import * as Comlink from 'comlink'
-import { DEFAULT_CREASE_DEG, meshDisplay, weld } from './meshutil'
+import { DEFAULT_CREASE_DEG, meshDisplayAuto, weld } from './meshutil'
 import { tessellate, type Shape } from './occ'
 import { finalize, namesOf, rootNames, type NShape, type Names } from './naming'
 import type { Body, MeshData, TopoMesh } from './types'
@@ -49,7 +49,7 @@ export function gc(live: string[]) {
 }
 
 const buffers = (m: MeshData): Transferable[] =>
-  [m.positions.buffer, m.normals.buffer, m.indices.buffer, m.faceIds.buffer, m.edges.buffer, m.edgeIds?.buffer, m.faceHashes?.buffer, m.edgeHashes?.buffer].filter(
+  [m.positions.buffer, m.normals.buffer, m.indices.buffer, m.faceIds.buffer, m.edges.buffer, m.edgeIds?.buffer, m.faceHashes?.buffer, m.edgeHashes?.buffer, m.lod?.positions.buffer, m.lod?.normals.buffer, m.lod?.indices.buffer, m.bvh?.indirect.buffer, ...(m.bvh?.roots ?? [])].filter(
     (b): b is ArrayBuffer => !!b,
   )
 
@@ -69,7 +69,7 @@ export function bodyFromShape(id: string, name: string, shape: Shape, faces?: st
 }
 export function bodyFromTopo(id: string, name: string, topo: TopoMesh, crease: number = DEFAULT_CREASE_DEG): Body {
   const key = putStored({ kind: 'mesh', topo, crease })
-  return { id, name, kind: 'mesh', key, mesh: meshDisplay(topo, crease) }
+  return { id, name, kind: 'mesh', key, mesh: meshDisplayAuto(topo, crease) }
 }
 
 export type OpFn = (args: never, ctx: OpHelpers) => Promise<unknown> | unknown

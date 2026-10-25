@@ -11,10 +11,11 @@ import './app/commands'
 import './app/docCommands'
 import { App } from './app/App'
 import { installDebugHandle } from './app/debug'
+import { DEBUG_HANDLE } from './app/flags'
 
 // the service worker would cache across e2e runs and is pointless in dev
-if (import.meta.env.PROD) registerSW({ immediate: true })
-if (import.meta.env.DEV) installDebugHandle()
+if (import.meta.env.PROD && !DEBUG_HANDLE) registerSW({ immediate: true })
+if (DEBUG_HANDLE) installDebugHandle()
 document.documentElement.dataset.theme = 'dark'
 
 createRoot(document.getElementById('root')!).render(

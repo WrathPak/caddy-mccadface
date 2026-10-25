@@ -1,29 +1,7 @@
 import type { MeshData, TopoMesh } from './types'
+import { isLargeTopo, meshDisplayLarge, weld } from './bigmesh'
 
-/** Weld coincident vertices (and drop degenerate triangles). Accepts indexed or non-indexed input. */
-export function weld(positions: ArrayLike<number>, indices?: ArrayLike<number>, eps = 1e-5): TopoMesh {
-  const inv = 1 / eps
-  const map = new Map<string, number>()
-  const out: number[] = []
-  const remap = (i: number) => {
-    const x = positions[i * 3], y = positions[i * 3 + 1], z = positions[i * 3 + 2]
-    const k = Math.round(x * inv) + ',' + Math.round(y * inv) + ',' + Math.round(z * inv)
-    let id = map.get(k)
-    if (id === undefined) {
-      id = out.length / 3
-      map.set(k, id)
-      out.push(x, y, z)
-    }
-    return id
-  }
-  const count = indices ? indices.length : positions.length / 3
-  const tri: number[] = []
-  for (let t = 0; t < count; t += 3) {
-    const a = remap(indices ? indices[t] : t), b = remap(indices ? indices[t + 1] : t + 1), c = remap(indices ? indices[t + 2] : t + 2)
-    if (a !== b && b !== c && a !== c) tri.push(a, b, c)
-  }
-  return { positions: new Float32Array(out), indices: new Uint32Array(tri) }
-}
+export { weld }
 
 /** Default dihedral angle (degrees) above which two adjacent triangles belong to different faces of a mesh body. */
 export const DEFAULT_CREASE_DEG = 20
@@ -310,4 +288,9 @@ export function topoVolume(t: TopoMesh): number {
     v += (p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1]) - p[a + 1] * (p[b] * p[c + 2] - p[b + 2] * p[c]) + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c])) / 6
   }
   return v
+}
+
+/** Display data for any mesh body: the full face / edge analysis, or the cheap path for multi-million triangle meshes. */
+export function meshDisplayAuto(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG): MeshData {
+  return isLargeTopo(topo) ? meshDisplayLarge(topo) : meshDisplay(topo, creaseDeg)
 }
