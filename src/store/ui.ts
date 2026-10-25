@@ -5,8 +5,8 @@ export type Workspace = 'solid' | 'surface' | 'mesh' | 'hair' | 'print' | 'drawi
 export type DisplayMode = 'shaded' | 'shadedEdges' | 'wireframe' | 'xray'
 export type Projection = 'perspective' | 'orthographic'
 export type Theme = 'dark' | 'light'
-export type SelectionFilter = 'body' | 'face' | 'edge'
-export type EntityKind = 'body' | 'face' | 'edge' | 'sketch' | 'mesh' | 'plane' | 'axis' | 'feature' | 'point' | 'vertex'
+export type SelectionFilter = 'body' | 'face' | 'edge' | 'component'
+export type EntityKind = 'body' | 'face' | 'edge' | 'sketch' | 'mesh' | 'plane' | 'axis' | 'feature' | 'point' | 'vertex' | 'snap' | 'component'
 
 export interface SelectionRef {
   kind: EntityKind
@@ -14,6 +14,10 @@ export interface SelectionRef {
   id: string
   /** face / edge index within the entity */
   index?: number
+  /** the occurrence path the pick was made in (occurrence ids from the top down, joined by '/'); absent for the root component */
+  path?: string
+  /** for kind 'snap': what the joint origin snapped to (assembly/snaps.ts) */
+  snap?: { kind: string; ref: string }
 }
 
 export interface SectionState { on: boolean; axis: 'X' | 'Y' | 'Z'; offset: number; flip: boolean }
@@ -94,7 +98,7 @@ interface UiState {
   isolate: (id: string, all: string[]) => void
 }
 
-const sameRef = (a: SelectionRef, b: SelectionRef) => a.kind === b.kind && a.id === b.id && a.index === b.index
+const sameRef = (a: SelectionRef, b: SelectionRef) => a.kind === b.kind && a.id === b.id && a.index === b.index && (a.path ?? '') === (b.path ?? '')
 
 export const useUi = create<UiState>((set, get) => ({
   workspace: 'solid',

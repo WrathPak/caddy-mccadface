@@ -7,9 +7,11 @@ import { Layout } from './Layout'
 import { installShortcuts } from './shortcuts'
 import { DocUi } from '@/ui/DocUi'
 import { Toast } from '@/ui/Modal'
+import { watchExternals } from '@/assembly/external'
 
 export function App() {
   useEffect(() => installShortcuts(), [])
+  useEffect(() => watchExternals(), [])
   return (
     <TooltipProvider>
       <div className="app">

@@ -14,6 +14,7 @@ import { useHairPaint } from '@/features/hair/paint'
 import { PrintHud } from '@/features/print/PrintHud'
 import { DrawingWorkspace } from '@/drawing/DrawingWorkspace'
 import { RenderHud } from '@/render/RenderHud'
+import { AssemblyHud } from '@/assembly/AssemblyHud'
 
 const MODES: { id: DisplayMode; label: string; icon: typeof Cube }[] = [
   { id: 'shaded', label: 'Shaded', icon: Cube },
@@ -45,6 +46,7 @@ export function Viewport() {
       <PrintHud />
       <RenderHud />
       <DrawingWorkspace />
+      <AssemblyHud />
       <div className="vp-toolbar">
         <div className="vp-bar">
           {MODES.map((m) => (
