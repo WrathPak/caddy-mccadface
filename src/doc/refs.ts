@@ -19,13 +19,23 @@ import type { SelectionRef } from '@/store/ui'
  * name table at the time of the pick. Resolution looks the name up first and only falls back to the geometric signature
  * when the name is gone. Refs from older documents carry no name; they resolve by signature alone, as before.
  */
-export interface FaceRef { kind: 'face'; bodyId: string; featureId?: string; index: number; sig: FaceSig; name?: string }
-export interface EdgeRef { kind: 'edge'; bodyId: string; featureId?: string; index: number; sig: EdgeSig; name?: string }
+export interface FaceRef { kind: 'face'; bodyId: string; featureId?: string; index: number; sig: FaceSig; name?: string; path?: string }
+export interface EdgeRef { kind: 'edge'; bodyId: string; featureId?: string; index: number; sig: EdgeSig; name?: string; path?: string }
 export interface VertexSig { pos: Vec3 }
 /** Vertices are named from the faces that meet there (kernel/naming.ts); no feature picks them yet, but refs to them are stable. */
-export interface VertexRef { kind: 'vertex'; bodyId: string; featureId?: string; index: number; sig: VertexSig; name?: string }
-export interface BodyRef { kind: 'body'; bodyId: string }
-export type GeoRef = FaceRef | EdgeRef | VertexRef | BodyRef
+export interface VertexRef { kind: 'vertex'; bodyId: string; featureId?: string; index: number; sig: VertexSig; name?: string; path?: string }
+export interface BodyRef { kind: 'body'; bodyId: string; path?: string }
+/** A component instance (an occurrence path), picked in the Browser or by its body in the viewport. */
+export interface ComponentRef { kind: 'component'; bodyId: string; path: string }
+/** A joint origin snap point: the spec says which point of which face / edge / vertex (see assembly/snaps.ts). */
+export interface SnapRef { kind: 'snap'; bodyId: string; path?: string; spec: { kind: string; ref: string } }
+export type GeoRef = FaceRef | EdgeRef | VertexRef | BodyRef | SnapRef | ComponentRef
+
+/**
+ * `path` on a face / edge / vertex ref is the component path of the occurrence it was picked in (occurrence ids from the top
+ * down, joined by '/'; absent in the root). The geometry is shared by every instance of a component, so the path does not change
+ * how the ref resolves; it keeps the persistent name of the pick unique and stable per instance (see assembly/snaps.ts persistentName).
+ */
 
 // signature cache per body mesh
 const faceCache = new WeakMap<Body['mesh'], FaceSig[]>()
@@ -97,17 +107,19 @@ export function vertexRef(b: Body, index: number): VertexRef | null {
 
 /** Build a ref from a viewport selection ref (kind face/edge/body) against the current bodies. */
 export function refFromSelection(sel: SelectionRef, bodies: Body[]): GeoRef | null {
+  if (sel.kind === 'component') return { kind: 'component', bodyId: '', path: sel.id }
   const b = bodies.find((x) => x.id === sel.id)
   if (!b) return null
-  if (sel.kind === 'body' || sel.kind === 'mesh') return { kind: 'body', bodyId: b.id }
+  if (sel.kind === 'body' || sel.kind === 'mesh') return sel.path ? { kind: 'body', bodyId: b.id, path: sel.path } : { kind: 'body', bodyId: b.id }
   if (sel.kind === 'face' && sel.index !== undefined) {
     const sig = faceSigs(b)[sel.index]
-    return sig ? { kind: 'face', bodyId: b.id, featureId: b.featureId, index: sel.index, sig, name: nameOf(b, 'face', sel.index) } : null
+    return sig ? { kind: 'face', bodyId: b.id, featureId: b.featureId, index: sel.index, sig, name: nameOf(b, 'face', sel.index), ...(sel.path ? { path: sel.path } : {}) } : null
   }
-  if (sel.kind === 'vertex' && sel.index !== undefined) return vertexRef(b, sel.index)
+  if (sel.kind === 'snap' && sel.snap) return { kind: 'snap', bodyId: b.id, path: sel.path || undefined, spec: sel.snap }
+  if (sel.kind === 'vertex' && sel.index !== undefined) return { ...vertexRef(b, sel.index)!, ...(sel.path ? { path: sel.path } : {}) }
   if (sel.kind === 'edge' && sel.index !== undefined) {
     const sig = edgeSigs(b)[sel.index]
-    return sig ? { kind: 'edge', bodyId: b.id, featureId: b.featureId, index: sel.index, sig, name: nameOf(b, 'edge', sel.index) } : null
+    return sig ? { kind: 'edge', bodyId: b.id, featureId: b.featureId, index: sel.index, sig, name: nameOf(b, 'edge', sel.index), ...(sel.path ? { path: sel.path } : {}) } : null
   }
   return null
 }
@@ -224,7 +236,7 @@ export function resolveEdge(ref: EdgeRef, bodies: Body[], report?: RefReport): R
   return resolveGeneric('edge', ref, encodeRef(ref), findBody(ref, bodies), edgeSigs, edgeScore, EDGE_LEGACY, EDGE_REBIND, report)
 }
 
-export const encodeRef = (r: GeoRef): string => (r.kind === 'body' ? r.bodyId : JSON.stringify(r))
+export const encodeRef = (r: GeoRef): string => (r.kind === 'body' && !r.path ? r.bodyId : JSON.stringify(r))
 export function decodeRef(s: string): GeoRef | null {
   if (s.startsWith('{')) {
     try { return JSON.parse(s) as GeoRef } catch { return null }

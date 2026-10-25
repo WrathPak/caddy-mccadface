@@ -30,6 +30,8 @@ import { exportDialog, importDialog, newDocument, openDocument, saveDocument } f
 import { useParamsDialog } from '@/ui/DocUi'
 import { useUi } from '@/store/ui'
 import '@/features/modeling-tools/register'
+import '@/assembly/commands'
+import { deleteOccurrence } from '@/assembly/actions'
 
 function override(id: string, run: () => void, patch: Partial<Command> = {}) {
   const c = getCommand(id)
@@ -71,6 +73,13 @@ override('hair.wall', solid(() => startHair('wall')))
 override('hair.preview', toggleHairPreview)
 override('edit.delete', () => {
   const ui = useUi.getState()
+  // selected component nodes are removed from the assembly (every instance of the component they sit in loses them)
+  const comps = ui.selection.filter((r) => r.kind === 'component').map((r) => r.id)
+  if (comps.length) {
+    for (const p of comps) deleteOccurrence(p)
+    ui.clearSelection()
+    return
+  }
   const ids = [...new Set(ui.selection.map((r) => r.id))].filter((id) => useDoc.getState().geometry.some((b) => b.id === id))
   if (ids.length) {
     useDoc.getState().addFeature('delete', { bodyIds: ids })

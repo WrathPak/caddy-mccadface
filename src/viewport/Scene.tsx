@@ -23,6 +23,7 @@ import { HairPaintTool, HairRegionOverlay } from '@/features/hair/PaintTool'
 import { HairDirectionOverlay, HairOverlayPass, HairPreviewLayer } from '@/features/hair/layer'
 import { DetailOverlay } from '@/features/detail/overlay'
 import { PrintCanvas } from '@/features/print/PrintCanvas'
+import { AssemblyLayer } from '@/assembly/AssemblyLayer'
 
 /**
  * N8AO renders its own depth pre-pass and already keeps translucent overlays that do not write depth (infinite grid, origin
@@ -122,6 +123,7 @@ export function Scene() {
       {showOrigin && !sketching && <Origin />}
       {showOrigin && !sketching && <ConstructionPlanes />}
       <Bodies />
+      <AssemblyLayer />
       <MoveGizmo />
       <SketchDisplay />
       <SketchOverlay />

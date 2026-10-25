@@ -1,3 +1,4 @@
+import { strToU8, zipSync } from 'fflate'
 import { test, expect } from './helpers'
 
 test('undo / redo walk the timeline', async ({ app, page }) => {
@@ -172,6 +173,18 @@ test('status bar menus, selection filters and the Browser tree', async ({ app, p
 })
 
 test('every registered command runs without throwing (empty doc, then with a body)', async ({ app, page }) => {
+  test.setTimeout(300_000) // two runs of every command, and the insert commands really insert a file: a few minutes on a 4x throttled CPU
+  // the insert commands really run: a stand-in file picker hands them a small in-memory .caddy
+  const caddy = Array.from(zipSync({
+    'document.json': strToU8(JSON.stringify({ format: 1, name: 'Stub', rollback: 1, userParams: [], bodyNames: {}, configs: [], activeConfig: null, features: [{ id: 'f1', type: 'box', name: 'Box1', suppressed: false, params: { width: 5, depth: 5, height: 5, position: [0, 0, 0] } }] })),
+  }))
+  await page.addInitScript((bytes) => {
+    ;(window as unknown as Record<string, unknown>).showOpenFilePicker = async () => [{
+      name: 'stub.caddy',
+      getFile: async () => new File([Uint8Array.from(bytes)], 'stub.caddy'),
+    }]
+  }, caddy)
+  page.on('filechooser', (fc) => void fc.setFiles({ name: 'stub.caddy', mimeType: 'application/zip', buffer: Buffer.from(caddy) }))
   await app.open()
   const skip = new Set(['file.new', 'file.open', 'file.save', 'file.saveAs', 'file.import', 'file.export', 'mesh.import', 'app.palette', 'view.resetLayout'])
   const all: string[] = await page.evaluate(async () => {

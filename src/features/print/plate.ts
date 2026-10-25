@@ -4,6 +4,8 @@ import { getKernel } from '@/kernel/client'
 import type { ExportMesh } from '@/kernel/print-ops'
 import type { Body } from '@/kernel/types'
 import { useUi } from '@/store/ui'
+import { assembledInstances } from '@/assembly/check'
+import { mergePlaced, objectGroups } from '@/assembly/exportAssembly'
 import { computePaintMap } from './paint'
 import { settingsOf, type PrintSettings } from './settings'
 import { arrangeOnPlate, slotsNeeded, writeBambu3mf, type PlateObject, type Placement } from './threemf'
@@ -69,18 +71,52 @@ function uniqueNames(names: string[]): string[] {
 export interface BuiltPlate { bytes: Uint8Array; fileName: string; count: number; fits: boolean; colors: number; settings: PrintSettings }
 
 /** The visible bodies as a Bambu / Orca 3MF. Throws a readable error when there is nothing to print. */
+/**
+ * An assembly prints as one object per component instance, each at the pose it has now (joints solved), with the filament colors
+ * of its bodies. A component with several bodies is one object.
+ */
+async function assemblyItems(): Promise<PlateItem[]> {
+  const d = useDoc.getState()
+  const insts = assembledInstances()
+  if (!insts.length) throw new Error('There is nothing to print: no visible bodies')
+  const paint = computePaintMap(d.features, d.rollback, d.geometry)
+  const keys = [...new Set(insts.map((i) => i.body.key))]
+  const meshes = (await getKernel().call('printMeshes', { keys })) as ExportMesh[]
+  const byKey = new Map(keys.map((k, n) => [k, meshes[n]]))
+  return objectGroups(insts, d.assembly, d.bodyNames).map((g) => {
+    const parts = g.instances.map((i) => ({ ...byKey.get(i.body.key)!, matrix: i.world }))
+    const merged = mergePlaced(parts)
+    const slotParts = g.instances.map((i) => exportSlots(i.body, paint.get(i.body.id), byKey.get(i.body.key)!))
+    let slots: Uint8Array | null = null
+    if (slotParts.some((s) => s)) {
+      slots = new Uint8Array(merged.indices.length / 3)
+      let at = 0
+      slotParts.forEach((s, n) => {
+        const tris = parts[n].indices.length / 3
+        if (s) slots!.set(s, at)
+        at += tris
+      })
+    }
+    return { name: g.name, mesh: { positions: merged.positions, indices: merged.indices, faceIds: new Uint32Array(0) }, slots }
+  })
+}
+
 export async function buildPlate(): Promise<BuiltPlate> {
   const d = useDoc.getState()
   const hidden = useUi.getState().hiddenIds
-  const bodies = d.geometry.filter((b) => !hidden[b.id])
-  if (!bodies.length) throw new Error('There is nothing to print: no visible bodies')
   const settings = settingsOf(d.features, d.rollback)
-  const paint = computePaintMap(d.features, d.rollback, d.geometry)
-  const meshes = (await getKernel().call('printMeshes', { keys: bodies.map((b) => b.key) })) as ExportMesh[]
-  const names = uniqueNames(bodies.map((b) => d.bodyNames[b.id] ?? b.name))
-  const items: PlateItem[] = bodies.map((b, i) => ({ name: names[i], mesh: meshes[i], slots: exportSlots(b, paint.get(b.id), meshes[i]) }))
+  let items: PlateItem[]
+  if (d.assembly.occurrences.length) items = await assemblyItems()
+  else {
+    const bodies = d.geometry.filter((b) => !hidden[b.id])
+    if (!bodies.length) throw new Error('There is nothing to print: no visible bodies')
+    const paint = computePaintMap(d.features, d.rollback, d.geometry)
+    const meshes = (await getKernel().call('printMeshes', { keys: bodies.map((b) => b.key) })) as ExportMesh[]
+    const names = uniqueNames(bodies.map((b) => d.bodyNames[b.id] ?? b.name))
+    items = bodies.map((b, i) => ({ name: names[i], mesh: meshes[i], slots: exportSlots(b, paint.get(b.id), meshes[i]) }))
+  }
   const plan = planPlate(items, settings)
   const bytes = writeBambu3mf(plan.objects, plan.placements, settings)
   const safe = (d.name || 'Untitled').replace(/[\\/:*?"<>|]+/g, '_')
-  return { bytes, fileName: `${safe}.3mf`, count: bodies.length, fits: plan.fits, colors: slotsNeeded(plan.objects), settings }
+  return { bytes, fileName: `${safe}.3mf`, count: items.length, fits: plan.fits, colors: slotsNeeded(plan.objects), settings }
 }

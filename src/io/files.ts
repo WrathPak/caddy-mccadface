@@ -6,7 +6,8 @@ interface PickerWindow {
   showOpenFilePicker?: (o: unknown) => Promise<FileHandleLike[]>
   showSaveFilePicker?: (o: unknown) => Promise<FileHandleLike>
 }
-const w = window as unknown as PickerWindow
+// (the unit tests import this module in Node, where there is no window)
+const w = (typeof window === 'undefined' ? {} : window) as unknown as PickerWindow
 
 const PROJECT_TYPES = [{ description: 'CADdy McCADFace project', accept: { 'application/zip': ['.caddy'] } }]
 export const MODEL_EXTS = ['.stl', '.3mf', '.step', '.stp']
@@ -38,19 +39,19 @@ export function pickFiles(accept: string, multiple = false): Promise<File[]> {
 }
 
 /** Open a project: returns the bytes and (when supported) a handle for in-place saving. */
-export async function pickProject(): Promise<{ bytes: Uint8Array; name: string; handle: FileHandleLike | null } | null> {
+export async function pickProject(): Promise<{ bytes: Uint8Array; name: string; handle: FileHandleLike | null; /** lastModified of the file */ stamp: number } | null> {
   if (w.showOpenFilePicker) {
     try {
       const [h] = await w.showOpenFilePicker({ types: PROJECT_TYPES, multiple: false })
       const f = await h.getFile()
-      return { bytes: new Uint8Array(await f.arrayBuffer()), name: f.name, handle: h }
+      return { bytes: new Uint8Array(await f.arrayBuffer()), name: f.name, handle: h, stamp: f.lastModified }
     } catch (e) {
       if (isAbort(e)) return null
       throw e
     }
   }
   const [f] = await pickFiles('.caddy')
-  return f ? { bytes: new Uint8Array(await f.arrayBuffer()), name: f.name, handle: null } : null
+  return f ? { bytes: new Uint8Array(await f.arrayBuffer()), name: f.name, handle: null, stamp: f.lastModified } : null
 }
 
 /** Write to `handle`, or ask where to save. Returns the handle used (null for download fallback), undefined on cancel. */

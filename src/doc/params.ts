@@ -19,6 +19,19 @@ export function effectiveParams(params: UserParam[], configs: Config[] | undefin
 
 /** Evaluate user parameters in order (later ones may reference earlier ones). */
 export function setUserParams(params: UserParam[]): Scope {
+  current = evalScope(params)
+  return current
+}
+
+/** Put another scope in effect (a linked component is evaluated with its own parameters); returns the one it replaced. */
+export function swapScope(next: Scope): Scope {
+  const prev = current
+  current = next
+  return prev
+}
+
+/** The scope of a list of user parameters, without making it the current one. */
+export function evalScope(params: UserParam[]): Scope {
   const values: Record<string, unknown> = {}
   const errors: Record<string, string> = {}
   for (const p of params) {
@@ -39,8 +52,7 @@ export function setUserParams(params: UserParam[]): Scope {
       errors[p.name] = e instanceof Error ? e.message : String(e)
     }
   }
-  current = { values, errors }
-  return current
+  return { values, errors }
 }
 
 /** Evaluate an expression to a number in `unit` (mm/deg/...), using user parameters. null if invalid. */

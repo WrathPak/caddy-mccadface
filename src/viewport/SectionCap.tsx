@@ -6,7 +6,7 @@
  */
 import { useEffect, useMemo } from 'react'
 import {
-  AlwaysStencilFunc, BackSide, CanvasTexture, Color, DecrementWrapStencilOp, DoubleSide, FrontSide, IncrementWrapStencilOp,
+  Matrix4, AlwaysStencilFunc, BackSide, CanvasTexture, Color, DecrementWrapStencilOp, DoubleSide, FrontSide, IncrementWrapStencilOp,
   NotEqualStencilFunc, Quaternion, ReplaceStencilOp, RepeatWrapping, Vector3, type BufferGeometry, type Plane, type WebGLRenderer,
 } from 'three'
 
@@ -29,7 +29,8 @@ function hatch(color: string) {
 
 const tile = 8
 
-export function SectionCap({ geometry, plane, color, order, size }: { geometry: BufferGeometry; plane: Plane; color: string; order: number; size: number }) {
+/** `matrix` places the body (the plane is in world space, the geometry in the body's own space). */
+export function SectionCap({ geometry, plane, color, order, size, matrix }: { geometry: BufferGeometry; plane: Plane; color: string; order: number; size: number; matrix?: Matrix4 }) {
   const clip = useMemo(() => [plane], [plane])
   const tex = useMemo(() => { const t = hatch(color); t.repeat.set((size * 2) / tile, (size * 2) / tile); return t }, [color, size])
   useEffect(() => () => tex.dispose(), [tex])
@@ -42,10 +43,10 @@ export function SectionCap({ geometry, plane, color, order, size }: { geometry: 
   const white = useMemo(() => new Color('#ffffff'), [])
   return (
     <group name="section-cap">
-      <mesh geometry={geometry} renderOrder={order} raycast={() => null}>
+      <mesh geometry={geometry} renderOrder={order} raycast={() => null} matrixAutoUpdate={!matrix} matrix={matrix}>
         <meshBasicMaterial {...stencil(BackSide, IncrementWrapStencilOp)} />
       </mesh>
-      <mesh geometry={geometry} renderOrder={order} raycast={() => null}>
+      <mesh geometry={geometry} renderOrder={order} raycast={() => null} matrixAutoUpdate={!matrix} matrix={matrix}>
         <meshBasicMaterial {...stencil(FrontSide, DecrementWrapStencilOp)} />
       </mesh>
       <mesh

@@ -9,8 +9,13 @@ import { toast } from '@/ui/Modal'
 import { viewportBus } from '@/viewport/bus'
 import { downloadFile, MODEL_EXTS, pickFiles, pickProject, writeProject, type FileHandleLike } from './files'
 import { loadProject, serializeProject } from './project'
+import { shouldAutosave, worthRecovering } from './autosave'
+import { parseProject } from './projectParse'
 import { write3mf } from './threemf'
 import { writeStl } from './stl'
+import { assemblyObjects, exportAssemblyStep, mergePlaced } from '@/assembly/exportAssembly'
+import { persistExternalHandles, restoreExternals, setExternalHost } from '@/assembly/external'
+import { within } from '@/assembly/instances'
 import type { ParamSchema } from '@/ui/schema'
 
 let handle: FileHandleLike | null = null
@@ -45,8 +50,11 @@ export async function openDocument() {
     loadProject(f.bytes)
     handle = f.handle
     useDoc.setState({ name: baseName(f.name) })
+    setExternalHost(f.name)
     void del(AUTOSAVE_KEY)
     await frameWhenReady()
+    // linked components are read again from their files: a newer file raises the update notice
+    void restoreExternals()
   } catch (e) {
     fail('Open failed', e)
   }
@@ -60,6 +68,8 @@ export async function saveDocument(asNew = false) {
     if (h === undefined) return // cancelled
     handle = h
     if (h) useDoc.setState({ name: baseName(h.name) })
+    setExternalHost(h?.name ?? (name + '.caddy'))
+    void persistExternalHandles()
     useDoc.getState().markClean()
     void del(AUTOSAVE_KEY)
     toast(h ? `Saved ${h.name}` : 'Downloaded project file')
@@ -151,8 +161,34 @@ export async function exportAllConfigs(format: 'stl' | '3mf' | 'step', scope: 's
   }
 }
 
+/** An assembly leaves as its structure: STEP products per component instance, 3MF objects per instance, STL as one placed mesh. */
+async function exportAssembly(format: 'stl' | '3mf' | 'step', scope: 'selection' | 'all', suffix: string) {
+  const s = useDoc.getState()
+  const ui = useUi.getState()
+  const name = (s.name || 'Untitled') + suffix
+  try {
+    if (format === 'step') {
+      const r = await exportAssemblyStep()
+      if (!r.parts) return toast('STEP export needs at least one B-rep body', 'error')
+      downloadFile(`${name}.step`, new Uint8Array(r.bytes), 'model/step')
+      toast(`Exported ${r.parts} ${r.parts === 1 ? 'part' : 'parts'} as a STEP assembly${r.skipped.length ? `; ${r.skipped.length} mesh ${r.skipped.length === 1 ? 'body was' : 'bodies were'} left out` : ''}`)
+      return
+    }
+    const sel = ui.selection
+    const keep = scope === 'selection' && sel.length ? (i: { body: { id: string }; path: string }) => sel.some((r) => r.id === i.body.id || (r.path ? within(i.path, r.path) : false) || (r.kind === 'component' && within(i.path, r.id))) : undefined
+    const objects = await assemblyObjects(keep)
+    if (!objects.length) return toast('Nothing to export', 'error')
+    if (format === 'stl') downloadFile(`${name}.stl`, writeStl([mergePlaced(objects.map((o) => ({ ...o.mesh, matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] })))]), 'model/stl')
+    else downloadFile(`${name}.3mf`, write3mf(objects), 'model/3mf')
+    toast(`Exported ${objects.length} ${format === '3mf' ? (objects.length === 1 ? 'object' : 'objects') : 'objects as one mesh'} as ${format.toUpperCase()}`)
+  } catch (e) {
+    fail('Export failed', e)
+  }
+}
+
 export async function exportBodies(format: 'stl' | '3mf' | 'step', scope: 'selection' | 'all', suffix = '') {
   const s = useDoc.getState()
+  if (s.assembly.occurrences.length) return exportAssembly(format, scope, suffix)
   const ui = useUi.getState()
   const selIds = new Set(ui.selection.map((r) => r.id))
   let bodies = s.geometry.filter((b) => !ui.hiddenIds[b.id])
@@ -202,13 +238,21 @@ export function discardRecovery() {
 
 /** Call once at startup: offer crash recovery, then autosave every 30 s while there are unsaved edits. */
 export async function initPersistence() {
+  // (the e2e fixture sets this flag so a test never meets the recovery prompt of an earlier page load)
+  if ((window as unknown as { __e2eNoAutosave?: boolean }).__e2eNoAutosave) return
   try {
     const r = await get<AutosaveRecord>(AUTOSAVE_KEY)
-    if (r?.bytes) useRecovery.setState({ record: r })
+    if (r?.bytes) {
+      // a copy with nothing in it is not worth a prompt
+      let keep = false
+      try { keep = worthRecovering(parseProject(r.bytes).data) } catch { /* unreadable: drop it */ }
+      if (keep) useRecovery.setState({ record: r })
+      else void del(AUTOSAVE_KEY)
+    }
   } catch { /* IndexedDB unavailable */ }
   setInterval(async () => {
     const d = useDoc.getState()
-    if (!d.dirty || useRecovery.getState().record) return
+    if (!shouldAutosave(d) || useRecovery.getState().record) return
     try {
       await set(AUTOSAVE_KEY, { bytes: await serializeProject(false), name: d.name, savedAt: Date.now() } satisfies AutosaveRecord)
     } catch { /* quota or private mode */ }

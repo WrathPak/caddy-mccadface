@@ -16,6 +16,7 @@ import { useDoc } from '@/doc/store'
 import { demoExtrudeSchema, schemaDefaults } from '@/ui/schema'
 import { viewportBus } from '@/viewport/bus'
 import { selectionBounds } from '@/viewport/selectionBounds'
+import { currentInstances } from '@/assembly/place'
 
 export interface Command {
   id: string
@@ -162,7 +163,7 @@ def('sketch.project', 'Project / Include', Exclude, 'Sketch')
 // ---- View
 def('view.frame', 'Frame All', FrameCorners, 'View', 'F6', () => viewportBus.emit('frame', undefined))
 def('view.frameSelection', 'Frame Selection', FrameCorners, 'View', 'F', () => {
-  const b = selectionBounds(useUi.getState().selection, useDoc.getState().geometry)
+  const b = selectionBounds(useUi.getState().selection, useDoc.getState().geometry, currentInstances())
   if (!b) return viewportBus.emit('frame', undefined)
   viewportBus.emit('frameBox', { min: b.min.toArray(), max: b.max.toArray() })
 }, 'Fit the view to the selected faces, edges or bodies (everything when nothing is selected)')
