@@ -15,5 +15,6 @@ import './detail-ops'
 import './modeling-ops'
 import './print-ops'
 import './plugin-ops'
+import './assembly-ops'
 
 export {}

@@ -59,6 +59,10 @@ export interface Body {
   key: string
   /** feature that originally created this body */
   featureId?: string
+  /** component (definition id) that owns this body; set by the regeneration engine, absent for the root component */
+  component?: string
+  /** column-major 4x4 that puts the body where it sits inside its component (bodies of a linked component keep the pose they have in their own file) */
+  placement?: number[]
   mesh: MeshData
 }
 

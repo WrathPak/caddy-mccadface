@@ -51,7 +51,7 @@ export interface Vector3Param extends Base {
 export interface SelectionRefParam extends Base {
   type: 'selection-ref'
   /** which entity kinds may be picked */
-  accepts: ('body' | 'face' | 'edge' | 'sketch' | 'plane' | 'axis' | 'point' | 'vertex' | 'feature')[]
+  accepts: ('body' | 'face' | 'edge' | 'sketch' | 'plane' | 'axis' | 'point' | 'vertex' | 'feature' | 'snap' | 'component')[]
   multiple?: boolean
   /** the dialog cannot be confirmed until this (visible) selection has at least one entry */
   required?: boolean

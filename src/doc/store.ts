@@ -8,6 +8,8 @@ import type { ParamValues } from '@/ui/schema'
 import { DEFAULT_HIDDEN, useUi } from '@/store/ui'
 import { getFeature } from './registry'
 import { effectiveParams, setUserParams as applyUserParams } from './params'
+import { emptyAssembly, normalizeAssembly, ROOT } from '@/assembly/types'
+import { resetAssemblyRuntime } from '@/assembly/runtime'
 import type { Config, DocData, Feature, FeatureState, UserParam } from './types'
 
 export type { Feature, FeatureState } from './types'
@@ -33,6 +35,8 @@ interface DocState extends DocData {
   redoDepth: number
   /** a past version is on show (History panel): nothing can be edited until it is closed */
   readOnly: boolean
+  /** the instance being edited, as an occurrence path (new features go into its component); null is the root component */
+  activeOcc: string | null
 
   // timeline
   setRollback: (n: number) => void
@@ -62,6 +66,7 @@ interface DocState extends DocData {
   /** the undo / redo stacks as they are, and putting them back (used around a read-only preview) */
   takeStacks: () => { past: HistoryItem[]; future: HistoryItem[] }
   putStacks: (s: { past: HistoryItem[]; future: HistoryItem[] }) => void
+  setActiveOcc: (id: string | null) => void
   // engine hooks
   setGeometry: (g: Body[]) => void
   applyStatus: (s: Record<string, FeatureStatus>) => void
@@ -74,7 +79,7 @@ export const setRegenHandler = (fn: () => void) => { regenHandler = fn }
 const past: HistoryItem[] = []
 const future: HistoryItem[] = []
 
-const empty = (): DocData => ({ name: 'Untitled', features: [], rollback: 0, userParams: [], bodyNames: {}, configs: [], activeConfig: null })
+const empty = (): DocData => ({ name: 'Untitled', features: [], rollback: 0, userParams: [], bodyNames: {}, configs: [], activeConfig: null, assembly: emptyAssembly() })
 
 function derive(s: Pick<DocState, 'geometry' | 'bodyNames' | 'features'>) {
   const name = (b: Body) => s.bodyNames[b.id] ?? b.name
@@ -85,13 +90,20 @@ function derive(s: Pick<DocState, 'geometry' | 'bodyNames' | 'features'>) {
   }
 }
 
+/** The component definition that new features go into: the one of the active instance (an occurrence path), else the root. */
+export function activeDefId(s: { activeOcc: string | null; assembly: DocData['assembly'] }): string {
+  const last = s.activeOcc ? s.activeOcc.slice(s.activeOcc.lastIndexOf('/') + 1) : ''
+  const o = last ? s.assembly.occurrences.find((x) => x.id === last) : undefined
+  return o ? o.component : ROOT
+}
+
 const nextId = (features: Feature[]) =>
   'f' + (features.reduce((m, f) => Math.max(m, parseInt(f.id.slice(1), 10) || 0), 0) + 1)
 
 export const useDoc = create<DocState>((set, get) => {
   const pick = (): DocData => {
     const s = get()
-    return { name: s.name, features: s.features, rollback: s.rollback, userParams: s.userParams, bodyNames: s.bodyNames, configs: s.configs, activeConfig: s.activeConfig }
+    return { name: s.name, features: s.features, rollback: s.rollback, userParams: s.userParams, bodyNames: s.bodyNames, configs: s.configs, activeConfig: s.activeConfig, assembly: s.assembly }
   }
   const apply = (d: DocData, extra: Partial<DocState> = {}) => {
     applyUserParams(effectiveParams(d.userParams, d.configs, d.activeConfig))
@@ -118,6 +130,7 @@ export const useDoc = create<DocState>((set, get) => {
     undoDepth: 0,
     redoDepth: 0,
     readOnly: false,
+    activeOcc: null,
 
     setRollback: (n) => {
       if (get().readOnly) return
@@ -134,7 +147,8 @@ export const useDoc = create<DocState>((set, get) => {
       const id = nextId(get().features)
       const def = getFeature(type)
       const count = get().features.filter((f) => f.type === type).length + 1
-      const feature: Feature = { id, type, name: name ?? `${def?.label ?? type}${count}`, state: 'ok', suppressed: false, params }
+      const comp = activeDefId(get())
+      const feature: Feature = { id, type, name: name ?? `${def?.label ?? type}${count}`, state: 'ok', suppressed: false, params, ...(comp !== ROOT ? { component: comp } : {}) }
       get().commit(`Add ${feature.name}`, (d) => {
         const features = [...d.features]
         features.splice(d.rollback, 0, feature)
@@ -199,14 +213,17 @@ export const useDoc = create<DocState>((set, get) => {
       past.length = 0
       future.length = 0
       useUi.setState({ selection: [], hover: null, hiddenIds: { ...DEFAULT_HIDDEN } })
-      apply(empty(), { blobs: {}, selectedFeatureId: null, dirty: false })
+      resetAssemblyRuntime()
+      apply(empty(), { blobs: {}, selectedFeatureId: null, dirty: false, activeOcc: null })
     },
     loadDocument: (data, blobs) => {
       past.length = 0
       future.length = 0
       useUi.setState({ selection: [], hover: null, hiddenIds: { ...DEFAULT_HIDDEN } })
-      apply({ ...empty(), ...data }, { blobs, selectedFeatureId: null, dirty: false })
+      resetAssemblyRuntime()
+      apply({ ...empty(), ...data, assembly: normalizeAssembly(data.assembly) }, { blobs, selectedFeatureId: null, dirty: false, activeOcc: null })
     },
+    setActiveOcc: (activeOcc) => set({ activeOcc }),
     getData: pick,
     markClean: () => set({ dirty: false }),
     setReadOnly: (readOnly) => set({ readOnly }),

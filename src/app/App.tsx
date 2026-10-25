@@ -9,9 +9,11 @@ import { DocUi } from '@/ui/DocUi'
 import { Toast } from '@/ui/Modal'
 import { NoteDialog, PreviewBanner } from '@/history/HistoryUi'
 import { initPlugins } from '@/api/pluginStore'
+import { watchExternals } from '@/assembly/external'
 
 export function App() {
   useEffect(() => installShortcuts(), [])
+  useEffect(() => watchExternals(), [])
   useEffect(() => { void initPlugins() }, [])
   return (
     <TooltipProvider>

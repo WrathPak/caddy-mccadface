@@ -22,8 +22,9 @@ export const test = base.extend<{ app: App }>({
       const u = new URL(r.url())
       if (!['localhost', '127.0.0.1', ''].includes(u.hostname) && !['data:', 'blob:'].includes(u.protocol)) external.push(r.url())
     })
-    // force the download fallback for project saves / opens
+    // force the download fallback for project saves / opens; no autosave or recovery prompt can carry over between page loads of a test
     await page.addInitScript(() => {
+      ;(window as unknown as Record<string, unknown>).__e2eNoAutosave = true
       delete (window as unknown as Record<string, unknown>).showSaveFilePicker
       delete (window as unknown as Record<string, unknown>).showOpenFilePicker
     })

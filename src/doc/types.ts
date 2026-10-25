@@ -2,6 +2,7 @@ import type { Icon } from '@phosphor-icons/react'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
 import type { Body } from '@/kernel/types'
 import type { KernelClient } from '@/kernel/client'
+import type { AssemblyData } from '@/assembly/types'
 
 export type FeatureState = 'ok' | 'warning' | 'error' | 'suppressed'
 
@@ -19,6 +20,8 @@ export interface Feature {
   lostRefs?: string[]
   suppressed: boolean
   params: ParamValues
+  /** the component this feature belongs to (its timeline section); absent means the root component */
+  component?: string
 }
 
 export interface UserParam { name: string; expr: string }
@@ -35,6 +38,8 @@ export interface DocData {
   /** configurations (table of parameter sets) and the one in effect (null: the parameters as they are) */
   configs: Config[]
   activeConfig: string | null
+  /** components, their occurrences, joints, links, explode steps and the motion study (see assembly/types.ts) */
+  assembly: AssemblyData
 }
 
 export interface FeatureCtx {

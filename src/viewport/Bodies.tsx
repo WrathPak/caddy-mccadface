@@ -18,12 +18,19 @@ import { useSketch } from '@/sketch/store'
 import { sectionPlane } from './section'
 import { SectionCap } from './SectionCap'
 import { useSceneHalfSize } from './Origin'
+import { instanceDimmed, instanceHidden, instancePickable, useInstances } from '@/assembly/place'
+import { within, type Instance } from '@/assembly/instances'
+import { isIdentity, invert, point } from '@/assembly/matrix'
+import { useAssemblyRuntime } from '@/assembly/runtime'
+import { nearestSnaps } from '@/assembly/snapPick'
+import { beginDrag } from '@/assembly/dragController'
+import { snapPoints, snapSpec } from '@/assembly/snaps'
 
 /** Passed explicitly in both states: R3F does not restore the prototype raycast when a prop goes back to undefined. */
 const noRaycast = () => null
 
 function sameRef(a: SelectionRef | null, b: SelectionRef) {
-  return !!a && a.kind === b.kind && a.id === b.id && a.index === b.index
+  return !!a && a.kind === b.kind && a.id === b.id && a.index === b.index && (a.path ?? '') === (b.path ?? '')
 }
 
 function buildGeometry(b: Body): BufferGeometry {
@@ -32,7 +39,7 @@ function buildGeometry(b: Body): BufferGeometry {
   g.setAttribute('normal', new BufferAttribute(b.mesh.normals, 3))
   g.setIndex(new BufferAttribute(b.mesh.indices, 1))
   applyKnownBounds(g, b.mesh.bounds)
-  // very large meshes arrive with a BVH a worker built; building one here would freeze the page
+  // bigger meshes arrive with a BVH a worker built; building one here would freeze the page
   return b.mesh.bvh ? attachBvh(g, b.mesh.bvh) : buildBvh(g)
 }
 
@@ -70,11 +77,11 @@ function faceSubset(b: Body, geo: BufferGeometry, faces: Set<number>): BufferGeo
 /** Cap tints, one per body (cycled), so overlapping bodies stay distinguishable in a section. */
 const CAP_COLORS = ['#5aa9c4', '#c4905a', '#7fb36a', '#b27fc4', '#c4c05a']
 
-interface Mats { base: Material; hi: Material; dim: Material }
+interface Mats { base: Material; hi: Material; dim: Material; flag: Material }
 
-/** Renders the document's bodies (kernel output) with hover pre-highlight and filter-aware picking. */
+/** Renders the document's bodies (kernel output) with hover pre-highlight and filter-aware picking. One body is drawn once per instance of its component. */
 export function Bodies() {
-  const geometry = useDoc((s) => s.geometry)
+  const instances = useInstances()
   const colors = useVpColors()
   const displayMode = useUi((s) => s.displayMode)
   const hiddenUi = useUi((s) => s.hiddenIds)
@@ -84,11 +91,15 @@ export function Bodies() {
   const setStats = useUi((s) => s.setStats)
   const section = useUi((s) => s.section)
   const clip = useMemo(() => (section.on ? [sectionPlane(section)] : []), [section])
+  const active = useDoc((s) => s.activeOcc)
+  const assembly = useDoc((s) => s.assembly)
+  const overlap = useAssemblyRuntime((s) => s.interference)
+  const flagged = useMemo(() => new Set((overlap?.hits ?? []).flatMap((h) => [`${h.a.occ}|${h.a.body}`, `${h.b.occ}|${h.b.body}`])), [overlap])
 
   useEffect(() => {
-    const tris = geometry.filter((b) => !hidden[b.id]).reduce((n, b) => n + b.mesh.indices.length / 3, 0)
+    const tris = instances.filter((i) => !instanceHidden(i, hidden)).reduce((n, i) => n + i.body.mesh.indices.length / 3, 0)
     setStats({ triangles: tris })
-  }, [geometry, hidden, setStats])
+  }, [instances, hidden, setStats])
 
   const mats = useMemo<Mats>(() => {
     const base = new MeshStandardMaterial({
@@ -100,15 +111,23 @@ export function Bodies() {
     })
     const hi = new MeshBasicMaterial({ color: colors.accent, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: DoubleSide, clippingPlanes: clip })
     const dim = new MeshStandardMaterial({ color: colors.body, roughness: 0.62, metalness: 0.05, side: DoubleSide, transparent: true, opacity: 0.28, depthWrite: false, clippingPlanes: clip })
-    return { base, hi, dim }
+    const flag = new MeshStandardMaterial({ color: '#d9625a', roughness: 0.55, metalness: 0.05, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes: clip, wireframe: displayMode === 'wireframe' })
+    return { base, hi, dim, flag }
   }, [displayMode, colors, clip])
 
   return (
     <>
       <group name="bodies">
-        {geometry.map((b, i) => (hidden[b.id] ? null : <BodyView key={b.key} body={b} mats={mats} colors={colors} index={i} clip={clip[0]} dimmed={previewDim.includes(b.id)} />))}
+        {instances.map((i, n) => (instanceHidden(i, hidden) ? null : (
+          <BodyView
+            key={i.key + '|' + i.body.key} inst={i} mats={mats} colors={colors} index={n} clip={clip[0]}
+            dimmed={previewDim.includes(i.body.id) || instanceDimmed(i, active)}
+            flagged={flagged.has(i.key)}
+            pickable={instancePickable(i, { activeOcc: active, assembly })}
+          />
+        )))}
       </group>
-      {geometry.length === 0 && <ShaderWarmup material={mats.base} />}
+      {instances.length === 0 && <ShaderWarmup material={mats.base} />}
     </>
   )
 }
@@ -129,7 +148,8 @@ function ShaderWarmup({ material }: { material: Material }) {
   return <mesh name="warmup" geometry={geo} material={material} frustumCulled={false} raycast={noRaycast} />
 }
 
-function BodyView({ body, mats, colors, index, clip, dimmed }: { body: Body; mats: Mats; colors: ReturnType<typeof useVpColors>; index: number; clip?: Plane; dimmed?: boolean }) {
+function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }: { inst: Instance; mats: Mats; colors: ReturnType<typeof useVpColors>; index: number; clip?: Plane; dimmed?: boolean; flagged?: boolean; pickable: boolean }) {
+  const body = inst.body
   const capSize = useSceneHalfSize() * 2
   const geo = useMemo(() => buildGeometry(body), [body])
   useEffect(() => () => geo.dispose(), [geo])
@@ -147,51 +167,88 @@ function BodyView({ body, mats, colors, index, clip, dimmed }: { body: Body; mat
   const setHover = useUi((s) => s.setHover)
   const setSelection = useUi((s) => s.setSelection)
   const move = useMove()
+  const snapping = useUi((s) => s.pickKinds.includes('snap'))
+  const dragging = useAssemblyRuntime((s) => s.tool === 'drag')
 
   // while sketching, body faces / edges are only pickable for the Project tool
   const sketchMode = useUi((s) => s.sketchMode)
   const projecting = useSketch((s) => s.active && s.tool === 'project')
   const sketching = sketchMode && !projecting
   const painting = useHairPaint((s) => s.mode !== 'off')
-  const pickFaces = filter !== 'edge' && !sketching && !painting
+  const byComponent = filter === 'component' && !!inst.occ
+  const pickFaces = filter !== 'edge' && !sketching && !painting && !snapping && !dragging
   const showEdges = displayMode !== 'shaded' || filter === 'edge'
+  const path = inst.occ || undefined
   const refFor = (e: ThreeEvent<PointerEvent | MouseEvent>): SelectionRef =>
-    filter === 'body' ? { kind: 'body', id: body.id } : { kind: 'face', id: body.id, index: body.mesh.faceIds[e.faceIndex ?? 0] ?? 0 }
+    byComponent ? { kind: 'component', id: inst.occ }
+      : filter === 'body' || filter === 'component' ? { kind: 'body', id: body.id, path }
+        : { kind: 'face', id: body.id, index: body.mesh.faceIds[e.faceIndex ?? 0] ?? 0, path }
+  // feature tools work on the geometry as its component defines it: instances they cannot address do not take their picks
+  const canPick = pickable || byComponent
+  const meshRaycast = canPick || snapping || dragging ? Mesh.prototype.raycast : noRaycast
 
   const highlight = useUi((s) => s.highlight)
+  const mine = (r: SelectionRef) => (r.kind === 'component' ? within(inst.path, r.id) : r.id === body.id && (r.path === undefined || r.path === inst.occ))
   // a very large mesh is a single face: tinting all of it on hover would draw millions of triangles again for no information
-  const active = [...selection, ...highlight, ...(hover && !body.mesh.lod ? [hover] : [])].filter((r) => r.id === body.id)
+  const active = [...selection, ...highlight, ...(hover && !body.mesh.lod ? [hover] : [])].filter(mine)
   const faceSet = useMemo(() => new Set(active.filter((r) => r.kind === 'face').map((r) => r.index!)), [selection, highlight, hover]) // eslint-disable-line react-hooks/exhaustive-deps
   // every face picked is the whole body (a very large mesh is one face): tint the geometry as it is instead of copying millions of indices
-  const wholeBody = active.some((r) => r.kind === 'body') || (faceSet.size > 0 && faceSet.size >= (body.mesh.faceCount ?? Infinity))
+  const wholeBody = active.some((r) => r.kind === 'body' || r.kind === 'component') || (faceSet.size > 0 && faceSet.size >= (body.mesh.faceCount ?? Infinity))
   const overlayGeo = useMemo(() => (!wholeBody && faceSet.size ? faceSubset(body, geo, faceSet) : null), [wholeBody, faceSet, body, geo])
   useEffect(() => () => overlayGeo?.dispose(), [overlayGeo])
 
   const matrix = useMemo(() => {
-    if (!move.active || !move.bodyIds.includes(body.id)) return null
-    return new Matrix4().fromArray(composeTransform({ pivot: move.pivot, translate: move.translate, rotate: move.rotate, scale: move.scale }))
-  }, [move.active, move.bodyIds, move.pivot, move.translate, move.rotate, move.scale, body.id])
+    const placed = !isIdentity(inst.world)
+    const moving = move.active && move.bodyIds.includes(body.id)
+    if (!placed && !moving) return null
+    const m = new Matrix4().fromArray(inst.world)
+    if (moving) m.multiply(new Matrix4().fromArray(composeTransform({ pivot: move.pivot, translate: move.translate, rotate: move.rotate, scale: move.scale })))
+    return m
+  }, [inst.world, move.active, move.bodyIds, move.pivot, move.translate, move.rotate, move.scale, body.id])
+
+  const snapAt = (e: ThreeEvent<PointerEvent | MouseEvent>) => {
+    const local = point(invert(inst.world), [e.point.x, e.point.y, e.point.z])
+    return nearestSnaps(snapPoints(body), local)
+  }
 
   return (
-    <group matrixAutoUpdate={matrix === null} matrix={matrix ?? undefined}>
-      {lodGeo && <mesh ref={lodRef} geometry={lodGeo} material={dimmed ? mats.dim : mats.base} visible={false} raycast={noRaycast} />}
-      <mesh
-        ref={fullRef}
-        geometry={geo}
-        material={dimmed ? mats.dim : mats.base}
-        onPointerMove={pickFaces ? (e) => { e.stopPropagation(); const r = refFor(e); if (!sameRef(useUi.getState().hover, r)) setHover(r) } : undefined}
-        onPointerOut={() => setHover(null)}
-        onClick={pickFaces ? (e) => { e.stopPropagation(); const r = refFor(e); useLastPick.setState((s) => ({ point: [e.point.x, e.point.y, e.point.z], ref: r, seq: s.seq + 1 })); setSelection([r], e.shiftKey || e.ctrlKey) } : undefined}
-      />
-      {clip && <SectionCap geometry={geo} plane={clip} color={CAP_COLORS[index % CAP_COLORS.length]} order={20 + index * 4} size={capSize} />}
-      {wholeBody && <mesh geometry={showLod ? lodGeo! : geo} material={mats.hi} raycast={() => null} renderOrder={2} />}
-      {overlayGeo && <mesh geometry={overlayGeo} material={mats.hi} raycast={() => null} renderOrder={2} />}
-      {showEdges && <EdgeLines body={body} color={colors.edge} accent={colors.accent} pickable={filter === 'edge' && !sketching} clip={mats.base.clippingPlanes ?? []} />}
-    </group>
+    <>
+      <group matrixAutoUpdate={matrix === null} matrix={matrix ?? undefined}>
+        {lodGeo && <mesh ref={lodRef} geometry={lodGeo} material={flagged ? mats.flag : dimmed ? mats.dim : mats.base} visible={false} raycast={noRaycast} />}
+        <mesh
+          ref={fullRef}
+          geometry={geo}
+          material={flagged ? mats.flag : dimmed ? mats.dim : mats.base}
+          raycast={meshRaycast}
+          onPointerDown={dragging ? (e) => { if (e.button === 0) { e.stopPropagation(); beginDrag(e, inst) } } : undefined}
+          onPointerMove={
+            snapping
+              ? (e) => { e.stopPropagation(); const s = snapAt(e); useAssemblyRuntime.getState().setSnapHover(s ? { inst: inst.key, index: s.nearest, near: s.near } : null) }
+              : pickFaces && canPick ? (e) => { e.stopPropagation(); const r = refFor(e); if (!sameRef(useUi.getState().hover, r)) setHover(r) } : undefined
+          }
+          onPointerOut={() => { setHover(null); if (snapping) useAssemblyRuntime.getState().setSnapHover(null) }}
+          onClick={
+            snapping
+              ? (e) => {
+                  e.stopPropagation()
+                  const s = snapAt(e)
+                  if (!s) return
+                  const sp = snapPoints(body)[s.nearest]
+                  setSelection([{ kind: 'snap', id: body.id, index: s.nearest, path, snap: snapSpec(body, sp, inst.occ || undefined) }])
+                }
+              : pickFaces && canPick ? (e) => { e.stopPropagation(); const r = refFor(e); useLastPick.setState((s) => ({ point: [e.point.x, e.point.y, e.point.z], ref: r, seq: s.seq + 1 })); setSelection([r], e.shiftKey || e.ctrlKey) } : undefined
+          }
+        />
+        {wholeBody && <mesh geometry={showLod ? lodGeo! : geo} material={mats.hi} raycast={() => null} renderOrder={2} />}
+        {overlayGeo && <mesh geometry={overlayGeo} material={mats.hi} raycast={() => null} renderOrder={2} />}
+        {showEdges && <EdgeLines body={body} inst={inst} color={colors.edge} accent={colors.accent} pickable={filter === 'edge' && !sketching && pickable && !snapping && !dragging} clip={mats.base.clippingPlanes ?? []} />}
+      </group>
+      {clip && <SectionCap geometry={geo} plane={clip} color={CAP_COLORS[index % CAP_COLORS.length]} order={20 + index * 4} size={capSize} matrix={matrix ?? undefined} />}
+    </>
   )
 }
 
-function EdgeLines({ body, color, accent, pickable, clip }: { body: Body; color: string; accent: string; pickable: boolean; clip: Plane[] }) {
+function EdgeLines({ body, inst, color, accent, pickable, clip }: { body: Body; inst: Instance; color: string; accent: string; pickable: boolean; clip: Plane[] }) {
   const geo = useMemo(() => {
     const g = new BufferGeometry()
     g.setAttribute('position', new BufferAttribute(body.mesh.edges, 3))
@@ -204,12 +261,13 @@ function EdgeLines({ body, color, accent, pickable, clip }: { body: Body; color:
   const setHover = useUi((s) => s.setHover)
   const setSelection = useUi((s) => s.setSelection)
   const ids = body.mesh.edgeIds
+  const path = inst.occ || undefined
   const edgeOf = (e: ThreeEvent<PointerEvent | MouseEvent>) => {
     const seg = Math.floor((e.index ?? 0) / 2)
     return ids ? ids[seg] : seg
   }
   const lit = useMemo(() => {
-    const set = new Set([...selection, ...highlight, ...(hover ? [hover] : [])].filter((r) => r.kind === 'edge' && r.id === body.id).map((r) => r.index!))
+    const set = new Set([...selection, ...highlight, ...(hover ? [hover] : [])].filter((r) => r.kind === 'edge' && r.id === body.id && (r.path === undefined || r.path === inst.occ)).map((r) => r.index!))
     const out: Vector3[][] = []
     if (!set.size) return out
     const p = body.mesh.edges
@@ -217,15 +275,15 @@ function EdgeLines({ body, color, accent, pickable, clip }: { body: Body; color:
       if (set.has(ids ? ids[s] : s)) out.push([new Vector3(p[s * 6], p[s * 6 + 1], p[s * 6 + 2]), new Vector3(p[s * 6 + 3], p[s * 6 + 4], p[s * 6 + 5])])
     }
     return out
-  }, [selection, highlight, hover, body, ids])
+  }, [selection, highlight, hover, body, ids, inst.occ])
   return (
     <group>
       <lineSegments
         geometry={geo}
         raycast={pickable ? LineSegments.prototype.raycast : noRaycast}
-        onPointerMove={pickable ? (e) => { e.stopPropagation(); setHover({ kind: 'edge', id: body.id, index: edgeOf(e) }) } : undefined}
+        onPointerMove={pickable ? (e) => { e.stopPropagation(); setHover({ kind: 'edge', id: body.id, index: edgeOf(e), path }) } : undefined}
         onPointerOut={() => setHover(null)}
-        onClick={pickable ? (e) => { e.stopPropagation(); setSelection([{ kind: 'edge', id: body.id, index: edgeOf(e) }], e.shiftKey || e.ctrlKey) } : undefined}
+        onClick={pickable ? (e) => { e.stopPropagation(); setSelection([{ kind: 'edge', id: body.id, index: edgeOf(e), path }], e.shiftKey || e.ctrlKey) } : undefined}
       >
         <lineBasicMaterial color={color} clippingPlanes={clip} />
       </lineSegments>

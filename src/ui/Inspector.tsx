@@ -178,7 +178,7 @@ function SelectionRef({ def, value, onChange, active, onActivate }: { def: Selec
   )
 }
 
-const KIND_OF: Record<string, string> = { body: 'body', mesh: 'body', face: 'face', edge: 'edge', sketch: 'sketch', plane: 'plane', axis: 'axis', point: 'point', vertex: 'vertex', feature: 'feature' }
+const KIND_OF: Record<string, string> = { body: 'body', mesh: 'body', face: 'face', edge: 'edge', sketch: 'sketch', plane: 'plane', axis: 'axis', point: 'point', vertex: 'vertex', feature: 'feature', snap: 'snap', component: 'component' }
 
 /** Schema-driven feature dialog. Renders `ui.inspector` (any ParamSchema) with OK / Cancel. */
 export function Inspector() {
@@ -217,6 +217,11 @@ function InspectorForm({ session }: { session: InspectorSession }) {
   useEffect(() => {
     const ps = picks()
     if (ps.length && !activeRef.current) activate((ps.find((p) => !(latest.current[p.key] as string[])?.length) ?? ps[0]).key)
+    else if (activeRef.current) {
+      // a remount (StrictMode does that in dev) ran the cleanup below first: only the pick kinds need setting again
+      const d = ps.find((p) => p.key === activeRef.current)
+      useUi.setState({ pickSketches: !!d?.accepts.includes('sketch'), pickKinds: (d?.accepts ?? []) as never })
+    }
     const restore = prevFilter.current
     return () => {
       useUi.setState({ pickSketches: false, pickKinds: [] })

@@ -1,11 +1,13 @@
-/** `.caddy` = zip of document.json + blobs/<id> (import sources) + thumbnail.png. Fully regenerable from the timeline. */
-import { strFromU8, strToU8, unzipSync, zip, type Zippable } from 'fflate'
+/** `.caddy` = zip of document.json + blobs/<id> (import sources, linked component files) + thumbnail.png + history/ (older versions). Fully regenerable from the timeline. */
+import { strToU8, unzipSync, zip, type Zippable } from 'fflate'
 import { clearCache } from '@/doc/engine'
 import { useDoc } from '@/doc/store'
-import type { DocData } from '@/doc/types'
 import { captureThumbnail } from '@/viewport/capture'
 import { appendVersion, hashOf, historyFiles, pruneHistory, readHistory } from '@/history/pack'
 import { cloneHistory, historyData, setHistory, useHistory } from '@/history/store'
+import { parseProject } from './projectParse'
+
+export { parseProject }
 
 const FORMAT = 1
 
@@ -33,8 +35,9 @@ export async function serializeProject(withThumbnail = true, opts: { note?: stri
   const data = s.getData()
   const referenced = new Set<string>()
   for (const f of data.features) for (const v of Object.values(f.params)) if (typeof v === 'string' && s.blobs[v]) referenced.add(v)
+  for (const e of data.assembly.externals) if (s.blobs[e.blob]) referenced.add(e.blob)
   // state/error are derived, not persisted
-  const features = data.features.map(({ id, type, name, suppressed, params }) => ({ id, type, name, suppressed, params }))
+  const features = data.features.map(({ id, type, name, suppressed, params, component }) => ({ id, type, name, suppressed, params, ...(component ? { component } : {}) }))
   const docText = JSON.stringify({ format: FORMAT, app: 'CADdy McCADFace', ...data, features })
   const files: Record<string, Uint8Array> = { 'document.json': strToU8(docText) }
   for (const id of referenced) files['blobs/' + id] = s.blobs[id]
@@ -51,27 +54,6 @@ export async function serializeProject(withThumbnail = true, opts: { note?: stri
   const out = await zipAsync(files)
   if (opts.append) candidates.set(out, hist)
   return out
-}
-
-export function parseProject(bytes: Uint8Array): { data: DocData; blobs: Record<string, Uint8Array> } {
-  const files = unzipSync(bytes)
-  const raw = files['document.json']
-  if (!raw) throw new Error('Not a CADdy McCADFace project (document.json missing)')
-  const j = JSON.parse(strFromU8(raw))
-  const blobs: Record<string, Uint8Array> = {}
-  for (const [k, v] of Object.entries(files)) if (k.startsWith('blobs/')) blobs[k.slice(6)] = v
-  const data: DocData = {
-    name: j.name ?? 'Untitled',
-    features: (j.features ?? []).map((f: { id: string; type: string; name: string; suppressed?: boolean; params: DocData['features'][number]['params'] }) => ({
-      ...f, suppressed: !!f.suppressed, state: f.suppressed ? 'suppressed' : 'ok',
-    })),
-    rollback: j.rollback ?? (j.features ?? []).length,
-    userParams: j.userParams ?? [],
-    bodyNames: j.bodyNames ?? {},
-    configs: j.configs ?? [],
-    activeConfig: j.activeConfig ?? null,
-  }
-  return { data, blobs }
 }
 
 export function loadProject(bytes: Uint8Array) {
