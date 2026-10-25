@@ -20,6 +20,8 @@ features are registered with `registerFeature` from `src/doc/registry.ts`. the e
 3. import your file in `src/app/docCommands.ts` and add a command in `src/app/commands.ts` so it shows up in the ribbon, menus and command palette
 4. write a unit test or an e2e spec for it
 
+if the feature is more of a personal tool than something for everyone, you don't need to touch the app at all: write a plugin instead, see docs/plugins.md.
+
 ## tests
 
 all of these have to pass before a PR gets merged (CI runs them):
