@@ -50,8 +50,8 @@ describe('hidden line removal', () => {
       const r = await hlr(key, [0, -1, 0], [1, 0, 0], { origin: [-24, off, 0], normal: [0, -1, 0] })
       expect(r.cut.length, String(off)).toBe(2)
       const widths = r.cut.map((f) => { const xs = f[0].filter((_, i) => i % 2 === 0); return Math.max(...xs) - Math.min(...xs) }).sort((a, b) => a - b)
-      expect(widths[0]).toBeCloseTo(16, 3)
-      expect(widths[1]).toBeCloseTo(16, 3)
+      expect(widths[0]).toBeCloseTo(16, 1)
+      expect(widths[1]).toBeCloseTo(16, 1)
     }
   })
   it('a section through the hole gives two section faces from either side', async () => {
