@@ -77,12 +77,11 @@ describe('exact clearance and interference of B-reps', () => {
     expect(clearance([], [{ key: b.key, matrix: translation([0, 0, 0]) }])).toBeNull()
   })
 
-  it('a mesh body is measured on its triangles', () => {
+  it('leaves mesh bodies to the caller (they are measured on the main thread)', () => {
     const a = cyl('c1')
     const boxBody = bodyFromShape('bx', 'bx', box([4, 4, 4], [0, 0, 0]))
     const mesh = bodyFromTopo('m', 'm', getTopo(boxBody.key))
-    const r = clearance([{ key: a.key, matrix: translation([0, 0, 0]) }], [{ key: mesh.key, matrix: translation([9, 0, 0]) }])!
-    expect(r.distance).toBeCloseTo(2, 3) // cylinder surface at 5, box face at 9 - 2
+    expect(clearance([{ key: a.key, matrix: translation([0, 0, 0]) }], [{ key: mesh.key, matrix: translation([9, 0, 0]) }])).toBeNull()
   })
 
   it('the overlap of two cylinders is the exact lens volume', async () => {

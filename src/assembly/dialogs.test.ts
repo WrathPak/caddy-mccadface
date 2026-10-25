@@ -161,6 +161,25 @@ describe('snap picking and references', () => {
   })
 })
 
+describe('clearance between components', () => {
+  it('is exact between solids and measured on triangles when a mesh body is involved', async () => {
+    const { clearanceBetween } = await import('./check')
+    const { makeCylinder } = await import('replicad')
+    const { bodyFromShape, bodyFromTopo, getTopo } = await import('@/kernel/store')
+    const { translation } = await import('./matrix')
+    const cyl = bodyFromShape('c1', 'c1', makeCylinder(5, 10) as never)
+    const cyl2 = bodyFromShape('c2', 'c2', makeCylinder(5, 10) as never)
+    const exact = await clearanceBetween([{ body: cyl, world: translation([0, 0, 0]) }], [{ body: cyl2, world: translation([10.2, 0, 0]) }])
+    expect(exact!.distance).toBeGreaterThan(0.199)
+    expect(exact!.distance).toBeLessThan(0.201)
+    const mesh = bodyFromTopo('m', 'm', getTopo(cyl2.key))
+    const mixed = await clearanceBetween([{ body: cyl, world: translation([0, 0, 0]) }], [{ body: mesh, world: translation([10.2, 0, 0]) }])
+    expect(mixed!.distance).toBeGreaterThan(0.15)
+    expect(mixed!.distance).toBeLessThan(0.3)
+    expect(await clearanceBetween([], [{ body: cyl2, world: translation([0, 0, 0]) }])).toBeNull()
+  })
+})
+
 describe('motion study and explode steps', () => {
   it('interpolates keyframes in a straight line and holds the ends', () => {
     const frames = [{ t: 4, v: 90 }, { t: 0, v: 0 }, { t: 2, v: 30 }]

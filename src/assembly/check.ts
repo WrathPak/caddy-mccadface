@@ -1,6 +1,9 @@
 /** Interference check and clearance report over the assembled (not exploded) pose of the document. */
 import { useDoc } from '@/doc/store'
 import { getKernel } from '@/kernel/client'
+import type { Body } from '@/kernel/types'
+import type { Mat4 } from './matrix'
+import { minClearance, type PlacedMesh } from './clearance'
 import type { Vec3 } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import { occLabel, subtree } from './actions'
@@ -46,14 +49,29 @@ export async function runInterference(occs: string[] = []): Promise<Interference
 }
 
 /** Smallest distance between two components (everything inside each counts). */
+/**
+ * Smallest distance between two sets of placed bodies. B-rep against B-rep is exact (OpenCascade, in the kernel); any pair with a
+ * mesh body is measured triangle to triangle here.
+ */
+export async function clearanceBetween(a: { body: Body; world: Mat4 }[], b: { body: Body; world: Mat4 }[], kernel = getKernel()): Promise<{ distance: number; pa: Vec3; pb: Vec3 } | null> {
+  let best: { distance: number; pa: Vec3; pb: Vec3 } | null = null
+  const take = (r: { distance: number; pa: number[]; pb: number[] } | null) => { if (r && (!best || r.distance < best.distance)) best = { distance: r.distance, pa: r.pa as Vec3, pb: r.pb as Vec3 } }
+  const solid = (x: { body: Body }) => x.body.kind === 'brep'
+  const exactA = a.filter(solid), exactB = b.filter(solid)
+  if (exactA.length && exactB.length) take((await kernel.call('assemblyClearance', { a: exactA.map((i) => ({ key: i.body.key, matrix: i.world })), b: exactB.map((i) => ({ key: i.body.key, matrix: i.world })) })) as never)
+  const mesh = (i: { body: Body; world: Mat4 }): PlacedMesh => ({ positions: i.body.mesh.positions, indices: i.body.mesh.indices, matrix: i.world })
+  for (const x of a) for (const y of b) if (!solid(x) || !solid(y)) take(minClearance([mesh(x)], [mesh(y)]))
+  return best
+}
+
 export async function runClearance(occA: string, occB: string): Promise<ClearanceReport | null> {
   const a = useDoc.getState().assembly
   const all = assembledInstances()
   const items = (occ: string) => {
     const set = new Set(subtree(a, occ))
-    return all.filter((i) => i.path.split('/').some((o) => set.has(o))).map((i) => ({ key: i.body.key, matrix: i.world }))
+    return all.filter((i) => i.path.split('/').some((o) => set.has(o)))
   }
-  const r = (await getKernel().call('assemblyClearance', { a: items(occA), b: items(occB) })) as { distance: number; pa: number[]; pb: number[] } | null
+  const r = await clearanceBetween(items(occA), items(occB))
   if (!r) return null
   const report: ClearanceReport = {
     a: { occ: occA, name: labelOf(occA) },

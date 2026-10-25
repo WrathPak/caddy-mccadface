@@ -1,13 +1,13 @@
 /**
  * Worker ops for assemblies: interference and clearance between placed bodies and the STEP assembly writer (OCC XDE).
  * B-rep bodies are measured exactly with OpenCascade (boolean common volume, BRepExtrema_DistShapeShape); only mesh bodies
- * (and a mesh against a B-rep) go through manifold / the triangle distance.
+ * (and a mesh against a B-rep) go through manifold. Clearance of mesh bodies is measured on the main thread (assembly/check.ts),
+ * so this worker does not load the triangle distance code.
  */
 import { GCWithScope, cast, getOC, measureVolume, type AnyShape } from 'replicad'
 import { initOcc } from './occ'
 import { fromManifold, toManifold } from './mesh'
 import { getBrep, getStored, getTopo, registerOp } from './store'
-import { minClearance } from '../assembly/clearance'
 import type { TopoMesh, Vec3 } from './types'
 
 // ---------------------------------------------------------------- interference
@@ -120,10 +120,7 @@ registerOp<{ items: InterferenceItem[]; minVolume?: number; focus?: string[] }, 
 export interface ClearanceItem { key: string; matrix: number[] }
 export interface ClearanceResult { distance: number; pa: Vec3; pb: Vec3 }
 
-/**
- * Smallest distance between any body of `a` and any of `b` (each placed by its matrix). Two B-reps use BRepExtrema_DistShapeShape,
- * which is exact; a pair with a mesh body is measured triangle to triangle.
- */
+/** Smallest distance between any B-rep of `a` and any of `b` (each placed by its matrix), exact: BRepExtrema_DistShapeShape. Mesh bodies are skipped. */
 export function clearance(a: ClearanceItem[], b: ClearanceItem[]): ClearanceResult | null {
   const oc = getOC() as unknown as Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
   let best: ClearanceResult | null = null
@@ -136,9 +133,6 @@ export function clearance(a: ClearanceItem[], b: ClearanceItem[]): ClearanceResu
         if (!d.Perform() || !d.IsDone() || d.NbSolution() < 1) continue
         const p = d.PointOnShape1(1), q = d.PointOnShape2(1)
         take({ distance: d.Value(), pa: [p.X(), p.Y(), p.Z()], pb: [q.X(), q.Y(), q.Z()] })
-      } else {
-        const tx = getTopo(x.key), ty = getTopo(y.key)
-        take(minClearance([{ positions: tx.positions, indices: tx.indices, matrix: x.matrix }], [{ positions: ty.positions, indices: ty.indices, matrix: y.matrix }]))
       }
     }
   }
