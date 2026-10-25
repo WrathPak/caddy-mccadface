@@ -1,0 +1,35 @@
+.render-card { position: absolute; right: 8px; top: 8px; bottom: 40px; width: 262px; z-index: 6; display: flex; flex-direction: column; background: var(--bg-1); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: var(--shadow-float); font-size: var(--fs-sm); color: var(--text); overflow: hidden; }
+.render-scroll { overflow-y: auto; flex: 1; min-height: 0; }
+.render-sec { border-bottom: 1px solid var(--line); }
+.render-sec > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; font-weight: 600; font-size: var(--fs-md); cursor: default; user-select: none; }
+.render-sec > summary::-webkit-details-marker { display: none; }
+.render-sec > summary::after { content: ''; width: 6px; height: 6px; border-right: 1.5px solid var(--text-dim); border-bottom: 1.5px solid var(--text-dim); transform: rotate(45deg); margin-right: 3px; transition: transform 0.12s; }
+.render-sec[open] > summary::after { transform: rotate(-135deg); }
+.render-sec > summary:hover { background: var(--bg-hover); }
+.render-body { padding: 2px 8px 8px; display: flex; flex-direction: column; gap: 5px; }
+.render-row { display: flex; align-items: center; gap: 6px; color: var(--text-dim); min-height: 20px; }
+.render-row > span:first-child { flex: 0 0 82px; }
+.render-row input[type='number'], .render-row input[type='text'], .render-row select { flex: 1; min-width: 0; height: 20px; background: var(--bg-input); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 0 4px; font-family: var(--font-mono); font-size: var(--fs-sm); }
+.render-row select { font-family: var(--font-ui); }
+.render-row input:focus, .render-row select:focus { outline: none; border-color: var(--accent-line); }
+.render-row input[type='color'] { width: 28px; height: 20px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg-input); }
+.render-row input[type='checkbox'] { accent-color: var(--accent); margin: 0; }
+.render-row .unit { flex: 0 0 auto; color: var(--text-faint); }
+.render-btn { height: 22px; padding: 0 10px; background: var(--bg-3); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); font-size: var(--fs-sm); cursor: default; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.render-btn:hover:not(:disabled) { background: var(--bg-hover); }
+.render-btn:disabled { opacity: 0.45; }
+.render-btn.primary { background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); font-weight: 600; }
+.render-btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
+.render-btns { display: flex; gap: 6px; }
+.render-btns .render-btn { flex: 1; }
+.render-swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.render-swatch { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 3px 0 2px; background: transparent; border: 1px solid transparent; border-radius: var(--radius); color: var(--text-dim); font-size: var(--fs-xs); cursor: default; line-height: 1.1; text-align: center; }
+.render-swatch:hover { background: var(--bg-hover); color: var(--text); }
+.render-swatch .ball { width: 38px; height: 38px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.35); box-shadow: inset -4px -5px 8px rgba(0, 0, 0, 0.35), inset 3px 3px 6px rgba(255, 255, 255, 0.28); }
+.render-progress { height: 6px; background: var(--bg-input); border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; }
+.render-progress > div { height: 100%; background: var(--accent); transition: width 0.1s; }
+.render-status { color: var(--text-dim); line-height: 1.35; }
+.render-status.err { color: var(--danger); }
+.render-status.note { color: var(--warn); }
+.render-result { display: flex; flex-direction: column; gap: 5px; }
+.render-result img { width: 100%; max-height: 130px; object-fit: contain; background: var(--bg-0); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }

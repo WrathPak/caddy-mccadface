@@ -21,11 +21,12 @@ const bezPoint = (s: Extract<Seg, { k: 'b' }>, t: number): Vec2 => {
   return [u * u * u * s.a[0] + 3 * u * u * t * s.c1[0] + 3 * u * t * t * s.c2[0] + t * t * t * s.b[0], u * u * u * s.a[1] + 3 * u * u * t * s.c1[1] + 3 * u * t * t * s.c2[1] + t * t * t * s.b[1]]
 }
 
-/** Closed replicad Drawing from a loop of segments. */
-function loopDrawing(loop: Loop) {
+/** Closed replicad Drawing from a loop of segments. A lone circle is drawn counter-clockwise unless `ccw` is false (a hole needs the opposite winding to its outer boundary). */
+function loopDrawing(loop: Loop, ccw = true) {
   if (loop.length === 1 && loop[0].k === 'c') {
     const { c, r } = loop[0]
-    return draw([c[0] + r, c[1]]).threePointsArcTo([c[0] - r, c[1]], [c[0], c[1] + r]).threePointsArcTo([c[0] + r, c[1]], [c[0], c[1] - r]).close()
+    const up = ccw ? r : -r
+    return draw([c[0] + r, c[1]]).threePointsArcTo([c[0] - r, c[1]], [c[0], c[1] + up]).threePointsArcTo([c[0] + r, c[1]], [c[0], c[1] - up]).close()
   }
   // an untouched ellipse is drawn as the true ellipse (two half ellipses), not as its cubic approximation
   const first = loop[0]
@@ -54,13 +55,13 @@ export function planeOf(p: PlaneDef) {
 
 /** Outer wire and hole wires (opposite windings) of a profile on a plane. */
 export function profileWires(plane: Plane, pr: ProfileIn) {
-  const wire = (l: Loop, ccw: boolean) => (loopDrawing(oriented(l, ccw)).sketchOnPlane(plane) as unknown as { wire: Parameters<typeof makeFace>[0] }).wire
+  const wire = (l: Loop, ccw: boolean) => (loopDrawing(oriented(l, ccw), ccw).sketchOnPlane(plane) as unknown as { wire: Parameters<typeof makeFace>[0] }).wire
   return { outer: wire(pr.outer, true), holes: pr.holes.map((h) => wire(h, false)) }
 }
 
 /** Planar face (with holes) for a profile on a plane. */
 export function profileFace(plane: Plane, pr: ProfileIn): Face {
-  const wire = (l: Loop, ccw: boolean) => (loopDrawing(oriented(l, ccw)).sketchOnPlane(plane) as unknown as { wire: Parameters<typeof makeFace>[0] }).wire
+  const wire = (l: Loop, ccw: boolean) => (loopDrawing(oriented(l, ccw), ccw).sketchOnPlane(plane) as unknown as { wire: Parameters<typeof makeFace>[0] }).wire
   return makeFace(wire(pr.outer, true), pr.holes.map((h) => wire(h, false)))
 }
 

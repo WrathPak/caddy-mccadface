@@ -23,6 +23,7 @@ import { HairPaintTool, HairRegionOverlay } from '@/features/hair/PaintTool'
 import { HairDirectionOverlay, HairOverlayPass, HairPreviewLayer } from '@/features/hair/layer'
 import { DetailOverlay } from '@/features/detail/overlay'
 import { PrintCanvas } from '@/features/print/PrintCanvas'
+import { RenderScene } from '@/render/RenderScene'
 import { AssemblyLayer } from '@/assembly/AssemblyLayer'
 
 /**
@@ -139,6 +140,7 @@ export function Scene() {
       <HairPaintTool />
       <DetailOverlay />
       <PrintCanvas />
+      <RenderScene />
       <CaptureRegistrar />
       {import.meta.env.DEV && <DebugProbe />}
       <AoLayer />

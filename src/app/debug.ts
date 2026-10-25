@@ -15,6 +15,7 @@ import { usePreview } from '@/viewport/preview'
 import { usePlanes } from '@/sketch/planes'
 import { viewportBus } from '@/viewport/bus'
 import { navClock } from '@/viewport/navClock'
+import { drawingDebug } from '@/drawing/debug'
 import { assemblyDebug } from '@/assembly/debug'
 
 const frameHook: { redraw: (() => void) | null } = { redraw: null }
@@ -47,7 +48,7 @@ export function installDebugHandle() {
   ;(window as unknown as { __caddy: unknown }).__caddy = {
     doc: useDoc, ui: useUi, sketch: useSketch, hair: useHairView, preview: usePreview, planes: usePlanes, paint: useHairPaint, bus: viewportBus,
     ...((window as unknown as { __caddyExtra?: object }).__caddyExtra ?? {}),
-    assembly: assemblyDebug, nav: navTools, runCommand, regenerate, importFiles, saveDocument, serializeProject, parseProject,
+    assembly: assemblyDebug, nav: navTools, drawing: drawingDebug, runCommand, regenerate, importFiles, saveDocument, serializeProject, parseProject,
   }
 }
 

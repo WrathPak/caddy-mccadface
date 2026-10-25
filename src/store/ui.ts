@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
 
-export type Workspace = 'solid' | 'surface' | 'mesh' | 'hair'
+export type Workspace = 'solid' | 'surface' | 'mesh' | 'hair' | 'print' | 'drawing' | 'render'
 export type DisplayMode = 'shaded' | 'shadedEdges' | 'wireframe' | 'xray'
 export type Projection = 'perspective' | 'orthographic'
 export type Theme = 'dark' | 'light'
