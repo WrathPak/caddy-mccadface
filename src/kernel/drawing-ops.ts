@@ -99,10 +99,22 @@ function nearest(px: number, py: number, polys: Poly2[]): number {
 /** Hidden lines that lie exactly under a visible line (the far edge of a prism seen end on) are not drawn dashed on top of it. */
 function dropCovered(hidden: Poly2[], visible: Poly2[]): Poly2[] {
   return hidden.filter((h) => {
-    const n = h.length / 2
-    const stride = Math.max(1, Math.floor(n / 8))
-    for (let i = 0; i < n; i += stride) if (nearest(h[i * 2], h[i * 2 + 1], visible) > 1e-4) return true
-    return nearest(h[h.length - 2], h[h.length - 1], visible) > 1e-4
+    const total = polyLen(h)
+    if (total < 1e-9) return false
+    // test points spread along the line (the ends often touch other edges, so they say nothing)
+    for (const t of [0.15, 0.3, 0.45, 0.6, 0.75, 0.9]) {
+      let want = total * t
+      for (let i = 2; i < h.length; i += 2) {
+        const seg = Math.hypot(h[i] - h[i - 2], h[i + 1] - h[i - 1])
+        if (want <= seg || i === h.length - 2) {
+          const k = seg > 0 ? Math.min(1, want / seg) : 0
+          if (nearest(h[i - 2] + (h[i] - h[i - 2]) * k, h[i - 1] + (h[i + 1] - h[i - 1]) * k, visible) > 1e-4) return true
+          break
+        }
+        want -= seg
+      }
+    }
+    return false
   })
 }
 

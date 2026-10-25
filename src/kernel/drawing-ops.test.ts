@@ -34,7 +34,8 @@ describe('hidden line removal', () => {
     const xs = verticals.map((p) => Math.round(p[0] * 100) / 100).sort((a, b) => a - b)
     expect(xs).toContain(-4)
     expect(xs).toContain(4)
-    expect(r.hidden.length).toBeGreaterThanOrEqual(2)
+    expect(r.hidden.length).toBe(2)
+    expect(r.visible.length).toBe(4)
   })
   it('view axes: x is to the right and y is up', async () => {
     const b = bodyFromShape('c', 'C', box([40, 30, 10], [0, 0, 0]))
@@ -48,6 +49,6 @@ describe('hidden line removal', () => {
     // two section faces (left and right of the hole), each one loop
     expect(r.cut.length).toBe(2)
     expect(r.cut.every((f) => f.length === 1)).toBe(true)
-    expect(r.hidden.length).toBeGreaterThanOrEqual(0)
+    expect(r.visible.length).toBeGreaterThan(4)
   })
 })
