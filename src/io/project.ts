@@ -9,13 +9,15 @@ import { cloneHistory, historyData, setHistory, useHistory } from '@/history/sto
 
 const FORMAT = 1
 
-/** The history a save appended, waiting for the file to actually be written (see commitSavedHistory). */
-let candidate: ReturnType<typeof cloneHistory> | null = null
+/** The history a save appended, kept with the bytes it went into until they are written (see commitSavedHistory). */
+const candidates = new WeakMap<Uint8Array, ReturnType<typeof cloneHistory>>()
 
 /** Call once the bytes from `serializeProject(.., { append: true })` are safely written: the new version becomes part of the open project. */
-export function commitSavedHistory() {
-  if (candidate) setHistory(candidate)
-  candidate = null
+export function commitSavedHistory(bytes: Uint8Array) {
+  const h = candidates.get(bytes)
+  if (!h) return
+  candidates.delete(bytes)
+  setHistory(h)
   useHistory.setState({ pendingNote: null })
 }
 
@@ -42,12 +44,13 @@ export async function serializeProject(withThumbnail = true, opts: { note?: stri
     await appendVersion(hist, { docJson: docText, featureCount: features.length, blobs: Object.fromEntries([...referenced].map((id) => [id, s.blobs[id]])), note: opts.note ?? useHistory.getState().pendingNote ?? '' })
     const current = new Set(await Promise.all([...referenced].map((id) => hashOf(s.blobs[id]))))
     pruneHistory(hist, useHistory.getState().settings, current)
-    candidate = hist
   }
   Object.assign(files, historyFiles(hist, new Set(await Promise.all([...referenced].map((id) => hashOf(s.blobs[id]))))))
   const thumb = withThumbnail ? await captureThumbnail() : null
   if (thumb) files['thumbnail.png'] = thumb
-  return zipAsync(files)
+  const out = await zipAsync(files)
+  if (opts.append) candidates.set(out, hist)
+  return out
 }
 
 export function parseProject(bytes: Uint8Array): { data: DocData; blobs: Record<string, Uint8Array> } {
@@ -75,7 +78,6 @@ export function loadProject(bytes: Uint8Array) {
   const { data, blobs } = parseProject(bytes)
   clearCache()
   useDoc.getState().loadDocument(data, blobs)
-  candidate = null
   setHistory(readHistory(historyEntries(bytes), blobs))
   useHistory.setState({ pendingNote: null, previewing: null })
 }

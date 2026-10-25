@@ -87,7 +87,7 @@ export async function saveDocument(asNew = false, note?: string) {
     const name = useDoc.getState().name || 'Untitled'
     const h = await writeProject(bytes, name, asNew ? null : handle)
     if (h === undefined) return // cancelled
-    commitSavedHistory()
+    commitSavedHistory(bytes)
     handle = h
     if (h) useDoc.setState({ name: baseName(h.name) })
     useDoc.getState().markClean()
