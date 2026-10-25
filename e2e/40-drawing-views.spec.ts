@@ -6,7 +6,7 @@ test('DRAWING tab: empty state, ribbon groups, first base view', async ({ app, p
   await plate(app)
   await drawing(app)
   await expect(page.getByTestId('drawing-empty')).toBeVisible()
-  for (const name of ['New Sheet', 'Sheet Setup', 'Title Block', 'Base View', 'Projected', 'Section', 'Detail', 'Isometric', 'Linear', 'Aligned', 'Angular', 'Radius', 'Diameter', 'Ordinate', 'Baseline', 'Note', 'Leader', 'GD&T', 'Datum', 'Surface Finish', 'Balloon', 'Parts List', 'PDF', 'DXF', 'SVG']) {
+  for (const name of ['New Sheet', 'Setup', 'Title', 'Base View', 'Projected', 'Section', 'Detail', 'Iso', 'Linear', 'Aligned', 'Angular', 'Radius', 'Diameter', 'Ordinate', 'Baseline', 'Note', 'Leader', 'GD&T', 'Datum', 'Finish', 'Balloon', 'Parts List', 'PDF', 'DXF', 'SVG']) {
     await expect(app.ribbon(name).first()).toBeVisible()
   }
   await addBaseView(app)
@@ -64,7 +64,7 @@ test('projected views: top above and right on the right (third angle), then firs
   expect(right.pos[0]).toBeGreaterThan(fx)
   await app.shot('drawing-projected')
   // first angle projection swaps them
-  await app.ribbon('Sheet Setup').click()
+  await app.ribbon('Setup').click()
   await expect(app.inspector().locator('.panel-title')).toHaveText('Sheet')
   await app.inspector().getByRole('radio', { name: 'First angle' }).click()
   await app.ok()
@@ -139,7 +139,7 @@ test('isometric view does not overlap the first view', async ({ app }) => {
   await plate(app)
   await drawing(app)
   await addBaseView(app)
-  await addBaseView(app, 'Isometric', { ribbon: 'Isometric' })
+  await addBaseView(app, 'Isometric', { ribbon: 'Iso' })
   const s = await sheet(app)
   expect(s.views[1]).toMatchObject({ kind: 'iso', label: 'ISOMETRIC' })
   const a = await viewBox(app, s.views[0].id), b = await viewBox(app, s.views[1].id)

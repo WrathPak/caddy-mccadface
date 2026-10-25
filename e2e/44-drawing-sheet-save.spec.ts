@@ -7,7 +7,7 @@ test('sheet setup: size, orientation, projection and title block text', async ({
   await plate(app)
   await drawing(app)
   await addBaseView(app)
-  await app.ribbon('Sheet Setup').click()
+  await app.ribbon('Setup').click()
   await expect(app.inspector().locator('.panel-title')).toHaveText('Sheet')
   await app.field('Name', 'Plate drawing')
   await app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: 'Size' }) }).locator('button.sel').click()
@@ -24,7 +24,7 @@ test('sheet setup: size, orientation, projection and title block text', async ({
   expect(t).toContain('Mounting plate')
   expect(t).toContain('WM-7')
   // every standard size is offered
-  await app.ribbon('Sheet Setup').click()
+  await app.ribbon('Setup').click()
   await app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: 'Size' }) }).locator('button.sel').click()
   const opts = await page.getByRole('option').allTextContents()
   for (const n of ['A4', 'A3', 'A2', 'A1', 'A0', 'Letter', 'Legal', 'Tabloid']) expect(opts.some((o) => o.startsWith(n))).toBe(true)
@@ -36,7 +36,7 @@ test('the title block template is editable: rename, add and remove fields', asyn
   await plate(app)
   await drawing(app)
   await addBaseView(app)
-  await app.ribbon('Title Block').click()
+  await app.ribbon('Title').click()
   await expect(page.getByRole('dialog', { name: 'Title block template' })).toBeVisible()
   const row = page.getByTestId('tpl-row-material')
   await row.getByLabel('Label').fill('Finish')
@@ -52,7 +52,7 @@ test('the title block template is editable: rename, add and remove fields', asyn
   expect(tpl.cells.some((c: any) => c.key === 'checker')).toBe(true) // eslint-disable-line
   expect(tpl.h).toBe(52)
   // the new fields are in Sheet Setup, and their text lands in the block
-  await app.ribbon('Sheet Setup').click()
+  await app.ribbon('Setup').click()
   await app.field('Finish', 'Anodised')
   await app.field('Checked by', 'B.H.')
   await app.ok()
@@ -62,7 +62,7 @@ test('the title block template is editable: rename, add and remove fields', asyn
   expect(t).toContain('CHECKED BY')
   await page.evaluate(() => undefined)
   // reset to the standard block
-  await app.ribbon('Title Block').click()
+  await app.ribbon('Title').click()
   await page.getByTestId('template-reset').click()
   await page.getByTestId('template-ok').click()
   expect((await app.ev((c) => c.drawing.store.getState().doc.template)).cells.some((c: any) => c.key === 'checker')).toBe(false) // eslint-disable-line

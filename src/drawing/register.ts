@@ -33,11 +33,11 @@ const cmd = (id: string, label: string, tip: string, icon: typeof Cube, run: () 
   registerCommand({ id, label, tip, icon, category: 'Drawing', run })
 
 cmd('drawing.sheet.new', 'New Sheet', 'Add a sheet to the drawing', FilePlus, free(newSheet))
-cmd('drawing.sheet.setup', 'Sheet Setup', 'Paper size, projection, scale and the text in the title block', Sliders, free(sheetSetup))
-cmd('drawing.template', 'Title Block', 'Edit the title block layout: add, move and rename its fields', Table, free(openTemplate))
+cmd('drawing.sheet.setup', 'Setup', 'Paper size, projection, scale and the text in the title block', Sliders, free(sheetSetup))
+cmd('drawing.template', 'Title', 'Edit the title block layout: add, move and rename its fields', Table, free(openTemplate))
 
 cmd('drawing.view.base', 'Base View', 'A view of the model or one of its parts, from the front, top, right or any other side', Cube, free(() => startBaseView('front')))
-cmd('drawing.view.iso', 'Isometric', 'An isometric view of the model', CubeTransparent, free(() => startBaseView('iso')))
+cmd('drawing.view.iso', 'Iso', 'An isometric view of the model', CubeTransparent, free(() => startBaseView('iso')))
 cmd('drawing.view.projected', 'Projected', 'A view projected from another one, placed beside or above it (first or third angle)', BoundingBox, onView('view.projected'))
 cmd('drawing.view.section', 'Section', 'Cut the model along a line to show what is inside, with hatching', Scissors, onView('view.section'))
 cmd('drawing.view.detail', 'Detail', 'Draw a circle around a small feature and show it at a larger scale', MagnifyingGlassPlus, onView('view.detail'))
@@ -54,7 +54,7 @@ cmd('drawing.ann.note', 'Note', 'A block of text', NotePencil, onSheet('ann.note
 cmd('drawing.ann.leader', 'Leader', 'Text with an arrow pointing at a feature', ArrowBendUpRight, onSheet('ann.leader'))
 cmd('drawing.ann.gdt', 'GD&T', 'A geometric tolerance frame: position, flatness, parallelism and the rest', Target, onSheet('ann.gdt'))
 cmd('drawing.ann.datum', 'Datum', 'A datum feature symbol (A, B, C)', Hash, onSheet('ann.datum'))
-cmd('drawing.ann.finish', 'Surface Finish', 'A surface roughness symbol', Check, onSheet('ann.finish'))
+cmd('drawing.ann.finish', 'Finish', 'A surface roughness symbol', Check, onSheet('ann.finish'))
 cmd('drawing.ann.balloon', 'Balloon', 'A numbered balloon that points at a part, with the number from the parts list', NumberCircleOne, onSheet('ann.balloon'))
 cmd('drawing.ann.partsList', 'Parts List', 'A table of the parts of the model with their quantities', ListNumbers, onSheet('ann.partsList'))
 

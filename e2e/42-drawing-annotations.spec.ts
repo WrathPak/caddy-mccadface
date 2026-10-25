@@ -73,7 +73,7 @@ test('leader, GD&T frame, datum and surface finish', async ({ app, page }) => {
   await expect(app.inspector().locator('.panel-title')).toHaveText('Datum')
   await app.ok()
   // surface finish
-  await app.ribbon('Surface Finish').click()
+  await app.ribbon('Finish').click()
   await click(app, box[2] - 10, box[3])
   await expect(app.inspector().locator('.panel-title')).toHaveText('Surface finish')
   await app.field('Roughness Ra', '1.6')
