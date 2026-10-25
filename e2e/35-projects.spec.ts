@@ -154,3 +154,31 @@ test('browse a project folder: thumbnails, search, open, save back, rename, dupl
   await app.openPanel('History')
   await expect(page.getByTestId('history-row')).toHaveCount(1)
 })
+
+test('insert a project of the folder into the open one as a linked component or an embedded copy', async ({ app, page }) => {
+  await useFolder(page)
+  await app.open()
+  await seed(app, [{ path: 'Bracket.caddy', width: 30 }])
+  await app.ev((c) => c.doc.getState().addFeature('box', { width: 5, depth: 5, height: 5, position: [100, 0, 0] }))
+  await app.idle()
+  await app.openPanel('Projects')
+  await page.getByTestId('projects-panel').getByRole('button', { name: 'Choose folder' }).click()
+  await expect(rows(page)).toHaveCount(1)
+
+  await rows(page).first().click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Insert as linked component' }).click()
+  await expect.poll(() => app.ev((c) => c.doc.getState().assembly.externals.length)).toBe(1)
+  await app.idle()
+  const a = await app.ev((c) => c.doc.getState().assembly)
+  expect(a.externals[0]).toMatchObject({ fileName: 'Bracket.caddy', linked: true })
+  expect(a.components.some((x: { external?: string }) => x.external === a.externals[0].id)).toBe(true)
+  expect((await app.bodies()).length).toBe(2) // the box already there and the bracket's own
+
+  await rows(page).first().click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Insert as embedded copy' }).click()
+  await expect.poll(() => app.ev((c) => c.doc.getState().assembly.externals.length)).toBe(2)
+  await app.idle()
+  expect(await app.ev((c) => c.doc.getState().assembly.externals[1].linked)).toBe(false)
+  expect((await app.bodies()).length).toBe(3)
+  await app.shot('projects-insert-component')
+})

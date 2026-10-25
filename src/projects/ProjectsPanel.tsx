@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as CM from '@radix-ui/react-context-menu'
-import { ArrowCounterClockwise, CaretDown, CaretRight, Copy, Cube, FilePlus, Folder, FolderOpen, FolderPlus, MagnifyingGlass, PencilSimple, Trash, ArrowsClockwise, Plugs } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, CaretDown, CaretRight, Copy, Cube, FilePlus, Folder, FolderOpen, FolderPlus, MagnifyingGlass, PencilSimple, Trash, ArrowsClockwise, LinkSimple, Plugs } from '@phosphor-icons/react'
 import { useProjects, keyOf, canPickFolder } from './store'
 import { baseOf, filterNodes, type DirNode, type FileNode } from './library'
 import { readThumbnail } from './zipThumb'
@@ -85,7 +85,10 @@ function Row({ node, depth, showPath }: { node: FileNode; depth: number; showPat
         <CM.Content className="menu">
           <CM.Item className="menu-item" onSelect={() => void open(node)}><FolderOpen size={14} /> Open</CM.Item>
           {inserter && (
-            <CM.Item className="menu-item" onSelect={() => void inserter(node)}><Plugs size={14} /> Insert as component</CM.Item>
+            <>
+              <CM.Item className="menu-item" onSelect={() => void inserter(node, true)}><LinkSimple size={14} /> Insert as linked component</CM.Item>
+              <CM.Item className="menu-item" onSelect={() => void inserter(node, false)}><Plugs size={14} /> Insert as embedded copy</CM.Item>
+            </>
           )}
           <CM.Separator className="menu-sep" />
           <CM.Item className="menu-item" onSelect={() => startRename(k)}><PencilSimple size={14} /> Rename</CM.Item>

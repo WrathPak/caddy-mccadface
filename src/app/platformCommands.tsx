@@ -8,6 +8,7 @@ import { useNoteDialog } from '@/history/HistoryUi'
 import { ProjectsPanel } from '@/projects/ProjectsPanel'
 import { PluginsPanel } from '@/api/PluginsPanel'
 import '@/history/service'
+import '@/projects/insertComponent'
 
 registerPanel({ id: 'history', title: 'History', render: () => <HistoryPanel /> })
 registerCommand({

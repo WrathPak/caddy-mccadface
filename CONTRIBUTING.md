@@ -32,7 +32,7 @@ pnpm exec playwright test   # browser tests, takes a while
 
 the browser tests fail on any console error, so keep the console clean. if you only touched one area, running just the relevant spec while you work is fine, e.g. `pnpm exec playwright test e2e/02-box.spec.ts`.
 
-the big mesh spec (`e2e/25-big-mesh.spec.ts`) builds a production bundle with the debug handle switched on (`VITE_E2E=1`, into `dist-e2e`) and serves it with `vite preview`, because it measures main thread tasks and frame times and react's development build would swamp those. it makes a 150 MB stl in your temp folder the first time. run it with the cpu throttle off.
+the big mesh spec (`e2e/33-big-mesh.spec.ts`) builds a production bundle with the debug handle switched on (`VITE_E2E=1`, into `dist-e2e`) and serves it with `vite preview`, because it measures main thread tasks and frame times and react's development build would swamp those. it makes a 150 MB stl in your temp folder the first time. run it with the cpu throttle off.
 
 `scripts/slice-check.mjs` (hair) and `scripts/slice-check-print.mjs` (the print 3MF) need a local OrcaSlicer, so they aren't part of CI. run them yourself if you touch export code.
 
