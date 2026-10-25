@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Line } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import {
@@ -151,10 +151,18 @@ function ShaderWarmup({ material }: { material: Material }) {
 function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }: { inst: Instance; mats: Mats; colors: ReturnType<typeof useVpColors>; index: number; clip?: Plane; dimmed?: boolean; flagged?: boolean; pickable: boolean }) {
   const body = inst.body
   const capSize = useSceneHalfSize() * 2
-  const geo = useMemo(() => buildGeometry(body), [body])
-  useEffect(() => () => geo.dispose(), [geo])
   const lodGeo = useMemo(() => buildLodGeometry(body), [body])
   useEffect(() => () => lodGeo?.dispose(), [lodGeo])
+  // a very large mesh first shows its low-res copy; the full one (a tens of megabytes upload) is built and sent to the GPU a
+  // moment later, in a task of its own instead of the one that adds the body
+  const [fullReady, setFullReady] = useState(!body.mesh.lod)
+  useEffect(() => {
+    if (fullReady) return
+    const t = setTimeout(() => setFullReady(true), 400)
+    return () => clearTimeout(t)
+  }, [fullReady])
+  const geo = useMemo(() => (fullReady || !lodGeo ? buildGeometry(body) : lodGeo), [body, fullReady, lodGeo])
+  useEffect(() => () => geo.dispose(), [geo])
   const fullRef = useRef<Mesh>(null)
   const lodRef = useRef<Mesh>(null)
   // the low-res mesh is swapped in by the render loop (see motion.tsx); React only learns about it for the highlight below

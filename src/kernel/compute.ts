@@ -9,6 +9,7 @@ import { parseStlSoup, type MeshSource } from '@/io/stlStream'
 import { meshBoolean as manifoldBoolean, type BoolOp } from './mesh'
 import { DEFAULT_CREASE_DEG, meshDisplayAuto, weld } from './meshutil'
 import { buildLod } from './bigmesh'
+import { withBvh } from './bvhBuild'
 import type { MeshData, MeshLod, TopoMesh } from './types'
 
 export interface ImportedPart {
@@ -39,7 +40,7 @@ export async function importMesh(a: ImportArgs): Promise<ImportedPart[]> {
     if (a.scale !== 1) for (let k = 0; k < p.length; k++) p[k] *= a.scale
     const topo = weld(p, r.indices)
     if (!topo.indices.length) throw new Error('The file has no usable triangles')
-    return { name: r.name, topo, display: meshDisplayAuto(topo, a.creaseDeg ?? DEFAULT_CREASE_DEG) }
+    return { name: r.name, topo, display: withBvh(meshDisplayAuto(topo, a.creaseDeg ?? DEFAULT_CREASE_DEG)) }
   })
 }
 

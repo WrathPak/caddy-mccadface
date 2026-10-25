@@ -21,8 +21,7 @@ test.afterAll(() => stopServer?.())
 
 test.skip(Number(process.env.E2E_CPU_THROTTLE ?? 1) > 1, 'the frame rate check needs an unthrottled CPU')
 
-// shared CI runners run two browsers at once on software GL: the limits get some room there, on a desktop they are as stated
-const slack = process.env.CI ? 3 : 1
+const slack = 1
 
 async function watchLongTasks(app: App) {
   await app.page.evaluate(() => {

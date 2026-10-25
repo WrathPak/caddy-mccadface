@@ -3,9 +3,7 @@
  * LARGE_MESH_TRIS, and a vertex-clustering decimator that produces the low-res mesh the viewport draws while orbiting.
  * Pure functions on typed arrays, so they run in the kernel worker, in the compute pool, and in Node tests.
  */
-import { BufferAttribute, BufferGeometry } from 'three'
-import { MeshBVH } from 'three-mesh-bvh'
-import { bbox, type MeshBvh, type MeshData, type MeshLod, type TopoMesh } from './types'
+import { bbox, type MeshData, type MeshLod, type TopoMesh } from './types'
 
 /** Above this many triangles a mesh body skips crease segmentation and feature edges (it is one face) and gets a LOD mesh. */
 export const LARGE_MESH_TRIS = 400_000
@@ -206,25 +204,6 @@ export function buildLod(positions: Float32Array, indices: Uint32Array, target =
   return { positions: lp, normals: vertexNormals(lp, idx), indices: idx }
 }
 
-/** Build the picking BVH for an indexed mesh (indirect, so `indices` is left untouched). */
-export function buildMeshBvh(positions: Float32Array, indices: Uint32Array): MeshBvh {
-  const g = new BufferGeometry()
-  g.setAttribute('position', new BufferAttribute(positions, 3))
-  g.setIndex(new BufferAttribute(indices, 1))
-  const bvh = new MeshBVH(g, { indirect: true })
-  const s = MeshBVH.serialize(bvh, { cloneBuffers: false })
-  return { roots: s.roots as ArrayBuffer[], indirect: s.indirectBuffer as Uint32Array }
-}
-
-/** Bodies with more triangles than this come with their picking BVH, built in the worker (building one on the main thread takes a visible pause). */
-export const BVH_WORKER_TRIS = 30_000
-
-/** Give a display mesh its BVH when it is big enough to be worth building off the main thread. */
-export function withBvh(m: MeshData): MeshData {
-  if (!m.bvh && m.indices.length / 3 > BVH_WORKER_TRIS) m.bvh = buildMeshBvh(m.positions, m.indices)
-  return m
-}
-
 /** Display data of a very large mesh: indexed, smooth vertex normals, a single face, no feature edges, plus the LOD mesh. */
 export function meshDisplayLarge(topo: TopoMesh): MeshData {
   const positions = topo.positions.slice()
@@ -239,7 +218,6 @@ export function meshDisplayLarge(topo: TopoMesh): MeshData {
     faceCount: 1,
     edgeCount: 0,
     lod: buildLod(positions, indices),
-    bvh: buildMeshBvh(positions, indices),
     bounds: bbox(positions),
   }
 }

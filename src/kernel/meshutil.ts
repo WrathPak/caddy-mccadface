@@ -1,5 +1,5 @@
 import type { MeshData, TopoMesh } from './types'
-import { isLargeTopo, meshDisplayLarge, weld, withBvh } from './bigmesh'
+import { isLargeTopo, meshDisplayLarge, weld } from './bigmesh'
 
 export { weld }
 
@@ -292,5 +292,5 @@ export function topoVolume(t: TopoMesh): number {
 
 /** Display data for any mesh body: the full face / edge analysis, or the cheap path for multi-million triangle meshes. */
 export function meshDisplayAuto(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG): MeshData {
-  return withBvh(isLargeTopo(topo) ? meshDisplayLarge(topo) : meshDisplay(topo, creaseDeg))
+  return isLargeTopo(topo) ? meshDisplayLarge(topo) : meshDisplay(topo, creaseDeg)
 }

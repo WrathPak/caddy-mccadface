@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { BufferAttribute, BufferGeometry, Raycaster, Vector3 } from 'three'
 import { MeshBVH } from 'three-mesh-bvh'
-import { buildLod, buildMeshBvh, IntMap, meshDisplayLarge, vertexNormals, weld } from './bigmesh'
+import { buildLod, IntMap, meshDisplayLarge, vertexNormals, weld } from './bigmesh'
 import { meshDisplayAuto } from './meshutil'
+import { buildMeshBvh, withBvh } from './bvhBuild'
 import { topoVolume } from './meshutil'
 import type { TopoMesh } from './types'
 import { heightfield, soupOf } from './testMesh'
@@ -86,7 +87,7 @@ describe('large mesh display', () => {
 
   it('a mesh over the limit gets the cheap display path with a LOD and a usable BVH', () => {
     const t = heightfield(450) // 405k triangles
-    const m = meshDisplayAuto(t)
+    const m = withBvh(meshDisplayAuto(t))
     expect(m.lod).toBeTruthy()
     expect(m.faceCount).toBe(1)
     expect(m.faceIds.length).toBe(405_000)
@@ -106,7 +107,7 @@ describe('large mesh display', () => {
 
   it('small meshes keep the full analysis (several faces, edges, no LOD)', () => {
     const t = heightfield(8)
-    const m = meshDisplayAuto(t)
+    const m = withBvh(meshDisplayAuto(t))
     expect(m.lod).toBeUndefined()
     expect(m.bvh).toBeUndefined()
   })
