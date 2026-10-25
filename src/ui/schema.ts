@@ -155,7 +155,7 @@ export function missingRequired(schema: ParamSchema, values: ParamValues): strin
     .map((d) => d.label + ((d.min ?? 1) > 1 ? ` (at least ${d.min})` : ''))
 }
 
-/** Demo schema (Extrude-like) so the Inspector is visible. Later agents replace with real ones. */
+/** Demo schema (Extrude-like) so the Inspector is visible. The real schemas live with their features. */
 export const demoExtrudeSchema: ParamSchema = {
   id: 'demo.extrude',
   title: 'Extrude',

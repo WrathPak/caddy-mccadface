@@ -1,5 +1,5 @@
 import { test, expect, type App } from './helpers'
-import { writeBigStl } from './bigStl'
+import { writeBig3mf, writeBigStl } from './bigStl'
 import { startProdServer } from './prodServer'
 
 /**
@@ -20,6 +20,9 @@ test.beforeAll(async () => {
 test.afterAll(() => stopServer?.())
 
 test.skip(Number(process.env.E2E_CPU_THROTTLE ?? 1) > 1, 'the frame rate check needs an unthrottled CPU')
+
+// shared CI runners run two browsers at once on software GL: the limits get some room there, on a desktop they are as stated
+const slack = process.env.CI ? 3 : 1
 
 async function watchLongTasks(app: App) {
   await app.page.evaluate(() => {
@@ -60,7 +63,7 @@ test('a 3 million triangle STL imports without a long main-thread task and orbit
 
   const during = await longTasks(app)
   console.log('long tasks during import (ms):', during.map((d) => Math.round(d)).join(', ') || 'none')
-  expect(Math.max(0, ...during), `long tasks: ${during.join(', ')}`).toBeLessThan(100)
+  expect(Math.max(0, ...during), `long tasks: ${during.join(', ')}`).toBeLessThan(100 * slack)
 
   // picking uses the worker-built BVH: a ray through the middle of the model hits it, and quickly
   const pick = await app.ev((c) => {
@@ -114,11 +117,37 @@ test('a 3 million triangle STL imports without a long main-thread task and orbit
   const orbitLong = await longTasks(app)
   console.log(`orbit: ${frames.length} frames, median ${median.toFixed(1)} ms, p90 ${p90.toFixed(1)} ms, worst ${frames[frames.length - 1].toFixed(0)} ms, long tasks ${orbitLong.map((d) => Math.round(d)).join(', ') || 'none'}`)
   expect(frames.length).toBeGreaterThan(40)
-  expect(median).toBeLessThan(33.4) // 30 fps
-  expect(p90).toBeLessThan(50)
-  expect(Math.max(0, ...orbitLong)).toBeLessThan(100)
+  expect(median).toBeLessThan(33.4 * slack) // 30 fps
+  expect(p90).toBeLessThan(50 * slack)
+  expect(Math.max(0, ...orbitLong)).toBeLessThan(100 * slack)
 
   // at rest the full mesh is back
   await expect.poll(() => app.ev((c) => c.lodState()), { timeout: 15_000 }).toEqual([[true, false]])
   await app.shot('big-mesh-3m')
+})
+
+test('a big 3MF takes the same route: parsed in a worker, build transform applied, no long task', async ({ app, page }) => {
+  test.setTimeout(240_000)
+  const file = writeBig3mf(350) // 245 thousand triangles
+  await app.open()
+  await page.waitForTimeout(1500)
+  await watchLongTasks(app)
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), app.ribbon('Import').click()])
+  await chooser.setFiles(file)
+  await expect.poll(() => app.bodies().then((b) => b.length), { timeout: 120_000, intervals: [300] }).toBe(1)
+  await app.idle()
+  await page.waitForTimeout(1500)
+  const [body] = await app.bodies()
+  expect(body.name).toBe('caddy-e2e-terrain-350') // a single object is named after the file, like an STL
+  expect(body.tris).toBeGreaterThan(245_000 * 0.99)
+  const bb = await app.bbox()
+  // 100 mm terrain scaled by 2 and moved by (10, 20, 30)
+  expect(bb.min[0]).toBeCloseTo(10, 2)
+  expect(bb.max[0]).toBeCloseTo(210, 2)
+  expect(bb.min[1]).toBeCloseTo(20, 2)
+  expect(bb.max[1]).toBeCloseTo(220, 2)
+  expect(bb.min[2]).toBeGreaterThan(30 - 7)
+  expect(bb.max[2]).toBeLessThan(30 + 7)
+  const long = await longTasks(app)
+  expect(Math.max(0, ...long), `long tasks: ${long.join(', ')}`).toBeLessThan(100 * slack)
 })

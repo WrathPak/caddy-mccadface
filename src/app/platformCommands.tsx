@@ -1,4 +1,5 @@
 /** Commands and panels of the platform work: version history now; projects, plugins and the script editor register here too. */
+import { lazy, Suspense } from 'react'
 import { ClockCounterClockwise, FolderSimple, NotePencil, PuzzlePiece, Terminal } from '@phosphor-icons/react'
 import { registerCommand } from './commands'
 import { openPanel, registerPanel } from './panels'
@@ -6,7 +7,6 @@ import { HistoryPanel } from '@/history/HistoryPanel'
 import { useNoteDialog } from '@/history/HistoryUi'
 import { ProjectsPanel } from '@/projects/ProjectsPanel'
 import { PluginsPanel } from '@/api/PluginsPanel'
-import { ScriptPanel } from '@/api/ScriptPanel'
 import '@/history/service'
 
 registerPanel({ id: 'history', title: 'History', render: () => <HistoryPanel /> })
@@ -47,7 +47,14 @@ registerCommand({
   run: () => openPanel('plugins'),
 })
 
-registerPanel({ id: 'script', title: 'Script', render: () => <ScriptPanel />, floating: { width: 640, height: 480 } })
+// the editor (CodeMirror) is its own chunk: it is only fetched when the panel is first opened
+const ScriptPanel = lazy(() => import('@/api/ScriptPanel').then((m) => ({ default: m.ScriptPanel })))
+registerPanel({
+  id: 'script',
+  title: 'Script',
+  render: () => <Suspense fallback={<div className="pf-empty">Loading the editor...</div>}><ScriptPanel /></Suspense>,
+  floating: { width: 640, height: 480 },
+})
 registerCommand({
   id: 'view.script',
   label: 'Script',

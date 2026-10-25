@@ -216,6 +216,15 @@ export function buildMeshBvh(positions: Float32Array, indices: Uint32Array): Mes
   return { roots: s.roots as ArrayBuffer[], indirect: s.indirectBuffer as Uint32Array }
 }
 
+/** Bodies with more triangles than this come with their picking BVH, built in the worker (building one on the main thread takes a visible pause). */
+export const BVH_WORKER_TRIS = 30_000
+
+/** Give a display mesh its BVH when it is big enough to be worth building off the main thread. */
+export function withBvh(m: MeshData): MeshData {
+  if (!m.bvh && m.indices.length / 3 > BVH_WORKER_TRIS) m.bvh = buildMeshBvh(m.positions, m.indices)
+  return m
+}
+
 /** Display data of a very large mesh: indexed, smooth vertex normals, a single face, no feature edges, plus the LOD mesh. */
 export function meshDisplayLarge(topo: TopoMesh): MeshData {
   const positions = topo.positions.slice()

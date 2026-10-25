@@ -2,6 +2,7 @@
 import * as Comlink from 'comlink'
 import { DEFAULT_CREASE_DEG, meshDisplayAuto, weld } from './meshutil'
 import { tessellate, type Shape } from './occ'
+import { withBvh } from './bigmesh'
 import { finalize, namesOf, rootNames, type NShape, type Names } from './naming'
 import type { Body, MeshData, TopoMesh } from './types'
 
@@ -65,7 +66,7 @@ export function bodyFromShape(id: string, name: string, shape: Shape, faces?: st
   const fn = faces && faces.length === shape.faces.length ? finalize(shape, faces, id) : rootNames(shape, id)
   const names = namesOf(shape, fn)
   const key = putStored({ kind: 'brep', shape, names })
-  return { id, name, kind: 'brep', key, mesh: tessellate(shape, 0.05, 0.2, names) }
+  return { id, name, kind: 'brep', key, mesh: withBvh(tessellate(shape, 0.05, 0.2, names)) }
 }
 export function bodyFromTopo(id: string, name: string, topo: TopoMesh, crease: number = DEFAULT_CREASE_DEG): Body {
   const key = putStored({ kind: 'mesh', topo, crease })

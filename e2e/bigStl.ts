@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { strToU8, zipSync } from 'fflate'
 
 /**
  * Binary STL of a bumpy square terrain, `cells` x `cells` quads, two triangles each (cells = 1225 gives 3.0 million
@@ -35,5 +36,34 @@ export function writeBigStl(cells = 1225, size = 200): string {
     }
   }
   fs.writeFileSync(file, buf)
+  return file
+}
+
+/**
+ * A 3MF of the same kind of terrain: `cells` x `cells` quads (2 * cells^2 triangles) as one object, scaled by a build
+ * transform so the reader has to apply it. Stays above the size where imports go through the compute pool.
+ */
+export function writeBig3mf(cells = 350, size = 100): string {
+  const file = path.join(os.tmpdir(), `caddy-e2e-terrain-${cells}.3mf`)
+  if (fs.existsSync(file)) return file
+  const h = (x: number, y: number) => 3 * Math.sin(x / 11) * Math.cos(y / 9)
+  const w = cells + 1
+  const v: string[] = []
+  for (let j = 0; j < w; j++) for (let i = 0; i < w; i++) v.push(`<vertex x="${((i / cells) * size).toFixed(4)}" y="${((j / cells) * size).toFixed(4)}" z="${h((i / cells) * size, (j / cells) * size).toFixed(4)}"/>`)
+  const t: string[] = []
+  for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) {
+    const a = j * w + i, b = a + 1, c = a + w, d = c + 1
+    t.push(`<triangle v1="${a}" v2="${b}" v3="${d}"/>`, `<triangle v1="${a}" v2="${d}" v3="${c}"/>`)
+  }
+  const model =
+    `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources>` +
+    `<object id="1" type="model" name="Terrain"><mesh><vertices>${v.join('')}</vertices><triangles>${t.join('')}</triangles></mesh></object></resources>` +
+    `<build><item objectid="1" transform="2 0 0 0 2 0 0 0 2 10 20 30"/></build></model>`
+  fs.writeFileSync(file, zipSync({
+    '[Content_Types].xml': strToU8('<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>'),
+    '_rels/.rels': strToU8('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>'),
+    '3D/3dmodel.model': strToU8(model),
+  }))
   return file
 }

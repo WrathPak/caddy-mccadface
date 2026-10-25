@@ -1,6 +1,6 @@
 /**
  * Central command registry. Every ribbon button, menu item, palette entry and shortcut
- * dispatches through here. Later agents replace a stub by calling `registerCommand` again
+ * dispatches through here. A stub is replaced by calling `registerCommand` again
  * with the same id (last registration wins) or by editing the entry below.
  */
 import type { Icon } from '@phosphor-icons/react'
@@ -29,7 +29,7 @@ export interface Command {
   category: string
   /** keep out of the palette (alternate shortcut bindings) */
   hidden?: boolean
-  /** true for placeholder implementations that a later agent replaces */
+  /** true for placeholder implementations that real code replaces later */
   stub?: boolean
   run: () => void
 }
