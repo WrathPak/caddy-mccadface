@@ -8,7 +8,7 @@ import { useUi } from '@/store/ui'
 import { toast } from '@/ui/Modal'
 import { viewportBus } from '@/viewport/bus'
 import { downloadFile, MODEL_EXTS, pickFiles, pickProject, writeProject, type FileHandleLike } from './files'
-import { loadProject, serializeProject } from './project'
+import { loadProject, resetProjectSections, serializeProject } from './project'
 import { write3mf } from './threemf'
 import { writeStl } from './stl'
 import type { ParamSchema } from '@/ui/schema'
@@ -29,6 +29,7 @@ export async function newDocument() {
   handle = null
   clearCache()
   useDoc.getState().newDocument()
+  resetProjectSections()
   void del(AUTOSAVE_KEY)
 }
 

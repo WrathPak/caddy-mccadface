@@ -7,6 +7,25 @@ import { captureThumbnail } from '@/viewport/capture'
 
 const FORMAT = 1
 
+/**
+ * Extra data that lives next to document.json in the zip (drawings, render settings...). A workspace registers a section
+ * with its own file name; sections that have nothing to save return null and leave no file behind.
+ */
+export interface ProjectSection {
+  file: string
+  save(): unknown | null
+  /** called with the parsed file, or null when the project has none (new / older documents) */
+  load(json: unknown | null): void
+}
+const sections: ProjectSection[] = []
+export function registerProjectSection(s: ProjectSection) {
+  sections.push(s)
+}
+/** New document: every section goes back to empty. */
+export function resetProjectSections() {
+  for (const s of sections) s.load(null)
+}
+
 export async function serializeProject(withThumbnail = true): Promise<Uint8Array> {
   const s = useDoc.getState()
   const data = s.getData()
@@ -18,12 +37,16 @@ export async function serializeProject(withThumbnail = true): Promise<Uint8Array
     'document.json': strToU8(JSON.stringify({ format: FORMAT, app: 'CADdy McCADFace', ...data, features })),
   }
   for (const id of referenced) files['blobs/' + id] = s.blobs[id]
+  for (const sec of sections) {
+    const v = sec.save()
+    if (v != null) files[sec.file] = strToU8(JSON.stringify(v))
+  }
   const thumb = withThumbnail ? await captureThumbnail() : null
   if (thumb) files['thumbnail.png'] = thumb
   return zipSync(files, { level: 3 })
 }
 
-export function parseProject(bytes: Uint8Array): { data: DocData; blobs: Record<string, Uint8Array> } {
+export function parseProject(bytes: Uint8Array): { data: DocData; blobs: Record<string, Uint8Array>; extras: Record<string, unknown> } {
   const files = unzipSync(bytes)
   const raw = files['document.json']
   if (!raw) throw new Error('Not a CADdy McCADFace project (document.json missing)')
@@ -41,11 +64,14 @@ export function parseProject(bytes: Uint8Array): { data: DocData; blobs: Record<
     configs: j.configs ?? [],
     activeConfig: j.activeConfig ?? null,
   }
-  return { data, blobs }
+  const extras: Record<string, unknown> = {}
+  for (const sec of sections) if (files[sec.file]) extras[sec.file] = JSON.parse(strFromU8(files[sec.file]))
+  return { data, blobs, extras }
 }
 
 export function loadProject(bytes: Uint8Array) {
-  const { data, blobs } = parseProject(bytes)
+  const { data, blobs, extras } = parseProject(bytes)
   clearCache()
   useDoc.getState().loadDocument(data, blobs)
+  for (const sec of sections) sec.load(extras[sec.file] ?? null)
 }
