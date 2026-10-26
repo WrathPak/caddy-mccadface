@@ -1,0 +1,116 @@
+import { strFromU8, unzipSync } from 'fflate'
+import { test, expect } from './helpers'
+import { addBaseView, click, drawing, geomReady, plate, primsOf, sheet, viewBox } from './drawing-kit'
+
+test('sheet setup: size, orientation, projection and title block text', async ({ app, page }) => {
+  await app.open()
+  await plate(app)
+  await drawing(app)
+  await addBaseView(app)
+  await app.ribbon('Setup').click()
+  await expect(app.inspector().locator('.panel-title')).toHaveText('Sheet')
+  await app.field('Name', 'Plate drawing')
+  await app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: 'Size' }) }).locator('button.sel').click()
+  await page.getByRole('option', { name: /^A4/ }).click()
+  await app.inspector().getByRole('radio', { name: 'Portrait' }).click()
+  await app.field('Title', 'Mounting plate')
+  await app.field('Drawing no.', 'WM-7')
+  await app.ok()
+  const s = await sheet(app)
+  expect(s).toMatchObject({ name: 'Plate drawing', size: 'A4', portrait: true })
+  expect(s.titleBlock).toMatchObject({ title: 'Mounting plate', number: 'WM-7' })
+  await expect(page.getByTestId('sheet-size')).toContainText('A4 portrait')
+  const t = (await primsOf(app)).filter((p) => p.k === 'text').map((p) => p.text)
+  expect(t).toContain('Mounting plate')
+  expect(t).toContain('WM-7')
+  // every standard size is offered
+  await app.ribbon('Setup').click()
+  await app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: 'Size' }) }).locator('button.sel').click()
+  const opts = await page.getByRole('option').allTextContents()
+  for (const n of ['A4', 'A3', 'A2', 'A1', 'A0', 'Letter', 'Legal', 'Tabloid']) expect(opts.some((o) => o.startsWith(n))).toBe(true)
+  await page.keyboard.press('Escape')
+})
+
+test('the title block template is editable: rename, add and remove fields', async ({ app, page }) => {
+  await app.open()
+  await plate(app)
+  await drawing(app)
+  await addBaseView(app)
+  await app.ribbon('Title').click()
+  await expect(page.getByRole('dialog', { name: 'Title block template' })).toBeVisible()
+  const row = page.getByTestId('tpl-row-material')
+  await row.getByLabel('Label').fill('Finish')
+  await row.getByLabel('Key').fill('finish')
+  await page.getByTestId('template-add').click()
+  const last = page.locator('[data-testid^=tpl-row-field]').last()
+  await last.getByLabel('Label').fill('Checked by')
+  await last.getByLabel('Key').fill('checker')
+  await page.getByTestId('tpl-h').fill('52')
+  await page.getByTestId('template-ok').click()
+  const tpl = await app.ev((c) => c.drawing.store.getState().doc.template)
+  expect(tpl.cells.find((c: any) => c.id === 'material')).toMatchObject({ label: 'Finish', key: 'finish' }) // eslint-disable-line
+  expect(tpl.cells.some((c: any) => c.key === 'checker')).toBe(true) // eslint-disable-line
+  expect(tpl.h).toBe(52)
+  // the new fields are in Sheet Setup, and their text lands in the block
+  await app.ribbon('Setup').click()
+  await app.field('Finish', 'Anodised')
+  await app.field('Checked by', 'B.H.')
+  await app.ok()
+  const t = (await primsOf(app)).filter((p) => p.k === 'text').map((p) => p.text)
+  expect(t).toContain('Anodised')
+  expect(t).toContain('B.H.')
+  expect(t).toContain('CHECKED BY')
+  await page.evaluate(() => undefined)
+  // reset to the standard block
+  await app.ribbon('Title').click()
+  await page.getByTestId('template-reset').click()
+  await page.getByTestId('template-ok').click()
+  expect((await app.ev((c) => c.drawing.store.getState().doc.template)).cells.some((c: any) => c.key === 'checker')).toBe(false) // eslint-disable-line
+})
+
+test('drawings are saved in the .caddy file and come back with their dimensions', async ({ app, page }) => {
+  await app.open()
+  await plate(app)
+  await drawing(app)
+  await addBaseView(app)
+  const v = (await sheet(app)).views[0]
+  const box = await viewBox(app, v.id)
+  await app.ribbon('Linear').click()
+  await click(app, box[0], box[1])
+  await click(app, box[2], box[1])
+  await click(app, (box[0] + box[2]) / 2, box[1] - 14)
+  await expect.poll(async () => (await sheet(app)).dims.length).toBe(1)
+  await page.keyboard.press('Escape')
+  await app.ribbon('New Sheet').click()
+  const bytes: number[] = await app.ev(async (c) => Array.from(await c.serializeProject(false)))
+  const files = unzipSync(new Uint8Array(bytes))
+  expect(Object.keys(files)).toContain('drawings.json')
+  const saved = JSON.parse(strFromU8(files['drawings.json']))
+  expect(saved.sheets).toHaveLength(2)
+  expect(saved.sheets[0].views[0]).toMatchObject({ kind: 'base', orientation: 'front' })
+  expect(saved.sheets[0].dims[0]).toMatchObject({ type: 'linear' })
+  expect(saved.sheets[0].dims[0].pts[0].ref.name).toBeTruthy() // persistent names, not indices
+  // a new document has no drawings
+  await app.ev((c) => c.doc.getState().newDocument())
+  await app.ev((c) => c.drawing.store.getState().load(null))
+  expect(await app.ev((c) => c.drawing.store.getState().doc.sheets.length)).toBe(0)
+  // open the saved bytes again through the project loader
+  await app.ev(async (c, b) => {
+    const { loadProject } = await import('/src/io/project.ts')
+    loadProject(new Uint8Array(b))
+  }, bytes)
+  await app.idle()
+  await expect.poll(async () => (await app.ev((c) => c.drawing.store.getState().doc.sheets.length))).toBe(2)
+  await geomReady(app)
+  const t = (await primsOf(app)).filter((p) => p.k === 'text').map((p) => p.text)
+  expect(t).toContain('40.00')
+})
+
+test('a project without drawings opens fine and starts with an empty drawing', async ({ app }) => {
+  await app.open()
+  await plate(app)
+  const bytes: number[] = await app.ev(async (c) => Array.from(await c.serializeProject(false)))
+  expect(Object.keys(unzipSync(new Uint8Array(bytes)))).not.toContain('drawings.json')
+  await drawing(app)
+  await expect(app.page.getByTestId('drawing-empty')).toBeVisible()
+})

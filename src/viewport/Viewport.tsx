@@ -12,6 +12,8 @@ import { SketchHud } from '@/sketch/SketchHud'
 import { HairPaintBar } from '@/features/hair/PaintTool'
 import { useHairPaint } from '@/features/hair/paint'
 import { PrintHud } from '@/features/print/PrintHud'
+import { DrawingWorkspace } from '@/drawing/DrawingWorkspace'
+import { RenderHud } from '@/render/RenderHud'
 import { AssemblyHud } from '@/assembly/AssemblyHud'
 
 const MODES: { id: DisplayMode; label: string; icon: typeof Cube }[] = [
@@ -42,6 +44,8 @@ export function Viewport() {
       <SketchHud />
       <HairPaintBar />
       <PrintHud />
+      <RenderHud />
+      <DrawingWorkspace />
       <AssemblyHud />
       <div className="vp-toolbar">
         <div className="vp-bar">

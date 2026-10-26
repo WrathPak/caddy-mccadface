@@ -1,5 +1,5 @@
 /** `.caddy` = zip of document.json + blobs/<id> (import sources, linked component files) + thumbnail.png + history/ (older versions). Fully regenerable from the timeline. */
-import { strToU8, unzipSync, zip, type Zippable } from 'fflate'
+import { strFromU8, strToU8, unzipSync, zip, type Zippable } from 'fflate'
 import { clearCache } from '@/doc/engine'
 import { useDoc } from '@/doc/store'
 import { captureThumbnail } from '@/viewport/capture'
@@ -26,6 +26,25 @@ export function commitSavedHistory(bytes: Uint8Array) {
 const zipAsync = (files: Zippable) => new Promise<Uint8Array>((res, rej) => zip(files, { level: 3 }, (e, d) => (e ? rej(e) : res(d))))
 
 /**
+ * Extra data that lives next to document.json in the zip (drawings, render settings...). A workspace registers a section
+ * with its own file name; sections that have nothing to save return null and leave no file behind.
+ */
+export interface ProjectSection {
+  file: string
+  save(): unknown | null
+  /** called with the parsed file, or null when the project has none (new / older documents) */
+  load(json: unknown | null): void
+}
+const sections: ProjectSection[] = []
+export function registerProjectSection(s: ProjectSection) {
+  sections.push(s)
+}
+/** New document: every section goes back to empty. */
+export function resetProjectSections() {
+  for (const s of sections) s.load(null)
+}
+
+/**
  * Build the `.caddy` bytes. `append` adds a version of the document to its history (the Save commands); autosave and the
  * debug handle leave the history as it is. The zip is made by fflate's worker threads, so a project that carries a 150 MB
  * import does not freeze the page.
@@ -49,6 +68,10 @@ export async function serializeProject(withThumbnail = true, opts: { note?: stri
     pruneHistory(hist, useHistory.getState().settings, current)
   }
   Object.assign(files, historyFiles(hist, new Set(await Promise.all([...referenced].map((id) => hashOf(s.blobs[id]))))))
+  for (const sec of sections) {
+    const v = sec.save()
+    if (v != null) files[sec.file] = strToU8(JSON.stringify(v))
+  }
   const thumb = withThumbnail ? await captureThumbnail() : null
   if (thumb) files['thumbnail.png'] = thumb
   const out = await zipAsync(files)
@@ -56,10 +79,20 @@ export async function serializeProject(withThumbnail = true, opts: { note?: stri
   return out
 }
 
+/** The saved form of every registered section found in a project file. */
+export function readSections(bytes: Uint8Array): Record<string, unknown> {
+  const files = unzipSync(bytes, { filter: (f) => sections.some((x) => x.file === f.name) }) // only the section files: the big blobs stay deflated
+  const out: Record<string, unknown> = {}
+  for (const sec of sections) if (files[sec.file]) out[sec.file] = JSON.parse(strFromU8(files[sec.file]))
+  return out
+}
+
 export function loadProject(bytes: Uint8Array) {
   const { data, blobs } = parseProject(bytes)
+  const extras = readSections(bytes)
   clearCache()
   useDoc.getState().loadDocument(data, blobs)
+  for (const sec of sections) sec.load(extras[sec.file] ?? null)
   setHistory(readHistory(historyEntries(bytes), blobs))
   useHistory.setState({ pendingNote: null, previewing: null })
 }

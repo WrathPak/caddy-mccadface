@@ -25,6 +25,7 @@ import { HairDirectionOverlay, HairOverlayPass, HairPreviewLayer } from '@/featu
 import { DetailOverlay } from '@/features/detail/overlay'
 import { PrintCanvas } from '@/features/print/PrintCanvas'
 import { DEBUG_HANDLE } from '@/app/flags'
+import { RenderScene } from '@/render/RenderScene'
 import { AssemblyLayer } from '@/assembly/AssemblyLayer'
 
 /**
@@ -147,6 +148,7 @@ export function Scene() {
       <HairPaintTool />
       <DetailOverlay />
       <PrintCanvas />
+      <RenderScene />
       <CaptureRegistrar />
       {DEBUG_HANDLE && <DebugProbe />}
       <AoLayer />

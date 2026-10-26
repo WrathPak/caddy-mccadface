@@ -8,7 +8,7 @@ import { useUi } from '@/store/ui'
 import { toast } from '@/ui/Modal'
 import { viewportBus } from '@/viewport/bus'
 import { downloadFile, MODEL_EXTS, pickFiles, pickProject, writeProject, type FileHandleLike } from './files'
-import { commitSavedHistory, loadProject, serializeProject } from './project'
+import { commitSavedHistory, loadProject, resetProjectSections, serializeProject } from './project'
 import { resetHistory } from '@/history/store'
 import { rememberSource } from './meshImport'
 import { shouldAutosave, worthRecovering } from './autosave'
@@ -42,6 +42,7 @@ export async function newDocument() {
   clearCache()
   useDoc.getState().newDocument()
   resetHistory()
+  resetProjectSections()
   void del(AUTOSAVE_KEY)
 }
 

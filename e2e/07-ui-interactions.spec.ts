@@ -186,7 +186,7 @@ test('every registered command runs without throwing (empty doc, then with a bod
   }, caddy)
   page.on('filechooser', (fc) => void fc.setFiles({ name: 'stub.caddy', mimeType: 'application/zip', buffer: Buffer.from(caddy) }))
   await app.open()
-  const skip = new Set(['file.new', 'file.open', 'file.save', 'file.saveAs', 'file.import', 'file.export', 'mesh.import', 'app.palette', 'view.resetLayout'])
+  const skip = new Set(['file.new', 'file.open', 'file.save', 'file.saveAs', 'file.import', 'file.export', 'mesh.import', 'app.palette', 'view.resetLayout', 'render.image', 'render.turntable'])
   const all: string[] = await page.evaluate(async () => {
     const mod = await import('/src/app/commands.ts')
     return mod.allCommands().map((c: { id: string }) => c.id)
