@@ -13,6 +13,7 @@ i got tired of fighting fusion 360 for 3d printing stuff (especially hair on fig
 - parametric timeline, edit any feature and everything after it rebuilds
 - sketches with constraints and dimensions
 - extrude, revolve, sweep, loft, fillet, chamfer, shell, combine
+- surfaces: extrude, revolve, sweep, loft and patch open curves into surfaces, then trim, extend, offset, stitch them into solids, thicken them or take a solid apart again
 - import/export stl, 3mf, step
 - mesh tools (plane cut, reduce, smooth, repair)
 - assemblies: components with instances, linked files, joints (rigid, revolute, slider and more) snapped to faces and edges, drag and drive motion, interference check, exploded views, step and 3mf export of the structure

@@ -539,7 +539,8 @@ registerOp<SurfaceTrimArgs>('surfaceTrim', (a, h) => {
       const s = sideOf(insidePoint(f), toolFaces)
       if (a.keep === 'front' ? s >= -1e-9 : s <= 1e-9) keep.push({ shape: f as unknown as Sh, faces: [claims[i]] })
     })
-    if (keep.length === rt.faces.length && rt.faces.length === topoOf(tshape).faces.length) throw new Error('The trim tool does not cross the surface')
+    // a cut that does not divide any face (the tool misses, or stops half way across) leaves nothing to tell the two sides apart
+    if (rt.faces.length === topoOf(tshape).faces.length) throw new Error('The trim tool does not cut the surface in two: it has to reach all the way across (a plane always does)')
     if (!keep.length) throw new Error('Nothing is left on that side of the tool')
     const sewn = sewNamed(keep, 1e-6, a.id).out
     return send(h, a, { shape: sewn.shape, faces: finalize(any(sewn), sewn.faces, a.id) })

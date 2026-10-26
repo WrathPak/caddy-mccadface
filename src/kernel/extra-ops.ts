@@ -17,5 +17,6 @@ import './print-ops'
 import './plugin-ops'
 import './drawing-ops'
 import './assembly-ops'
+import './surface-ops'
 
 export {}

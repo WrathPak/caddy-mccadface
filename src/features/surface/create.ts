@@ -52,7 +52,7 @@ export const surfaceExtrudeSchema: ParamSchema = {
     },
     {
       type: 'enum', key: 'axis', help: 'Which way is up for the surface: the normal of the sketch plane the curves are on (or the plane the edges lie in), or one of the world axes.', label: 'Along', display: 'select', default: 'normal',
-      options: [{ value: 'normal', label: 'Sketch plane normal' }, { value: 'worldX', label: 'World X' }, { value: 'worldY', label: 'World Y' }, { value: 'worldZ', label: 'World Z' }],
+      options: [{ value: 'normal', label: 'Sketch normal' }, { value: 'worldX', label: 'World X' }, { value: 'worldY', label: 'World Y' }, { value: 'worldZ', label: 'World Z' }],
     },
   ],
 }

@@ -97,15 +97,18 @@ function surfacePreview(d: SurfaceTool, { values, setValues }: PreviewCtx): Prev
       if (!stale()) { clearPreview(); ui.setState({ inspectorNotice: e instanceof Error && !(e instanceof RefError) ? e.message : null }) }
     }
   })
+  let disposed = false
   runner.schedule()
   return {
-    update(v) { cur = v; publish(); runner.schedule() },
+    // dropping the curve picks below changes the selection, which the open Inspector answers with an update: ignore it
+    update(v) { if (disposed) return; cur = v; publish(); runner.schedule() },
     dispose() {
+      disposed = true
       runner.dispose()
       clearPreview()
       resetManip()
       useCurvePick.setState({ selected: [] })
-      ui.setState((s) => ({ inspectorNotice: null, selection: s.selection.filter((r) => r.kind !== 'curve') }))
+      ui.setState((s) => (s.selection.some((r) => r.kind === 'curve') ? { inspectorNotice: null, selection: s.selection.filter((r) => r.kind !== 'curve') } : { inspectorNotice: null }))
       if (d.filter) ui.getState().setSelectionFilter(before)
     },
   }

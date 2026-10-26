@@ -8,6 +8,7 @@ import { bbox, computeFaceSigs, isSolidBody, type Body } from './types'
 import './model-ops'
 import './solid-ops'
 import './surface-ops'
+import { api } from './api'
 import type { CurveIn } from './surface-ops'
 import type { PathSeg } from './solid-ops'
 
@@ -39,6 +40,20 @@ describe('surface body flag', () => {
     expect(s.surface).toBe(true)
     expect(isSolidBody(s)).toBe(false)
     expect(s.kind).toBe('brep')
+  })
+})
+
+describe('solid tools and surfaces', () => {
+  it('a surface handed to a solid-only op is refused with a clear message', async () => {
+    const b = mkBox('b', [10, 10, 10])
+    const s = await run('surfaceDeleteFace', { id: 'd', name: 'd', key: b.key, faces: faceIdx(b, (_c, n) => n[2] > 0.9) })
+    const refused = /needs a solid body.*open surface/
+    await expect(api.call('shellOp', { id: 'x', name: 'x', key: s.key, faces: [0], thickness: 1, side: 'inside' })).rejects.toThrow(refused)
+    await expect(api.call('edgeMod', { id: 'x', name: 'x', key: s.key, edges: [0], size: 1, mode: 'fillet' })).rejects.toThrow(refused)
+    await expect(api.boolean({ id: 'x', name: 'x', op: 'union', base: b.key, tools: [s.key] })).rejects.toThrow(refused)
+    await expect(api.boolean({ id: 'x', name: 'x', op: 'subtract', base: s.key, tools: [b.key] })).rejects.toThrow(refused)
+    // a solid goes through
+    await expect(api.boolean({ id: 'x', name: 'x', op: 'union', base: b.key, tools: [mkBox('c', [4, 4, 4], [5, 0, 0]).key] })).resolves.toBeTruthy()
   })
 })
 
@@ -275,7 +290,12 @@ describe('surface trim', () => {
   })
   it('a tool that misses is a clear error', async () => {
     const p = await flat('p', 10, 10)
-    await expect(run('surfaceTrim', { id: 't', name: 't', key: p.key, tool: { kind: 'plane', origin: [50, 0, 0], normal: [1, 0, 0] }, keep: 'back' })).rejects.toThrow(/does not cross|Nothing is left/)
+    await expect(run('surfaceTrim', { id: 't', name: 't', key: p.key, tool: { kind: 'plane', origin: [50, 0, 0], normal: [1, 0, 0] }, keep: 'back' })).rejects.toThrow(/does not cut the surface in two/)
+  })
+  it('a tool that stops half way across is a clear error too', async () => {
+    const p = await flat('p', 10, 10)
+    const wall = await run('surfaceExtrude', { id: 'w', name: 'w', curves: [chain([line([5, 2, -5], [5, 6, -5], 'w')])], dir: [0, 0, 1], from: 0, to: 10 })
+    await expect(run('surfaceTrim', { id: 't', name: 't', key: p.key, tool: { kind: 'body', key: wall.key }, keep: 'back' })).rejects.toThrow(/all the way across/)
   })
   it('refuses a solid target', async () => {
     const b = mkBox('b', [10, 10, 10])
@@ -350,6 +370,17 @@ describe('surface delete face', () => {
     // the faces keep their names, so a later feature can still find "the bottom"
     expect(s.mesh.faceNames!.flat()).toContain('b:zmin')
     expect(s.mesh.faceNames!.flat()).not.toContain('b:zmax')
+  })
+  it('the open edges get names of their own, so one of them can be picked again after an edit', async () => {
+    const b = mkBox('b', [10, 10, 10])
+    const s = await run('surfaceDeleteFace', { id: 'd', name: 'd', key: b.key, faces: faceIdx(b, (_c, n) => n[2] > 0.9) })
+    const topo = topoOf(getBrep(s.key) as unknown as AnyShape)
+    const rim = topo.edges.map((e, i) => ({ e, i })).filter(({ e }) => Math.abs(e.startPoint.z - 10) < 1e-6 && Math.abs(e.endPoint.z - 10) < 1e-6).map((x) => x.i)
+    expect(rim.length).toBe(4)
+    const names = rim.map((i) => s.mesh.edgeNames![i][0])
+    expect(new Set(names).size).toBe(4)
+    // the edges between two faces keep their `A&B` names
+    expect(s.mesh.edgeNames!.flat().filter((n) => n.includes('&')).length).toBeGreaterThan(0)
   })
   it('refuses to delete everything or nothing', async () => {
     const b = mkBox('b', [10, 10, 10])

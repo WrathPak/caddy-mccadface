@@ -155,14 +155,26 @@ export function deriveEdgeNames(shape: AnyShape, faceNames: string[][]): string[
       if (ei >= 0 && !adj[ei].includes(fi)) adj[ei].push(fi)
     }
   })
-  return adj.map((fs, ei) => {
+  // the open boundary of a surface: edges of one face that are neither seams nor degenerate. A face usually has several, so
+  // they are told apart by a geometric order (like the pieces of a split face)
+  const open = new Set(openEdges(shape))
+  const out = adj.map((fs, ei) => {
     if (!fs.length) return [`free:${ei}`]
     const lists = fs.map((f) => faceNames[f] ?? [`?${f}`]).slice(0, 2)
     let combos: string[][] = [[]]
     for (const l of lists) combos = combos.flatMap((c) => l.slice(0, 4).map((n) => [...c, n]))
-    const names = combos.map((c) => (c.length === 1 ? `seam(${c[0]})` : [...c].sort().join('&')))
+    const names = combos.map((c) => (c.length === 1 ? (open.has(topo.edges[ei]) ? `open(${c[0]})` : `seam(${c[0]})`) : [...c].sort().join('&')))
     return [...new Set(names)]
   })
+  const groups = new Map<string, number[]>()
+  out.forEach((n, ei) => { if (open.has(topo.edges[ei])) (groups.get(n[0]) ?? groups.set(n[0], []).get(n[0])!).push(ei) })
+  for (const [p, idx] of groups) {
+    if (idx.length < 2) continue
+    const key = (ei: number) => { const m = topo.edges[ei].pointAt(0.5); return [r3(m.x), r3(m.y), r3(m.z), ei] }
+    idx.sort((a, b) => cmp(key(a), key(b)))
+    idx.forEach((ei, j) => (out[ei] = [`${p}~${j}`, p, ...out[ei].slice(1).filter((x) => x !== p)]))
+  }
+  return out
 }
 
 /**

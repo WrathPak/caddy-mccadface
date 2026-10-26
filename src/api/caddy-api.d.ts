@@ -79,6 +79,8 @@ interface CaddyBounds { min: CaddyVec3; max: CaddyVec3 }
 interface CaddyBody {
   handle: string
   kind: 'brep' | 'mesh'
+  /** true for an open surface (a B-rep with no solid in it): booleans and the other solid tools refuse it */
+  surface?: boolean
   /** triangles of the display mesh */
   triangles: number
   bounds: CaddyBounds
