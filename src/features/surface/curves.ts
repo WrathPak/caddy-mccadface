@@ -9,7 +9,6 @@ import { RefReport, decodeRef, edgeSigs, resolveEdge } from '@/doc/refs'
 import type { CurveIn } from '@/kernel/surface-ops'
 import type { Vec3 } from '@/kernel/types'
 import { detectChains, loopChain, pathSegs, type Chain } from '@/sketch/chains'
-import { toWorld } from '@/sketch/plane'
 import type { PlaneDef, SketchData } from '@/sketch/types'
 import type { Env } from '../modeling'
 
@@ -105,4 +104,3 @@ export function resolveCurves(refs: string[], env: Env): CurveInputs {
   return { curves, anchor, plane, sketch, missing, report }
 }
 
-export const worldPoint = (plane: PlaneDef, p: [number, number]) => toWorld(plane, p)

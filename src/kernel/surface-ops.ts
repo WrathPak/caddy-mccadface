@@ -21,6 +21,21 @@ const oc = () => getOC() as any
 const v3 = (v: { x: number; y: number; z: number }): Vec3 => [v.x, v.y, v.z]
 const dist3 = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
 
+/** What a failed build says: OpenCascade throws bare WebAssembly exceptions with no message at all. */
+const why = (e: unknown) => (e instanceof Error ? e.message : 'OpenCascade could not build it')
+
+/** Registers a surface op. A failure that is not an Error (an OpenCascade exception) becomes a sentence with a hint, so the feature can show it. */
+function surfaceOp<A>(name: string, what: string, hint: string, fn: (a: A, h: OpHelpers) => unknown) {
+  registerOp<A>(name, (a, h) => {
+    try {
+      return fn(a, h)
+    } catch (e) {
+      if (e instanceof Error) throw e
+      throw new Error(`${what} failed inside OpenCascade (${hint})`)
+    }
+  })
+}
+
 // ------------------------------------------------------------------------------------------------ curve inputs
 
 /** A connected run of sketch curves in world space (the main thread turns plane-local sketch segments into these). */
@@ -162,7 +177,7 @@ function planeNormal(runs: Run[]): Vec3 {
   return f.normal
 }
 
-registerOp<SurfaceExtrudeArgs>('surfaceExtrude', (a, h) => {
+surfaceOp<SurfaceExtrudeArgs>('surfaceExtrude', 'Extrude Surface', 'check the curves and the direction', (a, h) => {
   if (!a.curves.length) throw new Error('Select the curves to extrude')
   if (Math.abs(a.to - a.from) < 1e-9) throw new Error('Distance must not be zero')
   const runs = a.curves.flatMap((c) => runsOf(c, h))
@@ -192,7 +207,7 @@ registerOp<SurfaceExtrudeArgs>('surfaceExtrude', (a, h) => {
 
 export interface SurfaceRevolveArgs { id: string; name: string; curves: CurveIn[]; axisOrigin: Vec3; axisDir: Vec3; angle: number }
 
-registerOp<SurfaceRevolveArgs>('surfaceRevolve', (a, h) => {
+surfaceOp<SurfaceRevolveArgs>('surfaceRevolve', 'Revolve Surface', 'the curves must not cross the axis', (a, h) => {
   if (!a.curves.length) throw new Error('Select the curves to revolve')
   if (Math.abs(a.angle) < 1e-9) throw new Error('Angle must not be zero')
   const dir: Vec3 = a.angle < 0 ? mul3(a.axisDir, -1) : a.axisDir
@@ -222,7 +237,7 @@ registerOp<SurfaceRevolveArgs>('surfaceRevolve', (a, h) => {
 
 export interface SurfaceSweepArgs { id: string; name: string; profiles: CurveIn[]; path: PathSeg[] }
 
-registerOp<SurfaceSweepArgs>('surfaceSweep', (a, h) => {
+surfaceOp<SurfaceSweepArgs>('surfaceSweep', 'Sweep Surface', 'the profile has to touch the start of the path', (a, h) => {
   if (!a.profiles.length) throw new Error('Select the profile curves to sweep')
   const parts: NShape[] = []
   for (const c of a.profiles) {
@@ -267,7 +282,7 @@ export interface SurfaceLoftArgs {
   ruled: boolean
 }
 
-registerOp<SurfaceLoftArgs>('surfaceLoft', (a, h) => {
+surfaceOp<SurfaceLoftArgs>('surfaceLoft', 'Loft Surface', 'the sections may be too different, try Ruled', (a, h) => {
   // every connected run of curves is one section (a body's edges can make several), in the order they were picked
   const runs = a.sections.flatMap((c) => runsOf(c, h))
   if (runs.length < 2) throw new Error('A loft needs at least two sections')
@@ -348,7 +363,7 @@ function planarity(pts: Vec3[]): { dev: number; origin: Vec3; normal: Vec3 } {
   return { dev: Math.max(...pts.map((p) => Math.abs(dot3(sub3(p, origin), normal)))), origin, normal }
 }
 
-registerOp<SurfacePatchArgs>('surfacePatch', (a, h) => {
+surfaceOp<SurfacePatchArgs>('surfacePatch', 'Patch', 'the boundary may be too twisted or not meet end to end', (a, h) => {
   const runs = a.boundary.flatMap((c) => runsOf(c, h))
   const edgesIn = runs.flatMap((r) => alignedItems(r))
   if (!edgesIn.length) throw new Error('Select the curves or edges that surround the patch')
@@ -385,7 +400,7 @@ registerOp<SurfacePatchArgs>('surfacePatch', (a, h) => {
       shape = cast(mk.Shape()) as unknown as Sh
       if (mk.G0Error() > 0.01 * Math.max(1, size)) throw new Error(`The patch does not follow its boundary (off by ${+mk.G0Error().toFixed(3)} mm); try a simpler boundary`)
     } catch (e) {
-      throw new Error(e instanceof Error && /boundary|patch/.test(e.message) ? e.message : `Could not fill the boundary (${e instanceof Error ? e.message : e})`)
+      throw new Error(e instanceof Error && /boundary|patch/.test(e.message) ? e.message : `Could not fill the boundary (${why(e)})`)
     } finally { mk.delete() }
   }
   nonEmpty(shape, 'Could not fill the boundary')
@@ -404,7 +419,7 @@ export interface SurfaceOffsetArgs {
   distance: number
 }
 
-registerOp<SurfaceOffsetArgs>('surfaceOffset', (a, h) => {
+surfaceOp<SurfaceOffsetArgs>('surfaceOffset', 'Offset Surface', 'the distance may be too large for the curvature', (a, h) => {
   if (!a.sources.length) throw new Error('Select the surfaces or faces to offset')
   if (Math.abs(a.distance) < 1e-9) throw new Error('Distance must not be zero')
   const parts: NShape[] = []
@@ -424,7 +439,7 @@ registerOp<SurfaceOffsetArgs>('surfaceOffset', (a, h) => {
       const claims = inherit(mk, [{ shape: any(src), faces: src.faces }], shape as unknown as AnyShape, { fid: a.id, genFace: 'off' })
       parts.push({ shape, faces: finalize(shape as unknown as AnyShape, claims, a.id, 'o' + parts.length) })
     } catch (e) {
-      throw new Error(`An offset of ${a.distance} mm is not possible here (${e instanceof Error ? e.message : e})`)
+      throw new Error(`An offset of ${a.distance} mm is not possible here (${why(e)})`)
     } finally { mk.delete() }
   }
   return send(h, a, mergeNamed(parts, a.id))
@@ -482,7 +497,7 @@ function sideOf(p: Vec3, tool: Face[]): number {
   return dot3(sub3(p, best.pt), n)
 }
 
-registerOp<SurfaceTrimArgs>('surfaceTrim', (a, h) => {
+surfaceOp<SurfaceTrimArgs>('surfaceTrim', 'Trim', 'the tool may only touch the surface', (a, h) => {
   const target = h.getNamed(a.key)
   const tshape = any(target)
   if (tshape.solids.length) throw new Error('Trim works on surfaces: use Cut to trim a solid')
@@ -513,7 +528,7 @@ registerOp<SurfaceTrimArgs>('surfaceTrim', (a, h) => {
   if (solidTool) {
     // a solid cuts a surface by plain booleans: outside is what lies in front
     let r: NShape
-    try { r = boolNamed(a.keep === 'front' ? 'cut' : 'common', target, solidTool, a.id) } catch (e) { throw new Error(`The solid does not trim this surface (${e instanceof Error ? e.message : e})`) }
+    try { r = boolNamed(a.keep === 'front' ? 'cut' : 'common', target, solidTool, a.id) } catch (e) { throw new Error(`The solid does not trim this surface (${why(e)})`) }
     const before = area(tshape)
     nonEmpty(r.shape, 'Nothing is left on that side of the solid')
     if (Math.abs(area(r.shape) - before) < 1e-9 * Math.max(1, before)) throw new Error('The solid does not cross the surface')
@@ -564,7 +579,7 @@ export interface SurfaceExtendArgs {
   mode: 'natural' | 'tangent'
 }
 
-registerOp<SurfaceExtendArgs>('surfaceExtend', (a, h) => {
+surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or a smaller distance', (a, h) => {
   if (!(a.distance > 0)) throw new Error('The extension distance must be greater than zero')
   const src = h.getNamed(a.key)
   const names = h.getNames(a.key)
@@ -679,7 +694,7 @@ function carry(from: NShape, to: Sh): string[][] {
   return topoOf(to as unknown as AnyShape).faces.map((f) => from.faces[find(f.wrapped as never)] ?? [])
 }
 
-registerOp<SurfaceStitchArgs>('surfaceStitch', (a, h) => {
+surfaceOp<SurfaceStitchArgs>('surfaceStitch', 'Stitch', 'try a larger tolerance', (a, h) => {
   if (a.keys.length < 1) throw new Error('Select the surfaces to stitch')
   if (!(a.tolerance > 0)) throw new Error('The tolerance must be greater than zero')
   const parts = a.keys.map((k) => h.getNamed(k))
@@ -701,7 +716,7 @@ export interface SurfaceUnstitchArgs {
   faces?: number[]
 }
 
-registerOp<SurfaceUnstitchArgs>('surfaceUnstitch', (a, h) => {
+surfaceOp<SurfaceUnstitchArgs>('surfaceUnstitch', 'Unstitch', 'the body may be damaged', (a, h) => {
   const src = h.getNamed(a.key)
   const faces = topoOf(any(src)).faces
   if (faces.length < 2) throw new Error('There is only one face: nothing to unstitch')
@@ -732,7 +747,7 @@ export interface SurfaceThickenArgs {
 /** The edge as OCC walks it: where it starts and ends once its orientation is applied. */
 const walked = (e: Edge): [Vec3, Vec3] => (e.orientation === 'forward' ? [v3(e.startPoint), v3(e.endPoint)] : [v3(e.endPoint), v3(e.startPoint)])
 
-registerOp<SurfaceThickenArgs>('surfaceThicken', (a, h) => {
+surfaceOp<SurfaceThickenArgs>('surfaceThicken', 'Thicken', 'try a thinner thickness', (a, h) => {
   if (Math.abs(a.distance) < 1e-9) throw new Error('Thickness must not be zero')
   let src = h.getNamed(a.key)
   if (any(src).solids.length) throw new Error('Thicken works on surfaces; a solid already has volume')
@@ -782,7 +797,7 @@ registerOp<SurfaceThickenArgs>('surfaceThicken', (a, h) => {
     if (!solid) throw new Error('the result is not a closed solid')
     return send(h, a, { shape: solid, faces: finalize(solid as unknown as AnyShape, carry(sewn.out, solid), a.id) })
   } catch (e) {
-    throw new Error(`Thickening by ${Math.abs(a.distance)} mm is not possible here (${e instanceof Error ? e.message : e}); try a thinner thickness`)
+    throw new Error(`Thickening by ${Math.abs(a.distance)} mm is not possible here (${why(e)}); try a thinner thickness`)
   }
 })
 
@@ -790,7 +805,7 @@ registerOp<SurfaceThickenArgs>('surfaceThicken', (a, h) => {
 
 export interface SurfaceDeleteFaceArgs { id: string; name: string; key: string; faces: number[] }
 
-registerOp<SurfaceDeleteFaceArgs>('surfaceDeleteFace', (a, h) => {
+surfaceOp<SurfaceDeleteFaceArgs>('surfaceDeleteFace', 'Delete Face', 'the body may be damaged', (a, h) => {
   const src = h.getNamed(a.key)
   const faces = topoOf(any(src)).faces
   if (!a.faces.length) throw new Error('Select the faces to delete')

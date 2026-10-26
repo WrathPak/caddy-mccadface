@@ -9,7 +9,7 @@ import { RefError, RefReport, bodyIdsOf } from '@/doc/refs'
 import type { FeatureCtx, FeatureResult, PreviewCtx, PreviewHandle } from '@/doc/types'
 import type { Body, Vec3 } from '@/kernel/types'
 import { useUi } from '@/store/ui'
-import type { ParamSchema, ParamValue, ParamValues } from '@/ui/schema'
+import type { ParamSchema, ParamValues } from '@/ui/schema'
 import { clearPreview, resetManip, setPreview, useCurvePick, useManip } from '@/viewport/preview'
 import { liveRefEnv, type RefEnv } from '../modeling-tools/geo'
 import { createRunner } from '../previewKit'
@@ -128,4 +128,3 @@ export function surfaceBodies(refs: string[], env: { bodies: Body[] }, what: str
   })
 }
 
-export const asNumber = (v: ParamValue) => v as number

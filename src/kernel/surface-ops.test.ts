@@ -121,6 +121,10 @@ describe('surface revolve', () => {
     near(areaOf(s), 2 * Math.PI * 5 * 10)
     expect(s.surface).toBe(true)
   })
+  it('a curve across the axis is a message, not a bare OpenCascade exception', async () => {
+    const across = chain([line([-10, 0, 0], [30, 0, 0], 'l')])
+    await expect(run('surfaceRevolve', { id: 's', name: 's', curves: [across], axisOrigin: [0, 0, 0], axisDir: [0, 1, 0], angle: 360 })).rejects.toThrow(/Revolve Surface failed inside OpenCascade/)
+  })
   it('a partial angle', async () => {
     const c = chain([line([5, 0, 0], [5, 0, 10], 'l')])
     const s = await run('surfaceRevolve', { id: 's', name: 's', curves: [c], axisOrigin: [0, 0, 0], axisDir: [0, 0, 1], angle: 90 })

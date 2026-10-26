@@ -32,10 +32,10 @@ export function isSurfaceKey(key: unknown): boolean {
   const s = store.get(key)
   return !!s && s.kind === 'brep' && s.shape.solids.length === 0
 }
-/** Refuses surfaces: `args` may name bodies in `key`, `keys`, `current`, `before`, `after`, `base`, `tools` or `tool.key`. */
+/** Refuses surfaces: `args` may name bodies in `key`, `keys`, `targetKey`, `current`, `before`, `after`, `base`, `tools` or `tool.key`. */
 export function requireSolids(what: string, args: unknown) {
   const a = (args ?? {}) as Record<string, unknown>
-  const keys = [a.key, a.current, a.before, a.after, a.base, (a.tool as { key?: unknown } | undefined)?.key, ...((a.keys as unknown[]) ?? []), ...((a.tools as unknown[]) ?? [])]
+  const keys = [a.key, a.targetKey, a.current, a.before, a.after, a.base, (a.tool as { key?: unknown } | undefined)?.key, ...((a.keys as unknown[]) ?? []), ...((a.tools as unknown[]) ?? [])]
   if (keys.some(isSurfaceKey)) throw new Error(`${what} needs a solid body, but one of the bodies is an open surface: stitch it closed or thicken it first`)
 }
 export const getNames = (key: string): Names => {

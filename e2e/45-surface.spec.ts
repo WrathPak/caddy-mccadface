@@ -121,6 +121,17 @@ test('surface workspace: sketch curves to surfaces, patch, trim, stitch to a sol
   expect([wb.min[2], wb.max[2]].map((v) => +v.toFixed(3))).toEqual([-4, 8])
   near(wall.area, 80 * 12)
 
+  // ---- edit the first extrude from the timeline: the surface follows, and so does everything built on it
+  await page.locator('.tl .chip').nth(1).dblclick()
+  await expect(title(app)).toHaveText('Extrude Surface')
+  await expect(app.inspector().getByTestId('sel-curves')).toContainText('1 selected')
+  await app.field('Distance', '14')
+  await app.ok()
+  expect((await app.bbox(wavy.id)).max[2]).toBeCloseTo(14, 3)
+  expect(await states(app)).toEqual(['ok', 'ok', 'ok'])
+  const wavy14 = await info(app, wavy.id)
+  near(wavy14.area, (wavy.area * 14) / 12, 0.01)
+
   // ---- Patch: a flat boundary drawn as a rectangle sketch
   const sk2 = await addSketch(app, XY, [{ k: 'rect', x0: 10, y0: -45, x1: 50, y1: -15 }])
   const rect = (await chainsOf(app, sk2))[0]
@@ -200,8 +211,15 @@ test('surface workspace: sketch curves to surfaces, patch, trim, stitch to a sol
   const thick = await info(app, 'f2')
   expect((await app.features()).at(-1)!.state).toBe('ok')
   expect(thick.surface).toBe(false)
-  near(await app.volume('f2'), wavy.area * 2, 0.06)
+  near(await app.volume('f2'), wavy14.area * 2, 0.06)
   await app.shot('surface-thickened')
+  // undo takes the thickness away again, redo puts it back
+  await app.ev((c) => c.runCommand('edit.undo'))
+  await app.idle()
+  expect((await info(app, 'f2')).surface).toBe(true)
+  await app.ev((c) => c.runCommand('edit.redo'))
+  await app.idle()
+  expect((await info(app, 'f2')).surface).toBe(false)
 
   // ---- Delete Face: take the lid off the box, it is an open surface again
   const lidFace = await faceAtHeight(app, bottom, 8)
@@ -357,7 +375,7 @@ test('surface workspace: every tool opens its dialog with a live preview, and Es
     return id as string
   }
   const lineAt = async (z: number, x0 = 0, x1 = 30) => (await chainsOf(app, await addSketch(app, { origin: [0, 0, z], xDir: [1, 0, 0], normal: [0, 0, 1] }, [{ k: 'line', a: [x0, 0], b: [x1, 0] }])))[0]
-  const a = await lineAt(0), b = await lineAt(15), c3 = await lineAt(7, -5, 40)
+  const a = await lineAt(0, -10), b = await lineAt(15, -10), c3 = await lineAt(7, -15, 40)
   const rect = (await chainsOf(app, await addSketch(app, XY, [{ k: 'rect', x0: 50, y0: 0, x1: 70, y1: 20 }])))[0]
   const wall = await add('surfaceLoft', { sections: [a.ref, b.ref], ruled: false })
   const wall2 = await add('surfaceExtrude', { curves: [c3.ref], direction: 'two', distance: 10, distance2: 5, axis: 'worldY' })
@@ -394,7 +412,7 @@ test('surface workspace: every tool opens its dialog with a live preview, and Es
   const boxTop = await faceAtHeight(app, box, 10)
 
   await open('Extrude', [{ kind: 'curve', id: rect.ref }], 'Extrude Surface'); await preview(); await leave()
-  await open('Revolve', [{ kind: 'curve', id: a.ref }], 'Revolve Surface'); await preview(); await leave()
+  await open('Revolve', [{ kind: 'curve', id: rect.ref }], 'Revolve Surface'); await preview(); await leave()
   await open('Sweep', [{ kind: 'curve', id: rect.ref }], 'Sweep Surface')
   await select(app, [{ kind: 'curve', id: c3.ref }]) // the path field is next in line
   await expect(app.inspector().getByTestId('sel-path')).toContainText('1 selected')
@@ -408,10 +426,18 @@ test('surface workspace: every tool opens its dialog with a live preview, and Es
   await open('Trim', [{ kind: 'body', id: wall }], 'Trim')
   await select(app, [{ kind: 'body', id: wall2 }])
   await preview(); await leave()
+  // a plane cuts as well: the YZ plane runs through the middle of the wall
+  await open('Trim', [{ kind: 'body', id: wall }], 'Trim')
+  await select(app, [{ kind: 'plane', id: 'planeYZ' }])
+  await expect(app.inspector().getByTestId('sel-tool')).toContainText('1 selected')
+  await preview(); await leave()
   await open('Extend', [{ kind: 'edge', id: wall, index: wallEdge }], 'Extend'); await preview(); await leave()
   await open('Stitch', [{ kind: 'body', id: wall }, { kind: 'body', id: wall2 }], 'Stitch'); await preview(/open edges? left/); await leave()
   await open('Thicken', [{ kind: 'body', id: wall }], 'Thicken'); await preview(); await leave()
   await open('Delete Face', [{ kind: 'face', id: box, index: boxTop }], 'Delete Face'); await preview(); await leave()
+  // Move works on a surface like on any body
+  await open('Move', [{ kind: 'body', id: wall }], 'Move / Transform'); await leave()
+  await select(app, [])
   await app.ev((c) => c.runCommand('surface.unstitch'))
   await expect(title(app)).toHaveText('Unstitch')
   await select(app, [{ kind: 'body', id: box }])

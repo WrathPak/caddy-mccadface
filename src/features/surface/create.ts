@@ -153,7 +153,7 @@ export const surfaceSweepSchema: ParamSchema = {
   title: 'Sweep Surface',
   params: [
     curvesField('The curves to drag along the path: open or closed, from a sketch or edges of a body.', { key: 'profiles', label: 'Profile' }),
-    { type: 'selection-ref', key: 'path', help: 'The line or curve the profile follows. Click one run of sketch curves, or a whole sketch, in the viewport.', label: 'Path', accepts: ['curve', 'sketch'], required: true, pick: true, default: [] },
+    { type: 'selection-ref', key: 'path', help: 'The line or curve the profile follows. Click one run of sketch curves in the viewport.', label: 'Path', accepts: ['curve'], required: true, pick: true, default: [] },
   ],
 }
 
