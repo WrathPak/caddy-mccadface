@@ -236,6 +236,11 @@ test('surface workspace: sketch curves to surfaces, patch, trim, stitch to a sol
   near(open.area, 2 * 200 - 200 + 2 * 160 + 2 * 80)
   await app.shot('surface-delete-face')
 
+  // a click on a surface picks its face, from either side: the floor of the open box, seen through the missing lid
+  await app.ev((c) => { c.ui.getState().clearSelection(); c.ui.getState().setSelectionFilter('face'); c.runCommand('view.home'); c.runCommand('view.frame') })
+  await click(app, 110, 5, 0)
+  await expect.poll(() => app.ev((c) => c.ui.getState().selection.map((r: any) => [r.kind, r.id]))).toEqual([['face', bottom]]) // eslint-disable-line
+
   // ---- the solid tools say what is wrong: a fillet on the open box
   const edge = (await edgesAtHeight(app, bottom, 8))[0]
   await select(app, [{ kind: 'edge', id: bottom, index: edge }])
