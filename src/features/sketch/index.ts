@@ -9,6 +9,7 @@ import { reprojectModel } from '@/sketch/project'
 import { useSketchData } from '@/sketch/draw'
 import { planeFromNormal, reanchor } from '@/sketch/plane'
 import { detectProfiles } from '@/sketch/profiles'
+import { detectChains } from '@/sketch/chains'
 import { ensureFonts } from '@/sketch/curves'
 import { ensureSolver, solveModel } from '@/sketch/solver'
 import { beginSketch } from '@/sketch/store'
@@ -50,6 +51,7 @@ registerFeature({
       entities: solved.model.entities,
       constraints: solved.model.constraints,
       profiles: detectProfiles(solved.model),
+      chains: detectChains(solved.model),
     }
     useSketchData.getState().set(ctx.feature.id, data)
     const lost = proj.broken

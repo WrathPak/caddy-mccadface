@@ -39,7 +39,7 @@ function resolveEdges(refs: string[], env: Env, report = new RefReport()): { bod
     if (!g.edges.includes(r.index)) g.edges.push(r.index)
   }
   if (!by.size) throw new RefError(missing ? 'The selected edges no longer exist (an edit upstream removed them). Pick them again.' : 'Select the edges to modify', report.lostRefs)
-  for (const g of by.values()) if (g.body.kind !== 'brep') throw new Error('Fillet and Chamfer need a solid (B-rep) body')
+  for (const g of by.values()) if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Fillet and Chamfer need a solid body' + (g.body.surface ? ': this one is an open surface, stitch it closed or thicken it first' : ', not a mesh'))
   return [...by.values()]
 }
 

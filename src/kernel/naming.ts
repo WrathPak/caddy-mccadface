@@ -123,6 +123,27 @@ export function inherit(
   return claims
 }
 
+/**
+ * The open boundary of a shape: edges that bound exactly one face and are neither a seam (a cylinder's cut line) nor a
+ * degenerate point edge. A closed shell has none.
+ */
+export function openEdges(shape: AnyShape): import('replicad').Edge[] {
+  const topo = topoOf(shape)
+  const find = indexer(topo.edges, topo.edgeHashes)
+  const bt = (getOC() as unknown as { BRep_Tool: { IsClosed(e: unknown, f: unknown): boolean; Degenerated(e: unknown): boolean } }).BRep_Tool
+  const owners = new Map<number, number[]>()
+  topo.faces.forEach((f, fi) => {
+    for (const e of f.edges) {
+      const j = find(e.wrapped as unknown as Raw)
+      if (j >= 0) owners.set(j, [...(owners.get(j) ?? []), fi])
+    }
+  })
+  return topo.edges.filter((e, j) => {
+    const fs = owners.get(j) ?? []
+    return fs.length === 1 && !bt.Degenerated(e.wrapped) && !bt.IsClosed(e.wrapped, topo.faces[fs[0]].wrapped)
+  })
+}
+
 /** Edge names derived from the faces an edge joins (all alias combinations; primary first). */
 export function deriveEdgeNames(shape: AnyShape, faceNames: string[][]): string[][] {
   const topo = topoOf(shape)

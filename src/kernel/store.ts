@@ -2,7 +2,7 @@
 import * as Comlink from 'comlink'
 import { DEFAULT_CREASE_DEG, meshDisplayAuto, weld } from './meshutil'
 import { tessellate, type Shape } from './occ'
-import { finalize, namesOf, rootNames, type NShape, type Names } from './naming'
+import { finalize, namesOf, openEdges, rootNames, type NShape, type Names } from './naming'
 import type { Body, MeshData, TopoMesh } from './types'
 
 export type Stored = { kind: 'brep'; shape: Shape; names: Names } | { kind: 'mesh'; topo: TopoMesh; /** dihedral angle (deg) that separates faces */ crease: number }
@@ -25,6 +25,18 @@ export function getNamed(key: string): NShape {
   const s = getStored(key)
   if (s.kind !== 'brep') throw new Error('Expected a B-rep body')
   return { shape: s.shape, faces: s.names.faces }
+}
+/** True for the handle of a surface body (a B-rep with no solid in it). */
+export function isSurfaceKey(key: unknown): boolean {
+  if (typeof key !== 'string') return false
+  const s = store.get(key)
+  return !!s && s.kind === 'brep' && s.shape.solids.length === 0
+}
+/** Refuses surfaces: `args` may name bodies in `key`, `keys`, `current`, `before`, `after`, `base`, `tools` or `tool.key`. */
+export function requireSolids(what: string, args: unknown) {
+  const a = (args ?? {}) as Record<string, unknown>
+  const keys = [a.key, a.current, a.before, a.after, a.base, (a.tool as { key?: unknown } | undefined)?.key, ...((a.keys as unknown[]) ?? []), ...((a.tools as unknown[]) ?? [])]
+  if (keys.some(isSurfaceKey)) throw new Error(`${what} needs a solid body, but one of the bodies is an open surface: stitch it closed or thicken it first`)
 }
 export const getNames = (key: string): Names => {
   const s = getStored(key)
@@ -65,7 +77,9 @@ export function bodyFromShape(id: string, name: string, shape: Shape, faces?: st
   const fn = faces && faces.length === shape.faces.length ? finalize(shape, faces, id) : rootNames(shape, id)
   const names = namesOf(shape, fn)
   const key = putStored({ kind: 'brep', shape, names })
-  return { id, name, kind: 'brep', key, mesh: tessellate(shape, 0.05, 0.2, names) }
+  // a B-rep with no solid in it is a surface (open shell or loose faces): the viewport draws it double-sided and the solid tools skip it
+  const surface = shape.solids.length === 0
+  return { id, name, kind: 'brep', ...(surface ? { surface: true, freeEdges: openEdges(shape).length } : {}), key, mesh: tessellate(shape, 0.05, 0.2, names) }
 }
 export function bodyFromTopo(id: string, name: string, topo: TopoMesh, crease: number = DEFAULT_CREASE_DEG): Body {
   const key = putStored({ kind: 'mesh', topo, crease })

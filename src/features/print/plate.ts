@@ -77,8 +77,8 @@ export interface BuiltPlate { bytes: Uint8Array; fileName: string; count: number
  */
 async function assemblyItems(): Promise<PlateItem[]> {
   const d = useDoc.getState()
-  const insts = assembledInstances()
-  if (!insts.length) throw new Error('There is nothing to print: no visible bodies')
+  const insts = assembledInstances().filter((i) => !i.body.surface)
+  if (!insts.length) throw new Error('There is nothing to print: no visible solid bodies (open surfaces cannot be printed)')
   const paint = computePaintMap(d.features, d.rollback, d.geometry)
   const keys = [...new Set(insts.map((i) => i.body.key))]
   const meshes = (await getKernel().call('printMeshes', { keys })) as ExportMesh[]
@@ -108,8 +108,8 @@ export async function buildPlate(): Promise<BuiltPlate> {
   let items: PlateItem[]
   if (d.assembly.occurrences.length) items = await assemblyItems()
   else {
-    const bodies = d.geometry.filter((b) => !hidden[b.id])
-    if (!bodies.length) throw new Error('There is nothing to print: no visible bodies')
+    const bodies = d.geometry.filter((b) => !hidden[b.id] && !b.surface)
+    if (!bodies.length) throw new Error('There is nothing to print: no visible solid bodies (open surfaces cannot be printed)')
     const paint = computePaintMap(d.features, d.rollback, d.geometry)
     const meshes = (await getKernel().call('printMeshes', { keys: bodies.map((b) => b.key) })) as ExportMesh[]
     const names = uniqueNames(bodies.map((b) => d.bodyNames[b.id] ?? b.name))

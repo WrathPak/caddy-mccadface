@@ -108,7 +108,7 @@ function faceSubset(b: Body, geo: BufferGeometry, faces: Set<number>): BufferGeo
 /** Cap tints, one per body (cycled), so overlapping bodies stay distinguishable in a section. */
 const CAP_COLORS = ['#5aa9c4', '#c4905a', '#7fb36a', '#b27fc4', '#c4c05a']
 
-interface Mats { base: Material; hi: Material; dim: Material; flag: Material }
+interface Mats { base: Material; /** surface bodies (open shells): a tinted material, drawn from both sides */ surf: Material; hi: Material; dim: Material; flag: Material }
 
 /** Renders the document's bodies (kernel output) with hover pre-highlight and filter-aware picking. One body is drawn once per instance of its component. */
 export function Bodies() {
@@ -140,10 +140,17 @@ export function Bodies() {
       wireframe: displayMode === 'wireframe',
       clippingPlanes: clip,
     })
+    const surf = new MeshStandardMaterial({
+      color: colors.surface, roughness: 0.5, metalness: 0.05, side: DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+      transparent: displayMode === 'xray', opacity: displayMode === 'xray' ? 0.32 : 1, depthWrite: displayMode !== 'xray',
+      wireframe: displayMode === 'wireframe',
+      clippingPlanes: clip,
+    })
     const hi = new MeshBasicMaterial({ color: colors.accent, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: DoubleSide, clippingPlanes: clip })
     const dim = new MeshStandardMaterial({ color: colors.body, roughness: 0.62, metalness: 0.05, side: DoubleSide, transparent: true, opacity: 0.28, depthWrite: false, clippingPlanes: clip })
     const flag = new MeshStandardMaterial({ color: '#d9625a', roughness: 0.55, metalness: 0.05, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes: clip, wireframe: displayMode === 'wireframe' })
-    return { base, hi, dim, flag }
+    return { base, surf, hi, dim, flag }
   }, [displayMode, colors, clip])
 
   const warm = useWarm((s) => s.on)
@@ -242,7 +249,9 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
   const painting = useHairPaint((s) => s.mode !== 'off')
   const byComponent = filter === 'component' && !!inst.occ
   const pickFaces = filter !== 'edge' && !sketching && !painting && !snapping && !dragging
-  const showEdges = displayMode !== 'shaded' || filter === 'edge'
+  // an open surface always shows its edges: they are what tells a surface from a solid, and what the stitch and extend tools pick
+  const showEdges = displayMode !== 'shaded' || filter === 'edge' || !!body.surface
+  const bodyMat = flagged ? mats.flag : dimmed ? mats.dim : body.surface ? mats.surf : mats.base
   const path = inst.occ || undefined
   const refFor = (e: ThreeEvent<PointerEvent | MouseEvent>): SelectionRef =>
     byComponent ? { kind: 'component', id: inst.occ }
@@ -279,17 +288,17 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
   return (
     <>
       <group matrixAutoUpdate={matrix === null} matrix={matrix ?? undefined}>
-        {lodGeo && <mesh ref={lodRef} geometry={lodGeo} material={flagged ? mats.flag : dimmed ? mats.dim : mats.base} visible={false} raycast={noRaycast} />}
+        {lodGeo && <mesh ref={lodRef} geometry={lodGeo} material={bodyMat} visible={false} raycast={noRaycast} />}
         {chunked && (
           // squashed to nothing until every piece is uploaded: still drawn (so the GPU gets it), nothing to see, and no extra shader
           <group ref={fullRef as never} scale={chunksDone ? 1 : 0}>
-            {chunks.map((g, i) => <mesh key={i} geometry={g} material={flagged ? mats.flag : dimmed ? mats.dim : mats.base} frustumCulled={chunksDone} raycast={noRaycast} />)}
+            {chunks.map((g, i) => <mesh key={i} geometry={g} material={bodyMat} frustumCulled={chunksDone} raycast={noRaycast} />)}
           </group>
         )}
         <mesh
           ref={chunked ? undefined : (fullRef as never)}
           geometry={geo}
-          material={chunked ? HIDDEN : flagged ? mats.flag : dimmed ? mats.dim : mats.base}
+          material={chunked ? HIDDEN : bodyMat}
           raycast={meshRaycast}
           onPointerDown={dragging ? (e) => { if (e.button === 0) { e.stopPropagation(); beginDrag(e, inst) } } : undefined}
           onPointerMove={
@@ -314,7 +323,7 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
         {overlayGeo && <mesh geometry={overlayGeo} material={mats.hi} raycast={() => null} renderOrder={2} />}
         {showEdges && <EdgeLines body={body} inst={inst} color={colors.edge} accent={colors.accent} pickable={filter === 'edge' && !sketching && pickable && !snapping && !dragging} clip={mats.base.clippingPlanes ?? []} />}
       </group>
-      {clip && <SectionCap geometry={geo} plane={clip} color={CAP_COLORS[index % CAP_COLORS.length]} order={20 + index * 4} size={capSize} matrix={matrix ?? undefined} />}
+      {clip && !body.surface && <SectionCap geometry={geo} plane={clip} color={CAP_COLORS[index % CAP_COLORS.length]} order={20 + index * 4} size={capSize} matrix={matrix ?? undefined} />}
     </>
   )
 }

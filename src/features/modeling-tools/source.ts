@@ -84,7 +84,7 @@ export async function repeat(env: RepeatEnv, src: Source, xforms: Xf[], operatio
           anchors.push(centerOfBody(after))
           continue
         }
-        if (after.kind !== 'brep' || before.kind !== 'brep') throw new Error('Patterns and mirrors need solid (B-rep) bodies')
+        if (after.kind !== 'brep' || before.kind !== 'brep' || after.surface) throw new Error('Patterns and mirrors of features need solid bodies, not meshes or open surfaces')
         const current = out.get(after.id) ?? alive.get(after.id)
         if (!current) continue
         const c = await call<Vec3 | null>('deltaCenter', { before: before.key, after: after.key, fid: env.fid })
@@ -95,7 +95,7 @@ export async function repeat(env: RepeatEnv, src: Source, xforms: Xf[], operatio
     if (!out.size && !extra.length) throw new Error('The selected features did not change any body, so there is nothing to repeat')
   } else if (src.kind === 'faces') {
     for (const g of facesOf(src.faces, env, report)) {
-      if (g.body.kind !== 'brep') throw new Error('Patterns and mirrors need solid (B-rep) bodies')
+      if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Patterns and mirrors of faces need solid bodies, not meshes or open surfaces')
       const current = out.get(g.body.id) ?? g.body
       anchors.push(mean(g.centers))
       out.set(g.body.id, await call<Body>('patternApply', { id: g.body.id, name: g.body.name, fid: env.fid, current: current.key, faces: g.faces.map((f) => f.index), xforms }))

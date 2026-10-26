@@ -16,12 +16,15 @@ import { parseProject } from './projectParse'
 import { write3mf } from './threemf'
 import { writeStl } from './stl'
 import { assemblyObjects, exportAssemblyStep, mergePlaced } from '@/assembly/exportAssembly'
+import { assembledInstances } from '@/assembly/check'
 import { persistExternalHandles, restoreExternals, setExternalHost } from '@/assembly/external'
 import { within } from '@/assembly/instances'
 import type { ParamSchema } from '@/ui/schema'
 
 let handle: FileHandleLike | null = null
 const baseName = (n: string) => n.replace(/\.[^.]+$/, '')
+/** STL and 3MF describe solids; an open surface has no inside, so it is left out with a note (STEP keeps surfaces as they are). */
+export const SURFACE_NOTE = 'Open surfaces are not in the file: STL and 3MF need solids. Stitch or thicken them first, or export STEP.'
 const fail = (what: string, e: unknown) => {
   console.error(e)
   toast(`${what}: ${e instanceof Error ? e.message : String(e)}`, 'error')
@@ -209,10 +212,11 @@ async function exportAssembly(format: 'stl' | '3mf' | 'step', scope: 'selection'
     const sel = ui.selection
     const keep = scope === 'selection' && sel.length ? (i: { body: { id: string }; path: string }) => sel.some((r) => r.id === i.body.id || (r.path ? within(i.path, r.path) : false) || (r.kind === 'component' && within(i.path, r.id))) : undefined
     const objects = await assemblyObjects(keep)
-    if (!objects.length) return toast('Nothing to export', 'error')
+    const surfaces = assembledInstances().filter((i) => i.body.surface).length
+    if (!objects.length) return toast(surfaces ? `Nothing to export. ${SURFACE_NOTE}` : 'Nothing to export', 'error')
     if (format === 'stl') downloadFile(`${name}.stl`, writeStl([mergePlaced(objects.map((o) => ({ ...o.mesh, matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] })))]), 'model/stl')
     else downloadFile(`${name}.3mf`, write3mf(objects), 'model/3mf')
-    toast(`Exported ${objects.length} ${format === '3mf' ? (objects.length === 1 ? 'object' : 'objects') : 'objects as one mesh'} as ${format.toUpperCase()}`)
+    toast(`Exported ${objects.length} ${format === '3mf' ? (objects.length === 1 ? 'object' : 'objects') : 'objects as one mesh'} as ${format.toUpperCase()}${surfaces ? `. ${SURFACE_NOTE}` : ''}`)
   } catch (e) {
     fail('Export failed', e)
   }
@@ -226,7 +230,9 @@ export async function exportBodies(format: 'stl' | '3mf' | 'step', scope: 'selec
   let bodies = s.geometry.filter((b) => !ui.hiddenIds[b.id])
   if (scope === 'selection') bodies = bodies.filter((b) => selIds.has(b.id))
   if (format === 'step') bodies = bodies.filter((b) => b.kind === 'brep')
-  if (!bodies.length) return toast(format === 'step' ? 'STEP export needs at least one B-rep body' : 'Nothing to export', 'error')
+  const surfaces = format === 'step' ? 0 : bodies.filter((b) => b.surface).length
+  if (surfaces) bodies = bodies.filter((b) => !b.surface)
+  if (!bodies.length) return toast(format === 'step' ? 'STEP export needs at least one B-rep body' : surfaces ? `Nothing to export. ${SURFACE_NOTE}` : 'Nothing to export', 'error')
   const name = (s.name || 'Untitled') + suffix
   const label = (b: { id: string; name: string }) => s.bodyNames[b.id] ?? b.name
   try {
@@ -239,7 +245,7 @@ export async function exportBodies(format: 'stl' | '3mf' | 'step', scope: 'selec
       if (format === 'stl') downloadFile(`${name}.stl`, writeStl(meshes), 'model/stl')
       else downloadFile(`${name}.3mf`, write3mf(meshes.map((mesh, i) => ({ name: label(bodies[i]), mesh }))), 'model/3mf')
     }
-    toast(`Exported ${bodies.length} ${bodies.length === 1 ? 'body' : 'bodies'} as ${format.toUpperCase()}`)
+    toast(`Exported ${bodies.length} ${bodies.length === 1 ? 'body' : 'bodies'} as ${format.toUpperCase()}${surfaces ? `. ${SURFACE_NOTE}` : ''}`)
   } catch (e) {
     fail('Export failed', e)
   }

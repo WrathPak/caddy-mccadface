@@ -108,7 +108,7 @@ const distanceParam: NumberParam = { type: 'number', key: 'distance', help: 'How
 async function offsetFaces(p: ParamValues, env: BuildEnv, report: RefReport): Promise<Built> {
   const bodies: Body[] = []
   for (const g of byBody(p.faces as string[], env, report)) {
-    if (g.body.kind !== 'brep') throw new Error('Offset Face needs a solid (B-rep) body')
+    if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Offset Face needs a solid body' + (g.body.surface ? ': for a surface use Offset Surface' : ', not a mesh'))
     bodies.push(await call<Body>(env, 'offsetFaces', { id: g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, distance: p.distance as number, fid: env.fid }))
   }
   return { bodies }
@@ -175,7 +175,7 @@ register({
   async build(p, env, report) {
     const bodies: Body[] = []
     for (const g of byBody(p.faces as string[], env, report)) {
-      if (g.body.kind !== 'brep') throw new Error('Delete Face needs a solid (B-rep) body')
+      if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Delete Face needs a solid body' + (g.body.surface ? ': for a surface use Delete Face in the Surface tab' : ', not a mesh'))
       bodies.push(await call<Body>(env, 'deleteFaces', { id: g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, fid: env.fid }))
     }
     return { bodies }
@@ -260,7 +260,7 @@ register({
     for (const id of ids) {
       const b = env.bodies.find((x) => x.id === id)
       if (!b) throw new RefError('A body to split no longer exists. Pick it again.', p.bodies as string[])
-      if (b.kind !== 'brep') throw new Error('Split Body needs solid (B-rep) bodies')
+      if (b.kind !== 'brep' || b.surface) throw new Error('Split Body needs solid bodies' + (b.surface ? ': for a surface use Trim' : ', not meshes'))
       // a body used as the tool is not split by itself
       if (tool.kind === 'body' && tool.key === b.key) continue
       out.push(...(await call<Body[]>(env, 'splitBody', { id: b.id, name: b.name, key: b.key, tool, fid: env.fid })))

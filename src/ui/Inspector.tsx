@@ -178,7 +178,7 @@ function SelectionRef({ def, value, onChange, active, onActivate }: { def: Selec
   )
 }
 
-const KIND_OF: Record<string, string> = { body: 'body', mesh: 'body', face: 'face', edge: 'edge', sketch: 'sketch', plane: 'plane', axis: 'axis', point: 'point', vertex: 'vertex', feature: 'feature', snap: 'snap', component: 'component' }
+const KIND_OF: Record<string, string> = { body: 'body', mesh: 'body', face: 'face', edge: 'edge', sketch: 'sketch', plane: 'plane', axis: 'axis', point: 'point', vertex: 'vertex', feature: 'feature', snap: 'snap', component: 'component', curve: 'curve' }
 
 /** Schema-driven feature dialog. Renders `ui.inspector` (any ParamSchema) with OK / Cancel. */
 export function Inspector() {
@@ -209,7 +209,7 @@ function InspectorForm({ session }: { session: InspectorSession }) {
     activeRef.current = key
     setActive(key)
     const d = picks().find((p) => p.key === key)
-    useUi.setState({ pickSketches: !!d?.accepts.includes('sketch'), pickKinds: (d?.accepts ?? []) as never })
+    useUi.setState({ pickSketches: !!d?.accepts.includes('sketch'), pickCurves: !!d?.accepts.includes('curve'), pickKinds: (d?.accepts ?? []) as never })
     const f = d?.accepts.find((k) => k === 'body' || k === 'face' || k === 'edge')
     if (f) { touchedFilter.current = true; useUi.getState().setSelectionFilter(f) }
   }
@@ -220,11 +220,11 @@ function InspectorForm({ session }: { session: InspectorSession }) {
     else if (activeRef.current) {
       // a remount (StrictMode does that in dev) ran the cleanup below first: only the pick kinds need setting again
       const d = ps.find((p) => p.key === activeRef.current)
-      useUi.setState({ pickSketches: !!d?.accepts.includes('sketch'), pickKinds: (d?.accepts ?? []) as never })
+      useUi.setState({ pickSketches: !!d?.accepts.includes('sketch'), pickCurves: !!d?.accepts.includes('curve'), pickKinds: (d?.accepts ?? []) as never })
     }
     const restore = prevFilter.current
     return () => {
-      useUi.setState({ pickSketches: false, pickKinds: [] })
+      useUi.setState({ pickSketches: false, pickCurves: false, pickKinds: [] })
       if (touchedFilter.current) useUi.getState().setSelectionFilter(restore)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

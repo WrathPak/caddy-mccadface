@@ -85,7 +85,7 @@ export async function placeHoles(p: HoleP, env: RefEnv, report: RefReport): Prom
   const bodyAt = (origin: Vec3, dir: Vec3): Body | null => {
     const q = add3(origin, mul3(norm3(dir), -0.05))
     for (const b of env.bodies) {
-      if (b.kind !== 'brep') continue
+      if (b.kind !== 'brep' || b.surface) continue
       const bb = bbox(b.mesh.positions)
       if ([0, 1, 2].every((k) => q[k] >= bb.min[k] - 1e-6 && q[k] <= bb.max[k] + 1e-6)) return b
     }

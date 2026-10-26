@@ -16,7 +16,7 @@ export type { Feature, FeatureState } from './types'
 /** What the engine reports per feature after a pass. */
 export interface FeatureStatus { state: FeatureState; error?: string; warning?: string; reboundRefs?: string[]; lostRefs?: string[] }
 export interface TreeEntity { id: string; name: string }
-type Coll = 'bodies' | 'sketches' | 'meshes' | 'features'
+type Coll = 'bodies' | 'surfaces' | 'sketches' | 'meshes' | 'features'
 
 export interface HistoryItem { label: string; data: DocData }
 
@@ -27,6 +27,8 @@ interface DocState extends DocData {
   /** bodies produced by the regeneration engine (what the viewport renders) */
   geometry: Body[]
   bodies: TreeEntity[]
+  /** open surface bodies (the Surface workspace's shells and loose faces): their own section of the Browser */
+  surfaces: TreeEntity[]
   sketches: TreeEntity[]
   meshes: TreeEntity[]
   dirty: boolean
@@ -84,7 +86,8 @@ const empty = (): DocData => ({ name: 'Untitled', features: [], rollback: 0, use
 function derive(s: Pick<DocState, 'geometry' | 'bodyNames' | 'features'>) {
   const name = (b: Body) => s.bodyNames[b.id] ?? b.name
   return {
-    bodies: s.geometry.filter((b) => b.kind === 'brep').map((b) => ({ id: b.id, name: name(b) })),
+    bodies: s.geometry.filter((b) => b.kind === 'brep' && !b.surface).map((b) => ({ id: b.id, name: name(b) })),
+    surfaces: s.geometry.filter((b) => b.kind === 'brep' && b.surface).map((b) => ({ id: b.id, name: name(b) })),
     meshes: s.geometry.filter((b) => b.kind === 'mesh').map((b) => ({ id: b.id, name: name(b) })),
     sketches: s.features.filter((f) => f.type === 'sketch').map((f) => ({ id: f.id, name: f.name })),
   }
@@ -123,6 +126,7 @@ export const useDoc = create<DocState>((set, get) => {
     blobs: {},
     geometry: [],
     bodies: [],
+    surfaces: [],
     sketches: [],
     meshes: [],
     dirty: false,
@@ -166,11 +170,11 @@ export const useDoc = create<DocState>((set, get) => {
       }),
 
     renameEntity: (kind, id, name) => {
-      if (kind === 'bodies' || kind === 'meshes') get().commit('Rename', (d) => ({ ...d, bodyNames: { ...d.bodyNames, [id]: name } }))
+      if (kind === 'bodies' || kind === 'surfaces' || kind === 'meshes') get().commit('Rename', (d) => ({ ...d, bodyNames: { ...d.bodyNames, [id]: name } }))
       else get().commit('Rename', (d) => ({ ...d, features: d.features.map((f) => (f.id === id ? { ...f, name } : f)) }))
     },
     deleteEntity: (kind, id) => {
-      if (kind === 'bodies' || kind === 'meshes') get().addFeature('delete', { bodyIds: [id] })
+      if (kind === 'bodies' || kind === 'surfaces' || kind === 'meshes') get().addFeature('delete', { bodyIds: [id] })
       else get().removeFeature(id)
     },
 

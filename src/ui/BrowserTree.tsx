@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import * as CM from '@radix-ui/react-context-menu'
-import { CaretDown, CaretRight, DotOutline, Cube, Eye, EyeSlash, FileText, Folder, GridFour, LineSegment, PencilSimpleLine, Planet, Parallelogram } from '@phosphor-icons/react'
+import { CaretDown, CaretRight, DotOutline, Cube, Eye, EyeSlash, FileText, Folder, GridFour, LineSegment, PencilSimpleLine, Planet, Parallelogram, SelectionBackground } from '@phosphor-icons/react'
 import { useUi, type EntityKind } from '@/store/ui'
 import { useDoc, type TreeEntity } from '@/doc/store'
 import { PLANE_FEATURES } from '@/sketch/planes'
@@ -19,7 +19,7 @@ interface RowProps {
   open?: boolean
   onToggle?: () => void
   /** doc store collection for rename/delete */
-  coll?: 'bodies' | 'sketches' | 'meshes'
+  coll?: 'bodies' | 'surfaces' | 'sketches' | 'meshes'
   eye?: boolean
   /** the component instance the entity is shown under (selections carry it) */
   path?: string
@@ -37,11 +37,11 @@ function Row({ id, name, depth, kind, icon, open, onToggle, coll, eye = true, pa
   const [editing, setEditing] = useState(false)
   const isolate = () => {
     const d = useDoc.getState()
-    useUi.getState().isolate(id, [...d.bodies, ...d.meshes, ...d.sketches].map((e) => e.id))
+    useUi.getState().isolate(id, [...d.bodies, ...d.surfaces, ...d.meshes, ...d.sketches].map((e) => e.id))
   }
   const isolated = useUi((s) => {
     const d = useDoc.getState()
-    const others = [...d.bodies, ...d.meshes, ...d.sketches].map((e) => e.id).filter((x) => x !== id)
+    const others = [...d.bodies, ...d.surfaces, ...d.meshes, ...d.sketches].map((e) => e.id).filter((x) => x !== id)
     return !s.hiddenIds[id] && others.length > 0 && others.every((x) => s.hiddenIds[x])
   })
   const isGroup = onToggle !== undefined
@@ -103,17 +103,18 @@ function Group({ label, depth, icon, children, defaultOpen = true }: { label: st
   )
 }
 
-function Items({ items, depth, kind, coll, icon, path }: { items: TreeEntity[]; depth: number; kind: EntityKind; coll: 'bodies' | 'sketches' | 'meshes'; icon: ReactNode; path?: string }) {
+function Items({ items, depth, kind, coll, icon, path }: { items: TreeEntity[]; depth: number; kind: EntityKind; coll: 'bodies' | 'surfaces' | 'sketches' | 'meshes'; icon: ReactNode; path?: string }) {
   return <>{items.map((e) => <Row key={e.id} id={e.id} name={e.name} depth={depth} kind={kind} coll={coll} icon={icon} path={path} />)}</>
 }
 
-/** Document > Origin (planes, axes) > Bodies > Sketches > Meshes > Components (each with its own bodies and sketches) > Joints */
+/** Document > Origin (planes, axes) > Bodies > Surfaces > Sketches > Meshes > Components (each with its own bodies and sketches) > Joints */
 export function BrowserTree() {
   const doc = useDoc()
   const a = doc.assembly
   const owner = new Map(doc.geometry.map((b) => [b.id, ownerOf(b, a)]))
   const inDef = (def: string) => (f: { component?: string }) => (f.component ?? ROOT) === def
   const bodiesOf = (def: string) => doc.bodies.filter((e) => owner.get(e.id) === def)
+  const surfacesOf = (def: string) => doc.surfaces.filter((e) => owner.get(e.id) === def)
   const meshesOf = (def: string) => doc.meshes.filter((e) => owner.get(e.id) === def)
   const sketchesOf = (def: string) => doc.sketches.filter((e) => inDef(def)(doc.features.find((f) => f.id === e.id) ?? {}))
 
@@ -123,7 +124,7 @@ export function BrowserTree() {
     const planes = feats.filter((f) => PLANE_FEATURES.has(f.type))
     const axes = feats.filter((f) => f.type === 'constructAxis')
     const points = feats.filter((f) => f.type === 'constructPoint')
-    const bodies = bodiesOf(def), sketches = sketchesOf(def), meshes = meshesOf(def)
+    const bodies = bodiesOf(def), surfaces = surfacesOf(def), sketches = sketchesOf(def), meshes = meshesOf(def)
     return (
       <>
         {def !== ROOT && (
@@ -140,6 +141,7 @@ export function BrowserTree() {
           </Group>
         )}
         {bodies.length > 0 && <Group label="Bodies" depth={depth} icon={<Folder size={13} />}><Items items={bodies} depth={depth + 1} kind="body" coll="bodies" icon={<Cube size={13} />} path={path} /></Group>}
+        {surfaces.length > 0 && <Group label="Surfaces" depth={depth} icon={<Folder size={13} />}><Items items={surfaces} depth={depth + 1} kind="body" coll="surfaces" icon={<SelectionBackground size={13} />} path={path} /></Group>}
         {sketches.length > 0 && <Group label="Sketches" depth={depth} icon={<Folder size={13} />}><Items items={sketches} depth={depth + 1} kind="sketch" coll="sketches" icon={<PencilSimpleLine size={13} />} path={path} /></Group>}
         {meshes.length > 0 && <Group label="Meshes" depth={depth} icon={<Folder size={13} />}><Items items={meshes} depth={depth + 1} kind="mesh" coll="meshes" icon={<GridFour size={13} />} path={path} /></Group>}
       </>
@@ -167,6 +169,9 @@ export function BrowserTree() {
           <ConfigurationsGroup depth={1} />
           <Group label="Bodies" depth={1} icon={<Folder size={13} />}>
             <Items items={bodiesOf(ROOT)} depth={2} kind="body" coll="bodies" icon={<Cube size={13} />} />
+          </Group>
+          <Group label="Surfaces" depth={1} icon={<Folder size={13} />}>
+            <Items items={surfacesOf(ROOT)} depth={2} kind="body" coll="surfaces" icon={<SelectionBackground size={13} />} />
           </Group>
           <Group label="Sketches" depth={1} icon={<Folder size={13} />}>
             <Items items={sketchesOf(ROOT)} depth={2} kind="sketch" coll="sketches" icon={<PencilSimpleLine size={13} />} />

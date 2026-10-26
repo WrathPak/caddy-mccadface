@@ -51,6 +51,7 @@
   --vp-axis-y: #6aa36a;
   --vp-axis-z: #5a85c4;
   --vp-body: #8e969f;
+  --vp-surface: #5aa3bd;
   --vp-edge: #14161a;
 
   color-scheme: dark;
@@ -91,6 +92,7 @@
   --vp-axis-y: #4f8c4f;
   --vp-axis-z: #3f6cae;
   --vp-body: #9aa1aa;
+  --vp-surface: #4f95b0;
   --vp-edge: #2a2d33;
 
   color-scheme: light;
