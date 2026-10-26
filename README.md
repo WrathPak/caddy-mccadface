@@ -18,6 +18,10 @@ i got tired of fighting fusion 360 for 3d printing stuff (especially hair on fig
 - assemblies: components with instances, linked files, joints (rigid, revolute, slider and more) snapped to faces and edges, drag and drive motion, interference check, exploded views, step and 3mf export of the structure
 - hair tool: paint faces, pick a direction, get printable strands with a sacrificial wall
 - saves `.caddy` project files straight to your disk
+- projects panel: pick a folder and browse your `.caddy` files with thumbnails, search, recent files and a trash
+- version history: every save keeps a version inside the file, you can preview, compare and restore them
+- plugins: add your own features and commands as small javascript files that run in a sandbox, plus a script panel for quick experiments (see docs/plugins.md)
+- big meshes: multi million triangle stl and 3mf files import in the background and stay smooth to orbit
 
 ## running it
 

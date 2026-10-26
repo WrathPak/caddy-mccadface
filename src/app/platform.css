@@ -1,0 +1,79 @@
+/* Panels added with the platform work: History, Projects, Plugins, Script. */
+
+.pf-panel { height: 100%; display: flex; flex-direction: column; background: var(--bg-1); min-height: 0; font-size: var(--fs-md); }
+.pf-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); flex: none; flex-wrap: wrap; }
+.pf-head .grow { flex: 1; min-width: 0; }
+.pf-sub { color: var(--text-faint); font-size: var(--fs-sm); }
+.pf-scroll { flex: 1; overflow: auto; min-height: 0; }
+.pf-foot { border-top: 1px solid var(--line); padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; flex: none; }
+.pf-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.pf-actions .btn { padding: 0 9px; }
+.btn[disabled] { opacity: 0.45; pointer-events: none; }
+.btn.danger { color: var(--danger); }
+.pf-row-inputs { display: flex; align-items: center; gap: 6px; color: var(--text-dim); }
+.pf-row-inputs .inp { width: 56px; }
+.pf-row-inputs input { width: 100%; text-align: right; }
+
+/* generic list rows */
+.pf-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--line); cursor: default; position: relative; }
+.pf-item:hover { background: var(--bg-hover); }
+.pf-item[data-selected='true'] { background: var(--accent-dim); }
+.pf-item[data-selected='true']::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent); }
+.pf-item .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pf-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.pf-item .meta { color: var(--text-faint); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-item .badge { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-dim); min-width: 26px; }
+.pf-item input[type='checkbox'] { accent-color: var(--accent); margin: 0; }
+.pf-empty { padding: 18px 12px; color: var(--text-faint); line-height: 1.5; }
+
+/* diff */
+.pf-diff { padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line); max-height: 40%; overflow: auto; flex: none; }
+.pf-diff .line { display: flex; gap: 6px; align-items: baseline; }
+.pf-diff .tag { font-family: var(--font-mono); width: 12px; flex: none; text-align: center; }
+.pf-diff .added .tag { color: var(--ok); }
+.pf-diff .removed .tag { color: var(--danger); }
+.pf-diff .changed .tag, .pf-diff .moved .tag { color: var(--warn); }
+.pf-diff .sub { margin-left: 18px; color: var(--text-dim); font-size: var(--fs-sm); font-family: var(--font-mono); }
+
+/* preview banner */
+.preview-banner { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 10px; padding: 5px 8px 5px 12px; background: var(--bg-3); border: 1px solid var(--warn); border-radius: var(--radius); box-shadow: var(--shadow-float); font-size: var(--fs-md); }
+.preview-banner b { color: var(--warn); font-weight: 600; }
+
+/* projects */
+.pf-thumb { width: 56px; height: 42px; flex: none; border-radius: var(--radius-sm); background: var(--bg-0); border: 1px solid var(--line); object-fit: cover; display: grid; place-items: center; color: var(--text-faint); overflow: hidden; }
+.pf-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pf-section { padding: 6px 8px 3px; color: var(--text-faint); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 6px; }
+.pf-section .line { flex: 1; height: 1px; background: var(--line); }
+.pf-folder { display: flex; align-items: center; gap: 5px; padding: 3px 8px; color: var(--text-dim); font-weight: 500; cursor: default; }
+.pf-folder:hover { background: var(--bg-hover); }
+.pf-search { flex: 1; min-width: 0; }
+.pf-search input { width: 100%; }
+
+/* plugins */
+.pf-plug .title { display: flex; align-items: center; gap: 6px; }
+.pf-plug .err { color: var(--danger); font-size: var(--fs-sm); white-space: normal; }
+.pf-switch { position: relative; width: 28px; height: 16px; border-radius: 8px; background: var(--bg-active); border: 1px solid var(--line-strong); flex: none; padding: 0; }
+.pf-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text-dim); transition: transform 0.12s; }
+.pf-switch[aria-checked='true'] { background: var(--accent-dim); border-color: var(--accent-line); }
+.pf-switch[aria-checked='true']::after { transform: translateX(12px); background: var(--accent); }
+
+/* script editor */
+.script-panel .cm-host { flex: 1; min-height: 0; display: flex; }
+.script-panel .cm-editor { flex: 1; min-width: 0; height: 100%; background: var(--bg-input); color: var(--text); font-size: var(--fs-md); }
+.script-panel .cm-editor.cm-focused { outline: 1px solid var(--accent-line); }
+.script-panel .cm-scroller { font-family: var(--font-mono); line-height: 1.45; }
+.script-panel .cm-gutters { background: var(--bg-0); color: var(--text-faint); border-right: 1px solid var(--line); }
+.script-panel .cm-activeLine { background: rgba(255, 255, 255, 0.03); }
+.script-panel .cm-activeLineGutter { background: rgba(255, 255, 255, 0.05); }
+.script-panel .cm-cursor { border-left-color: var(--text); }
+.script-panel .cm-selectionBackground, .script-panel .cm-editor.cm-focused .cm-selectionBackground { background: var(--accent-dim) !important; }
+.script-console { height: 34%; min-height: 70px; border-top: 1px solid var(--line-strong); background: var(--bg-0); overflow: auto; padding: 4px 8px; font-family: var(--font-mono); font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 1px; }
+.script-console .ln { white-space: pre-wrap; word-break: break-word; color: var(--text); }
+.script-console .ln.error { color: var(--danger); }
+.script-console .ln.warn { color: var(--warn); }
+.script-console .ln.info { color: var(--text-dim); }
+.script-console .ln.result { color: var(--accent); }
+.cm-tooltip.cm-tooltip-autocomplete { background: var(--bg-3) !important; border: 1px solid var(--line-strong) !important; border-radius: var(--radius); box-shadow: var(--shadow-float); }
+.cm-tooltip-autocomplete ul li { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.cm-tooltip-autocomplete ul li[aria-selected] { background: var(--accent-dim) !important; color: var(--text) !important; }
+.cm-completionDetail { color: var(--text-faint); margin-left: 8px; font-style: normal; }

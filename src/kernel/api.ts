@@ -2,9 +2,9 @@
 import * as Comlink from 'comlink'
 import { box, initOcc, readStep, writeStep, type Shape } from './occ'
 import { initManifold, meshBoolean, type BoolOp } from './mesh'
-import { weld } from './meshutil'
+import { DEFAULT_CREASE_DEG, weld } from './meshutil'
 import {
-  bodyFromShape, bodyFromTopo, gc, getBrep, getNamed, getOp, getStored, getTopo, helpers, sendBodies, sendBody,
+  bodyFromShape, bodyFromTopo, gc, getBrep, getNamed, getOp, getStored, getTopo, helpers, putStored, sendBodies, sendBody,
 } from './store'
 import { boolNamed, boxNames, carryNames, type NShape } from './naming'
 import { composeTransform, type Body, type TopoMesh, type TransformSpec, type Vec3 } from './types'
@@ -29,6 +29,13 @@ export const api = {
   /** Create a mesh body from raw triangles (welded here). Input buffers are consumed. */
   async createMesh(a: BodyMeta & { positions: Float32Array; indices?: Uint32Array; /** face-split dihedral angle in degrees */ creaseDeg?: number }): Promise<Body> {
     return sendBody(bodyFromTopo(a.id, a.name, weld(a.positions, a.indices), a.creaseDeg))
+  },
+  /**
+   * Take ownership of a welded mesh that a compute-pool worker already parsed and built display data for. Returns the new
+   * handle; the caller keeps the display arrays (the topology is consumed here).
+   */
+  async adoptMesh(a: { topo: TopoMesh; crease?: number }): Promise<string> {
+    return putStored({ kind: 'mesh', topo: a.topo, crease: a.crease ?? DEFAULT_CREASE_DEG })
   },
   /** Import a STEP file as one B-rep body. */
   async importStep(a: BodyMeta & { bytes: ArrayBuffer }): Promise<Body> {

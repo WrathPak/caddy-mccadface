@@ -8,6 +8,7 @@ import { parseStl } from '@/io/stl'
 import { parse3mf } from '@/io/threemf'
 import { resolveParams } from '@/doc/params'
 import { getKernel } from '@/kernel/client'
+import { importMeshPooled, POOL_IMPORT_BYTES, sourceOf } from '@/io/meshImport'
 import { clearPreview, setPreview } from '@/viewport/preview'
 import { createRunner } from './previewKit'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
@@ -86,14 +87,21 @@ registerFeature({
   icon: GridFour,
   schema: { id: 'importMesh', title: 'Import mesh', params: [
       { type: 'number', key: 'scale', help: 'Multiplies the size of the imported model. Use 25.4 to bring a model made in inches into mm, 1 to keep it as is.', label: 'Scale', unit: '', min: 0.0001, step: 0.1, default: 1 },
-      { type: 'number', key: 'creaseAngle', help: 'Neighbouring triangles that meet at a sharper angle than this become separate faces you can pick. Lower values give more, smaller faces.', label: 'Face split angle', unit: 'deg', min: 1, max: 89, step: 1, default: 20 },
+      { type: 'number', key: 'creaseAngle', help: 'Neighbouring triangles that meet at a sharper angle than this become separate faces you can pick. Lower values give more, smaller faces. Meshes over 400 thousand triangles stay one face so they remain fast.', label: 'Face split angle', unit: 'deg', min: 1, max: 89, step: 1, default: 20 },
     ],
   },
   async compute(ctx, p) {
     const bytes = ctx.blob(p.blob as string)
     if (!bytes) throw new Error('Source file missing from document')
+    const baseName = (p.fileName as string).replace(/\.[^.]+$/, '')
+    const crease = (p.creaseAngle as number | undefined) ?? 20
+    // big files are parsed, welded and decimated in the compute pool, never on the main thread
+    if (bytes.length >= POOL_IMPORT_BYTES) {
+      const bodies = await importMeshPooled(sourceOf(bytes), { format: p.format === '3mf' ? '3mf' : 'stl', scale: p.scale as number, creaseDeg: crease, baseName, bodyId: (n) => ctx.newBodyId(n || undefined) })
+      return { bodies }
+    }
     const parts = p.format === '3mf' ? parse3mf(bytes) : parseStl(bytes)
-    return toBodies(ctx, parts, p.scale as number, (p.fileName as string).replace(/\.[^.]+$/, ''), (p.creaseAngle as number | undefined) ?? 20)
+    return toBodies(ctx, parts, p.scale as number, baseName, crease)
   },
 })
 

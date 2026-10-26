@@ -1,0 +1,7 @@
+{
+  "id": "gear-generator",
+  "name": "Gear generator",
+  "version": "1.0.0",
+  "description": "Adds a Gear feature: an involute spur gear from its teeth, module and thickness, with an optional bore.",
+  "main": "index.js"
+}

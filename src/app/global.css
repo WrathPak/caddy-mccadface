@@ -21,7 +21,7 @@ input, select { font: inherit; color: inherit; }
 .num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: var(--fs-sm); }
 * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 
-.app { display: grid; grid-template-rows: auto 1fr var(--status-h); height: 100%; }
+.app { display: grid; grid-template-rows: auto 1fr var(--status-h); grid-template-columns: minmax(0, 1fr); height: 100%; }
 
 /* ---------- ribbon ---------- */
 .ribbon { background: var(--bg-1); border-bottom: 1px solid var(--line); }

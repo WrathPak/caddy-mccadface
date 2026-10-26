@@ -2,15 +2,39 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import fs from 'node:fs'
 import path from 'node:path'
+import type { Plugin } from 'vite'
 
 // BASE_PATH is set for the github pages build (/caddy-mccadface/), local dev stays at /
 const base = process.env.BASE_PATH || '/'
+
+/**
+ * Publishes the plugin API types: `caddy-api.d.ts` is served at /caddy-api.d.ts by the dev server and emitted into the build,
+ * so plugin authors (and the Plugins panel's download link) get the same file the app was built with.
+ */
+function caddyApiTypes(): Plugin {
+  const file = path.resolve(import.meta.dirname, 'src/api/caddy-api.d.ts')
+  return {
+    name: 'caddy-api-types',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.split('?')[0] !== base + 'caddy-api.d.ts') return next()
+        res.setHeader('content-type', 'text/plain; charset=utf-8')
+        res.end(fs.readFileSync(file))
+      })
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'caddy-api.d.ts', source: fs.readFileSync(file, 'utf8') })
+    },
+  }
+}
 
 export default defineConfig({
   base,
   resolve: { alias: { '@': path.resolve(import.meta.dirname, "src") } },
   plugins: [
+    caddyApiTypes(),
     react(),
     tailwindcss(),
     VitePWA({

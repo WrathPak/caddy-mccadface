@@ -1,6 +1,7 @@
 /** Installs three-mesh-bvh accelerated raycasting globally (import once, for side effects). */
 import { BufferGeometry, Mesh } from 'three'
-import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh'
+import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree, MeshBVH } from 'three-mesh-bvh'
+import type { MeshBvh } from '@/kernel/types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 ;(BufferGeometry.prototype as any).computeBoundsTree = computeBoundsTree
@@ -14,5 +15,12 @@ import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-
  */
 export function buildBvh(geo: BufferGeometry) {
   ;(geo as any).computeBoundsTree?.({ indirect: true })
+  return geo
+}
+
+/** Attach a BVH that a worker already built (cheap: the node buffers are used as they are). */
+export function attachBvh(geo: BufferGeometry, bvh: MeshBvh) {
+  const index = geo.getIndex()!.array
+  ;(geo as any).boundsTree = MeshBVH.deserialize({ version: 1, roots: bvh.roots, index, indirectBuffer: bvh.indirect } as never, geo, { setIndex: false })
   return geo
 }

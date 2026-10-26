@@ -14,6 +14,7 @@ import { NavControls, FOV } from './NavControls'
 import { ViewCubeSync } from './ViewCube'
 import { useVpColors } from './colors'
 import { navClock } from './navClock'
+import { MotionTracker } from './motion'
 import { ArrowManipulator, PreviewLayer, ProfilePicker } from './preview'
 import { ConstructLayer } from '@/features/modeling-tools/ConstructLayer'
 import { SketchOverlay } from '@/sketch/SketchOverlay'
@@ -23,6 +24,7 @@ import { HairPaintTool, HairRegionOverlay } from '@/features/hair/PaintTool'
 import { HairDirectionOverlay, HairOverlayPass, HairPreviewLayer } from '@/features/hair/layer'
 import { DetailOverlay } from '@/features/detail/overlay'
 import { PrintCanvas } from '@/features/print/PrintCanvas'
+import { DEBUG_HANDLE } from '@/app/flags'
 import { RenderScene } from '@/render/RenderScene'
 import { AssemblyLayer } from '@/assembly/AssemblyLayer'
 
@@ -82,9 +84,12 @@ function AoLayer() {
   const sectioned = useUi((s) => s.section.on)
   const setAoActive = useUi((s) => s.setAoActive)
   const hasBodies = useDoc((s) => s.geometry.length > 0)
-  const wanted = ssao && !sectioned && hasBodies
+  // AO draws the scene three times, and its shaders take a long single frame to link; for a mesh of more than 150 thousand
+  // triangles that is what makes the view stutter, so those scenes are drawn plainly
+  const heavy = useDoc((s) => s.geometry.some((b) => !!b.mesh.lod || b.mesh.indices.length > 450_000))
+  const wanted = ssao && !sectioned && hasBodies && !heavy
   const idle = useAoIdle(wanted)
-  const active = wanted && idle
+  const active = wanted && idle && !heavy
   useEffect(() => { setAoActive(active); return () => setAoActive(false) }, [active, setAoActive])
   useAoOverlayMask(active)
   if (!wanted) return null
@@ -93,7 +98,7 @@ function AoLayer() {
   return (
     <>
       {active && <HairOverlayPass />}
-      <EffectComposer multisampling={4} enabled={active}>
+      <EffectComposer multisampling={4} enabled={wanted && idle && !heavy}>
         <N8AO halfRes depthAwareUpsampling quality={AO_LOW ? 'performance' : 'medium'} aoRadius={14} screenSpaceRadius={false} distanceFalloff={1} intensity={1.6} aoSamples={16} denoiseSamples={8} denoiseRadius={12} />
       </EffectComposer>
     </>
@@ -116,6 +121,7 @@ export function Scene() {
         <OrthographicCamera makeDefault near={-5000} far={5000} position={[120, -120, 100]} up={[0, 0, 1]} />
       )}
       <NavControls />
+      <MotionTracker />
       <ViewCubeSync />
       <hemisphereLight args={['#ffffff', '#4a4f57', 0.9]} />
       <directionalLight position={[80, -120, 160]} intensity={1.6} />
@@ -142,7 +148,7 @@ export function Scene() {
       <PrintCanvas />
       <RenderScene />
       <CaptureRegistrar />
-      {import.meta.env.DEV && <DebugProbe />}
+      {DEBUG_HANDLE && <DebugProbe />}
       <AoLayer />
     </>
   )

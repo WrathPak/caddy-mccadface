@@ -32,6 +32,7 @@ import { exportDialog, importDialog, newDocument, openDocument, saveDocument } f
 import { useParamsDialog } from '@/ui/DocUi'
 import { useUi } from '@/store/ui'
 import '@/features/modeling-tools/register'
+import './platformCommands'
 import '@/assembly/commands'
 import { deleteOccurrence } from '@/assembly/actions'
 

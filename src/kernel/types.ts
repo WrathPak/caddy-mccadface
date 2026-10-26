@@ -1,5 +1,11 @@
 /** Shared kernel types (safe to import from both the main thread and the worker). */
 
+/** Decimated copy of a very large mesh, drawn while the camera moves. */
+export interface MeshLod { positions: Float32Array; normals: Float32Array; indices: Uint32Array }
+
+/** A bounding volume hierarchy built off the main thread (three-mesh-bvh, indirect: the index buffer keeps its order). */
+export interface MeshBvh { roots: ArrayBuffer[]; indirect: Uint32Array }
+
 export interface MeshData {
   positions: Float32Array
   normals: Float32Array
@@ -30,6 +36,12 @@ export interface MeshData {
   /** vertices named from the faces meeting there, and their xyz positions (3 numbers per vertex) */
   vertexNames?: string[][]
   vertexPos?: Float32Array
+  /** low-res stand-in for meshes too big to orbit at full detail (absent for ordinary bodies) */
+  lod?: MeshLod
+  /** bounding box, computed with the display data for very large meshes */
+  bounds?: Bounds
+  /** picking structure for `lod` meshes, so the main thread never has to build one */
+  bvh?: MeshBvh
 }
 
 const maxOf = (a: ArrayLike<number>) => {
@@ -91,7 +103,22 @@ export function composeTransform(t: TransformSpec): number[] {
   return [row0[0], row1[0], row2[0], 0, row0[1], row1[1], row2[1], 0, row0[2], row1[2], row2[2], 0, tx, ty, tz, 1]
 }
 
-export function bbox(positions: ArrayLike<number>): { min: Vec3; max: Vec3 } {
+export interface Bounds { min: Vec3; max: Vec3 }
+
+/** Bounding boxes already known for a position array (computed in a worker, or by an earlier call): looking one up costs nothing. */
+const knownBounds = new WeakMap<object, Bounds>()
+/** Remember the bounds a worker computed for `positions` (so `bbox` never has to scan millions of vertices on the main thread). */
+export const noteBounds = (positions: object, b: Bounds) => void knownBounds.set(positions, b)
+
+export function bbox(positions: ArrayLike<number>): Bounds {
+  const known = knownBounds.get(positions)
+  if (known) return known
+  const r = scanBounds(positions)
+  if (positions.length > 30_000) knownBounds.set(positions, r)
+  return r
+}
+
+function scanBounds(positions: ArrayLike<number>): Bounds {
   const min: Vec3 = [Infinity, Infinity, Infinity], max: Vec3 = [-Infinity, -Infinity, -Infinity]
   for (let i = 0; i < positions.length; i += 3) {
     for (let k = 0; k < 3; k++) {

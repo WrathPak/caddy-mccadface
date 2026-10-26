@@ -1,4 +1,5 @@
 /** Origin axes + planes and construction planes. Planes are sized to the scene's bounds and hidden until their eye is switched on. */
+import { isIdentity } from '@/assembly/matrix'
 import { useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import { DoubleSide, type Quaternion } from 'three'
@@ -32,6 +33,12 @@ export function sceneHalfSize(bodies: { mesh: { positions: Float32Array } }[]): 
 export function instancesHalfSize(instances: Instance[]): number {
   let r = 0
   for (const i of instances) {
+    if (isIdentity(i.world)) {
+      // not placed: the box of the vertices (known from the worker, or cached) is enough, no pass over millions of them here
+      const bb = bbox(i.body.mesh.positions)
+      for (let k = 0; k < 3; k++) r = Math.max(r, Math.abs(bb.min[k]), Math.abs(bb.max[k]))
+      continue
+    }
     const p = i.body.mesh.positions, m = i.world
     for (let k = 0; k < p.length; k += 3) {
       const x = m[0] * p[k] + m[4] * p[k + 1] + m[8] * p[k + 2] + m[12]
