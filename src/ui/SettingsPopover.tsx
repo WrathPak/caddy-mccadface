@@ -13,7 +13,7 @@ export function SettingsPopover() {
         <button type="button" className="cell gear" title="Settings" aria-label="Settings" data-testid="settings-gear"><GearSix size={13} /></button>
       </P.Trigger>
       <P.Portal>
-        <P.Content className="menu settings-pop" side="top" align="end" sideOffset={6} data-testid="settings-popover">
+        <P.Content className="menu settings-pop" side="top" align="end" sideOffset={6} collisionPadding={8} data-testid="settings-popover">
           <div className="settings-title">Navigation</div>
           <div className="opt-list" role="radiogroup" aria-label="Navigation preset">
             {NAV_PRESETS.map((p) => (
