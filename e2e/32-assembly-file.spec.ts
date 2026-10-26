@@ -31,6 +31,9 @@ test('file: the component tree, instances, joints, links, explode steps and the 
   await app.ev((c) => c.assembly.actions.activateOcc(null))
   await app.ev((c) => c.assembly.actions.instanceOf('o2', 0))
   await app.ev((c) => c.assembly.actions.setGrounded('o1', true))
+  // the bodies exist once the timeline has rebuilt: wait for that before reading them
+  await app.idle()
+  await expect.poll(() => app.ev((c) => ['Plate', 'Bar'].every((n) => c.doc.getState().geometry.some((b: { name: string }) => b.name === n)))).toBe(true)
   // joints from real snap points: the plate's top face centre and the bar's bottom face centre
   await app.ev((c) => {
     const geo = c.doc.getState().geometry
