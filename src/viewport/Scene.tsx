@@ -84,14 +84,12 @@ function AoLayer() {
   const sectioned = useUi((s) => s.section.on)
   const setAoActive = useUi((s) => s.setAoActive)
   const hasBodies = useDoc((s) => s.geometry.length > 0)
-  // AO draws the scene three times; for a multi-million triangle mesh (one that comes with a low-res copy) that is what makes
-  // the view stutter, so those scenes are drawn plainly
-  const heavy = useDoc((s) => s.geometry.some((b) => !!b.mesh.lod))
-  // the composer is mounted before the first body arrives: its shaders compile while the scene is empty, so a big import
-  // does not have to pay for that in the same frame it first draws
-  const wanted = ssao && !sectioned
+  // AO draws the scene three times, and its shaders take a long single frame to link; for a mesh of more than 150 thousand
+  // triangles that is what makes the view stutter, so those scenes are drawn plainly
+  const heavy = useDoc((s) => s.geometry.some((b) => !!b.mesh.lod || b.mesh.indices.length > 450_000))
+  const wanted = ssao && !sectioned && hasBodies && !heavy
   const idle = useAoIdle(wanted)
-  const active = wanted && idle && hasBodies && !heavy
+  const active = wanted && idle && !heavy
   useEffect(() => { setAoActive(active); return () => setAoActive(false) }, [active, setAoActive])
   useAoOverlayMask(active)
   if (!wanted) return null

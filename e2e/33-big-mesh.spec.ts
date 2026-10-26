@@ -8,7 +8,7 @@ import { startProdServer } from './prodServer'
  *
  * It runs against a production bundle (see prodServer.ts): React's development build logs every render, which would
  * swamp these numbers. Software WebGL stands in for the GPU, so the full-res frame at rest is slow here, but nothing on the
- * main thread waits for it. Run with the CPU throttle off (the frame rate check is about a desktop).
+ * main thread waits for it.
  */
 const PERF_PORT = Number(process.env.E2E_PERF_PORT ?? 5398)
 test.use({ baseURL: `http://localhost:${PERF_PORT}` })
@@ -18,8 +18,6 @@ test.beforeAll(async () => {
   stopServer = await startProdServer(PERF_PORT)
 })
 test.afterAll(() => stopServer?.())
-
-test.skip(Number(process.env.E2E_CPU_THROTTLE ?? 1) > 1, 'the frame rate check needs an unthrottled CPU')
 
 const slack = 1
 

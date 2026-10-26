@@ -11,29 +11,32 @@ import type { Object3D } from 'three'
 import { create } from 'zustand'
 import { navClock } from './navClock'
 
+/** Set while a big file is being read: the viewport draws a speck with its materials so the shaders link before the body shows up. */
+export const useWarm = create<{ on: boolean }>(() => ({ on: false }))
+
 export const useMotion = create<{ moving: boolean }>(() => ({ moving: false }))
 
 /** How long the view must be still (on the nav clock) before the full-res mesh comes back. */
 export const REST_MS = 180
 
-interface Swap { full: Object3D; lod: Object3D }
+interface Swap { full: Object3D; lod: Object3D; /** false while the full mesh is still being sent to the GPU: the low-res one stays up */ ready: boolean }
 const swaps = new Set<Swap>()
 let isMoving = false
 
 function applySwap(s: Swap) {
   s.full.visible = !isMoving
-  s.lod.visible = isMoving
+  s.lod.visible = isMoving || !s.ready
 }
 
 /** Which of each registered pair is showing: [full, low-res] (for the e2e specs). */
 export const lodState = () => [...swaps].map((s) => [s.full.visible, s.lod.visible])
 
 /** Register a full-res / low-res pair; returns the unregister function. */
-export function registerLodSwap(full: Object3D, lod: Object3D): () => void {
-  const s = { full, lod }
+export function registerLodSwap(full: Object3D, lod: Object3D, ready = true): { dispose: () => void; setReady: (r: boolean) => void } {
+  const s: Swap = { full, lod, ready }
   swaps.add(s)
   applySwap(s)
-  return () => void swaps.delete(s)
+  return { dispose: () => void swaps.delete(s), setReady: (r) => { s.ready = r; applySwap(s) } }
 }
 
 /** Mount inside the canvas. */

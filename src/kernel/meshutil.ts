@@ -1,4 +1,4 @@
-import type { MeshData, TopoMesh } from './types'
+import { bbox, type MeshData, type TopoMesh } from './types'
 import { isLargeTopo, meshDisplayLarge, weld } from './bigmesh'
 
 export { weld }
@@ -292,5 +292,8 @@ export function topoVolume(t: TopoMesh): number {
 
 /** Display data for any mesh body: the full face / edge analysis, or the cheap path for multi-million triangle meshes. */
 export function meshDisplayAuto(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG): MeshData {
-  return isLargeTopo(topo) ? meshDisplayLarge(topo) : meshDisplay(topo, creaseDeg)
+  const m = isLargeTopo(topo) ? meshDisplayLarge(topo) : meshDisplay(topo, creaseDeg)
+  // the box is worked out here, so three never has to scan the vertices on the main thread for the bounding sphere
+  if (!m.bounds && m.indices.length > 90_000) m.bounds = bbox(m.positions)
+  return m
 }

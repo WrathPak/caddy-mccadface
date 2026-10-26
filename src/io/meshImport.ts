@@ -7,6 +7,7 @@ import * as Comlink from 'comlink'
 import type { Body } from '@/kernel/types'
 import { getKernel, noteBodyBounds } from '@/kernel/client'
 import { getComputePool } from '@/kernel/pool'
+import { useWarm } from '@/viewport/motion'
 
 /** The File an import blob came from. Handing a File to a worker costs nothing (it is a handle), a Uint8Array would be copied. */
 const sources = new WeakMap<Uint8Array, Blob>()
@@ -26,6 +27,15 @@ export interface MeshImportOptions {
 }
 
 export async function importMeshPooled(source: Blob | Uint8Array, o: MeshImportOptions): Promise<Body[]> {
+  useWarm.setState({ on: true }) // the shaders link now, while the file is being read, not in the frame that first shows it
+  try {
+    return await importPooled(source, o)
+  } finally {
+    setTimeout(() => useWarm.setState({ on: false }), 1500)
+  }
+}
+
+async function importPooled(source: Blob | Uint8Array, o: MeshImportOptions): Promise<Body[]> {
   const parts = await getComputePool().run((w) => w.importMesh({ source, format: o.format, scale: o.scale, creaseDeg: o.creaseDeg }))
   noteBodyBounds(parts.map((p) => ({ mesh: p.display })))
   const kernel = getKernel()
