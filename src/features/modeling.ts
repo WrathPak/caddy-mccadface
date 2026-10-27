@@ -95,7 +95,8 @@ export function targetBodies(bodies: Body[], tool: Body, explicit: string[]): Bo
   const ids = bodyIdsOf(explicit)
   if (ids.length) return bodies.filter((b) => ids.includes(b.id))
   const box = bbox(tool.mesh.positions)
-  return bodies.filter((b) => overlaps(b, box))
+  // an open surface that happens to lie in the way is not something to join to or cut: only an explicit pick can name it
+  return bodies.filter((b) => !b.surface && overlaps(b, box))
 }
 
 /** Combine a tool body with the document: Join / Cut / Intersect / New body. */

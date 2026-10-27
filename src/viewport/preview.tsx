@@ -9,7 +9,11 @@ import {
 import { create } from 'zustand'
 import { useDoc } from '@/doc/store'
 import type { MeshData } from '@/kernel/types'
+import { Line } from '@react-three/drei'
 import { useSketchData, profileGeometry } from '@/sketch/draw'
+import { chainsOf, curveRef } from '@/features/surface/curves'
+import { loopPoly } from '@/sketch/geom'
+import { toWorld } from '@/sketch/plane'
 import { planeQuaternion } from '@/sketch/plane'
 import { useSketch } from '@/sketch/store'
 import { evalNumber } from '@/doc/params'
@@ -93,6 +97,58 @@ export function ProfilePicker() {
           >
             <meshBasicMaterial color={colors.accent} transparent opacity={sel ? 0.5 : hot ? 0.36 : 0.14} side={DoubleSide} depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
           </mesh>
+        )
+      })}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------- curve picking
+
+/** The curves a surface tool has picked so far (the tool's preview publishes them; picking itself goes through the selection). */
+export const useCurvePick = create<{ selected: string[] }>(() => ({ selected: [] }))
+
+/** Finished sketch curves as thick lines to click while the active Inspector field takes curves: a click puts a `curve` entry in the selection. */
+export function CurvePicker() {
+  const on = useUi((s) => s.pickCurves)
+  const selected = useCurvePick((s) => s.selected)
+  const features = useDoc((s) => s.features)
+  const rollback = useDoc((s) => s.rollback)
+  const hidden = useUi((s) => s.hiddenIds)
+  const data = useSketchData((s) => s.data)
+  const sketching = useSketch((s) => s.active)
+  const colors = useVpColors()
+  const [hover, setHover] = useState<string | null>(null)
+  const items = useMemo(() => {
+    const out: { ref: string; pts: [number, number, number][] }[] = []
+    features.forEach((f, i) => {
+      const d = data[f.id]
+      if (f.type !== 'sketch' || !d || i >= rollback || f.suppressed || hidden[f.id]) return
+      for (const c of chainsOf(d)) {
+        const poly = loopPoly(c.segs, Math.PI / 48)
+        const last = c.segs[c.segs.length - 1]
+        const pts = c.closed ? [...poly, poly[0]] : [...poly, last.k === 'c' ? poly[0] : last.b]
+        out.push({ ref: curveRef(f.id, c), pts: pts.map((p) => toWorld(d.plane, p)) })
+      }
+    })
+    return out
+  }, [features, rollback, hidden, data])
+  if (!on || sketching) return null
+  return (
+    <>
+      {items.map((it) => {
+        const sel = selected.includes(it.ref)
+        const hot = hover === it.ref
+        return (
+          <group key={it.ref}>
+            <Line points={it.pts} color={sel ? '#ffffff' : hot ? '#e8b84a' : colors.accent} lineWidth={sel ? 4 : hot ? 3.5 : 2.5} renderOrder={8} depthTest={false} raycast={() => null} />
+            <Line
+              points={it.pts} color={colors.accent} lineWidth={14} transparent opacity={0} depthWrite={false} renderOrder={8}
+              onPointerMove={(e) => { e.stopPropagation(); if (hover !== it.ref) setHover(it.ref) }}
+              onPointerOut={() => setHover(null)}
+              onClick={(e) => { e.stopPropagation(); useUi.getState().setSelection([{ kind: 'curve', id: it.ref }]) }}
+            />
+          </group>
         )
       })}
     </>

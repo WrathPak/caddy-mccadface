@@ -4,13 +4,20 @@ import { box, initOcc, readStep, writeStep, type Shape } from './occ'
 import { initManifold, meshBoolean, type BoolOp } from './mesh'
 import { DEFAULT_CREASE_DEG, weld } from './meshutil'
 import {
-  bodyFromShape, bodyFromTopo, gc, getBrep, getNamed, getOp, getStored, getTopo, helpers, putStored, sendBodies, sendBody,
+  bodyFromShape, bodyFromTopo, gc, getBrep, getNamed, getOp, getStored, getTopo, helpers, putStored, requireSolids, sendBodies, sendBody,
 } from './store'
 import { boolNamed, boxNames, carryNames, type NShape } from './naming'
 import { composeTransform, type Body, type TopoMesh, type TransformSpec, type Vec3 } from './types'
 import './extra-ops'
 
 export type { BoolOp }
+
+/** Worker ops that only make sense on closed solids: handed a surface body they say so instead of failing inside OpenCascade. */
+const SOLID_ONLY: Record<string, string> = {
+  edgeMod: 'Fillet and Chamfer', shellOp: 'Shell', patternApply: 'Pattern and Mirror', joinBodies: 'Pattern and Mirror', offsetFaces: 'Offset Face and Press/Pull',
+  deleteFaces: 'Delete Face (solid)', replaceFaces: 'Replace Face', splitBody: 'Split Body', splitFaces: 'Split Face', draftFaces: 'Draft', holes: 'Hole',
+  embossFace: 'Emboss', textureFace: 'Texture', surfaceGenerate: 'Surface generators', threadFace: 'Threads', threadPreview: 'Threads', printSplit: 'Split Body (Print)', printHollow: 'Hollow',
+}
 export interface BodyMeta { id: string; name: string }
 
 export const api = {
@@ -72,12 +79,14 @@ export const api = {
   /** B-rep boolean (all inputs must be B-reps). */
   async brepBoolean(a: BodyMeta & { op: BoolOp; base: string; tools: string[]; /** the feature running the op (names of faces it creates are rooted there) */ fid?: string }): Promise<Body> {
     await initOcc()
+    requireSolids('Join, Cut and Intersect', { base: a.base, tools: a.tools })
     let r: NShape = getNamed(a.base)
     for (const t of a.tools) r = boolNamed(a.op === 'union' ? 'fuse' : a.op === 'subtract' ? 'cut' : 'common', r, getNamed(t), a.fid ?? a.id)
     return sendBody(bodyFromShape(a.id, a.name, r.shape, r.faces))
   },
   /** Mesh boolean through manifold (B-rep inputs are tessellated first). Result is a mesh body. */
   async meshBoolean(a: BodyMeta & { op: BoolOp; base: string; tools: string[]; fid?: string }): Promise<Body> {
+    requireSolids('Join, Cut and Intersect', { base: a.base, tools: a.tools })
     const topo = await meshBoolean(a.op, getTopo(a.base), a.tools.map(getTopo))
     return sendBody(bodyFromTopo(a.id, a.name, topo))
   },
@@ -112,6 +121,7 @@ export const api = {
   async call(name: string, args: unknown): Promise<unknown> {
     const op = getOp(name)
     if (!op) throw new Error(`Unknown kernel op: ${name}`)
+    if (SOLID_ONLY[name]) requireSolids(SOLID_ONLY[name], args)
     await Promise.all([initOcc(), initManifold()])
     return op(args as never, helpers)
   },

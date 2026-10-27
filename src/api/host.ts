@@ -407,6 +407,7 @@ export class PluginHost {
     if (this.handles.size > MAX_HANDLES) this.handles.delete(this.handles.keys().next().value as string)
     const b = bbox(body.mesh.positions)
     const out: Obj = { handle, kind: body.kind, triangles: body.mesh.indices.length / 3, bounds: { min: b.min, max: b.max } }
+    if (body.surface) out.surface = true
     if (id !== undefined) { out.id = id; out.name = name }
     return out
   }

@@ -101,7 +101,7 @@ function faceOf(v: ThreadValues, bodies: Body[], report = new RefReport()): { bo
   const ref = decodeRef(v.face[0])
   const r = ref && ref.kind === 'face' ? resolveFace(ref, bodies, report) : null
   if (!r) throw new RefError('The face to thread no longer exists (an edit upstream removed it). Pick it again.', report.lostRefs)
-  if (r.body.kind !== 'brep') throw new Error('Threads need a solid (B-rep) body, not a mesh')
+  if (r.body.kind !== 'brep' || r.body.surface) throw new Error('Threads need a solid body, not a mesh or an open surface')
   return { body: r.body, index: r.index }
 }
 

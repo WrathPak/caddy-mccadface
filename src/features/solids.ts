@@ -347,7 +347,7 @@ function shellGroups(refs: string[], bodies: Body[], report = new RefReport()): 
     if (!g.faces.includes(r.index)) g.faces.push(r.index)
   }
   if (!by.size) throw new Error('Select the faces to remove')
-  for (const g of by.values()) if (g.body.kind !== 'brep') throw new Error('Shell needs a solid (B-rep) body')
+  for (const g of by.values()) if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Shell needs a solid body' + (g.body.surface ? ': this one is an open surface, thicken it instead' : ', not a mesh'))
   return [...by.values()]
 }
 

@@ -6,6 +6,7 @@ import { runCommand } from './commands'
 import { regenerate } from '@/doc/engine'
 import { useDoc } from '@/doc/store'
 import { useSketch } from '@/sketch/store'
+import { useSketchData } from '@/sketch/draw'
 import { useUi } from '@/store/ui'
 import { useHairView } from '@/features/hair/store'
 import { useHairPaint } from '@/features/hair/paint'
@@ -49,7 +50,7 @@ const navTools = {
 
 export function installDebugHandle() {
   ;(window as unknown as { __caddy: unknown }).__caddy = {
-    doc: useDoc, ui: useUi, sketch: useSketch, hair: useHairView, preview: usePreview, planes: usePlanes, paint: useHairPaint, bus: viewportBus, motion: useMotion, lodState, projects: useProjects, plugins: usePlugins, pluginHost: hostOf,
+    doc: useDoc, ui: useUi, sketch: useSketch, sketchData: useSketchData, hair: useHairView, preview: usePreview, planes: usePlanes, paint: useHairPaint, bus: viewportBus, motion: useMotion, lodState, projects: useProjects, plugins: usePlugins, pluginHost: hostOf,
     ...((window as unknown as { __caddyExtra?: object }).__caddyExtra ?? {}),
     assembly: assemblyDebug, nav: navTools, drawing: drawingDebug, runCommand, regenerate, importFiles, saveDocument, serializeProject, parseProject,
   }

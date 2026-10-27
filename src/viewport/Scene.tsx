@@ -15,7 +15,7 @@ import { ViewCubeSync } from './ViewCube'
 import { useVpColors } from './colors'
 import { navClock } from './navClock'
 import { MotionTracker } from './motion'
-import { ArrowManipulator, PreviewLayer, ProfilePicker } from './preview'
+import { ArrowManipulator, CurvePicker, PreviewLayer, ProfilePicker } from './preview'
 import { ConstructLayer } from '@/features/modeling-tools/ConstructLayer'
 import { SketchOverlay } from '@/sketch/SketchOverlay'
 import { SketchDisplay } from '@/sketch/SketchDisplay'
@@ -137,6 +137,7 @@ export function Scene() {
       <PlanePicker />
       <PreviewLayer />
       <ProfilePicker />
+      <CurvePicker />
       <ArrowManipulator />
       <ConstructLayer />
       <MeasureOverlay />

@@ -27,7 +27,7 @@ export type PathSeg = ({ k: 'l'; a: Vec3; b: Vec3 } | { k: 'a'; a: Vec3; m: Vec3
 
 export interface SweepArgs { id: string; name: string; groups: ProfileGroup[]; path: PathSeg[] }
 
-function pathWire(path: PathSeg[]): Wire {
+export function pathWire(path: PathSeg[]): Wire {
   if (!path.length) throw new Error('The sweep path is empty')
   // lines, arcs and splines each become their own exact edge (a spline piece is a true cubic Bezier curve, not a polyline)
   return assembleWire(path.map((s) => (s.k === 'l' ? makeLine(s.a, s.b) : s.k === 'b' ? makeBezierCurve([s.a, s.c1, s.c2, s.b]) : makeThreePointArc(s.a, s.m, s.b))))

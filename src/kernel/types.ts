@@ -55,6 +55,13 @@ export interface Body {
   id: string
   name: string
   kind: 'brep' | 'mesh'
+  /**
+   * An open shell / loose faces (a surface body, made in the Surface workspace): a B-rep with no solid in it. Absent for solids and meshes.
+   * It draws double-sided with its edges and the solid tools (fillet, shell, booleans...) refuse it.
+   */
+  surface?: boolean
+  /** surfaces only: how many edges belong to a single face (the open boundary); 0 means the shell is closed */
+  freeEdges?: number
   /** worker handle of the geometry; changes whenever the geometry changes */
   key: string
   /** feature that originally created this body */
@@ -175,3 +182,6 @@ export function computeEdgeSigs(m: MeshData): EdgeSig[] {
     return { midpoint: [e.mx / c, e.my / c, e.mz / c], direction: [e.dx / l, e.dy / l, e.dz / l], length: e.len }
   })
 }
+
+/** A body that is a closed solid or a mesh (not an open surface): what the solid tools can work on. */
+export const isSolidBody = (b: Body) => b.kind === 'brep' && !b.surface

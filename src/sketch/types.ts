@@ -120,6 +120,8 @@ export interface SketchData {
   entities: Entity[]
   constraints: Constraint[]
   profiles: Profile[]
+  /** every run of connected curves, open or closed (the Surface tools take these; absent in data from before they existed) */
+  chains?: import('./chains').Chain[]
 }
 
 /** Persistent id of a profile: the sorted, de-duplicated entity ids of its outer loop (empty when the loop carries none). */

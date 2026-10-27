@@ -136,7 +136,8 @@ export function mergePlaced(parts: { positions: Float32Array; indices: Uint32Arr
 /** The assembly's objects for a 3MF: one per component instance, at its current position. `keep` limits it to some instances. */
 export async function assemblyObjects(keep: (i: Instance) => boolean = () => true): Promise<{ name: string; mesh: TopoMesh }[]> {
   const d = useDoc.getState()
-  const insts = assembledInstances().filter(keep)
+  // open surfaces have no inside: a mesh file for printing is only made of solids
+  const insts = assembledInstances().filter(keep).filter((i) => !i.body.surface)
   const groups = objectGroups(insts, d.assembly, d.bodyNames)
   const keys = [...new Set(insts.map((i) => i.body.key))]
   const meshes = await getKernel().exportMeshes(keys)

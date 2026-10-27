@@ -56,7 +56,7 @@ export async function runInterference(occs: string[] = []): Promise<Interference
 export async function clearanceBetween(a: { body: Body; world: Mat4 }[], b: { body: Body; world: Mat4 }[], kernel = getKernel()): Promise<{ distance: number; pa: Vec3; pb: Vec3 } | null> {
   let best: { distance: number; pa: Vec3; pb: Vec3 } | null = null
   const take = (r: { distance: number; pa: number[]; pb: number[] } | null) => { if (r && (!best || r.distance < best.distance)) best = { distance: r.distance, pa: r.pa as Vec3, pb: r.pb as Vec3 } }
-  const solid = (x: { body: Body }) => x.body.kind === 'brep'
+  const solid = (x: { body: Body }) => x.body.kind === 'brep' && !x.body.surface
   const exactA = a.filter(solid), exactB = b.filter(solid)
   if (exactA.length && exactB.length) take((await kernel.call('assemblyClearance', { a: exactA.map((i) => ({ key: i.body.key, matrix: i.world })), b: exactB.map((i) => ({ key: i.body.key, matrix: i.world })) })) as never)
   const mesh = (i: { body: Body; world: Mat4 }): PlacedMesh => ({ positions: i.body.mesh.positions, indices: i.body.mesh.indices, matrix: i.world })

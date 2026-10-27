@@ -76,6 +76,7 @@ function targets(p: ParamValues, find: (id: string) => Body | undefined, tool: B
   const bodies = ids.map(find)
   if (bodies.some((b) => !b)) throw new Error('A selected body no longer exists')
   if (tool.brepOnly && bodies.some((b) => b!.kind !== 'brep')) throw new Error('Only solid (B-rep) bodies can be converted; mesh bodies are already meshes')
+  if (tool.brepOnly && bodies.some((b) => b!.surface)) throw new Error('An open surface cannot be turned into a mesh body: stitch it closed or thicken it first')
   return bodies as Body[]
 }
 
@@ -114,7 +115,7 @@ for (const tool of TOOLS) {
 export function startMeshTool(type: string) {
   const geometry = useDoc.getState().geometry
   const tool = TOOLS.find((t) => t.type === type)!
-  const usable = (b: Body) => !tool.brepOnly || b.kind === 'brep'
+  const usable = (b: Body) => !tool.brepOnly || (b.kind === 'brep' && !b.surface)
   let ids = [...new Set(useUi.getState().selection.filter((r) => ['body', 'mesh', 'face', 'edge'].includes(r.kind)).map((r) => r.id))].filter((id) => geometry.some((b) => b.id === id && usable(b)))
   const pool = geometry.filter(usable)
   if (!ids.length && pool.length === 1) ids = [pool[0].id]

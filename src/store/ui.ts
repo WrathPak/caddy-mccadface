@@ -6,7 +6,7 @@ export type DisplayMode = 'shaded' | 'shadedEdges' | 'wireframe' | 'xray'
 export type Projection = 'perspective' | 'orthographic'
 export type Theme = 'dark' | 'light'
 export type SelectionFilter = 'body' | 'face' | 'edge' | 'component'
-export type EntityKind = 'body' | 'face' | 'edge' | 'sketch' | 'mesh' | 'plane' | 'axis' | 'feature' | 'point' | 'vertex' | 'snap' | 'component'
+export type EntityKind = 'body' | 'face' | 'edge' | 'sketch' | 'mesh' | 'plane' | 'axis' | 'feature' | 'point' | 'vertex' | 'snap' | 'component' | 'curve'
 
 export interface SelectionRef {
   kind: EntityKind
@@ -62,6 +62,8 @@ interface UiState {
   inspector: InspectorSession | null
   /** a selection field that accepts sketches is active: finished sketch curves become clickable */
   pickSketches: boolean
+  /** a selection field that accepts sketch curves is active: the runs of curves of finished sketches become clickable */
+  pickCurves: boolean
   /** the entity kinds the active selection field accepts (planes, axes, points and vertices become clickable in the viewport) */
   pickKinds: EntityKind[]
   /** a message from the open feature's live preview (e.g. "no strands fit"), shown in the dialog */
@@ -121,6 +123,7 @@ export const useUi = create<UiState>((set, get) => ({
   paletteOpen: false,
   inspector: null,
   pickSketches: false,
+  pickCurves: false,
   pickKinds: [],
   inspectorNotice: null,
   highlight: [],

@@ -35,7 +35,32 @@ export const RIBBON_TABS: RibbonTab[] = [
       { label: 'Document', items: [{ cmd: 'doc.parameters' }] },
     ],
   },
-  { id: 'surface', label: 'Surface', disabled: true, groups: [] },
+  {
+    id: 'surface',
+    label: 'Surface',
+    groups: [
+      { label: 'File', items: [{ stack: ['file.new', 'file.open', 'file.save'] }, { cmd: 'file.import' }, { cmd: 'file.export' }] },
+      {
+        label: 'Create',
+        items: [
+          { cmd: 'sketch.create' },
+          { cmd: 'surface.extrude' },
+          { cmd: 'surface.revolve' },
+          { cmd: 'surface.sweep' },
+          { cmd: 'surface.loft' },
+          { cmd: 'surface.patch' },
+          { cmd: 'surface.offset' },
+        ],
+      },
+      {
+        label: 'Modify',
+        items: [{ cmd: 'surface.trim' }, { cmd: 'surface.extend' }, { cmd: 'surface.stitch', menu: ['surface.stitch', 'surface.unstitch'] }, { cmd: 'surface.thicken' }, { cmd: 'surface.deleteFace' }, { cmd: 'solid.move' }],
+      },
+      { label: 'Construct', items: [{ cmd: 'construct.plane' }] },
+      { label: 'Inspect', items: [{ cmd: 'inspect.measure' }, { cmd: 'inspect.section' }] },
+      { label: 'Document', items: [{ cmd: 'doc.parameters' }] },
+    ],
+  },
   {
     id: 'mesh',
     label: 'Mesh',

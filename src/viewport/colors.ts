@@ -15,6 +15,7 @@ export function useVpColors() {
       axisY: read('--vp-axis-y'),
       axisZ: read('--vp-axis-z'),
       body: read('--vp-body'),
+      surface: read('--vp-surface'),
       edge: read('--vp-edge'),
       accent: read('--accent'),
     }),
