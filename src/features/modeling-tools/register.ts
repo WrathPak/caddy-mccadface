@@ -43,7 +43,7 @@ cmd('solid.hole', 'Hole', CircleDashed, 'Create', solid(startHole), 'Simple, cou
 cmd('solid.pressPull', 'Press/Pull', PushPin, 'Modify', solid(() => startDirect('pressPull', 'solid.pressPull')), 'Push or pull a face, or round an edge, by dragging')
 cmd('solid.offsetFace', 'Offset Face', ArrowsOutLineVertical, 'Modify', solid(() => startDirect('offsetFace', 'solid.offsetFace')), 'Move faces along their normals')
 cmd('solid.deleteFace', 'Delete Face', Eraser, 'Modify', solid(() => startDirect('deleteFace', 'solid.deleteFace')), 'Remove faces and heal the gap (fillets, holes, bosses)')
-cmd('solid.replaceFace', 'Replace Face', SplitVertical, 'Modify', solid(() => startDirect('replaceFace', 'solid.replaceFace')), 'Move faces onto a plane or another face')
+cmd('solid.replaceFace', 'Replace Face', SplitVertical, 'Modify', solid(() => startDirect('replaceFace', 'solid.replaceFace')), 'Move faces onto a plane or a flat, cylindrical or spherical face (for a freeform surface body use Fit to Surface in the Surface tab)')
 cmd('solid.splitFace', 'Split Face', Scissors, 'Modify', solid(() => startDirect('splitFace', 'solid.splitFace')), 'Divide faces with a plane, face or body without splitting the body')
 cmd('solid.splitBody', 'Split Body', Knife, 'Modify', solid(() => startDirect('splitBody', 'solid.splitBody')), 'Cut bodies into pieces with a plane, face or body')
 cmd('solid.draft', 'Draft', TrendDown, 'Modify', solid(() => startDirect('draft', 'solid.draft')), 'Tilt faces by a draft angle about a neutral plane')

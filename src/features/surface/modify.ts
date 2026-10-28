@@ -1,7 +1,7 @@
-/** Surface > Modify: Trim, Extend, Stitch, Unstitch, Thicken and Delete Face (kernel ops in kernel/surface-ops.ts). */
-import { ArrowLineRight, Eraser, LinkBreak, Needle, Rows, Scissors } from '@phosphor-icons/react'
+/** Surface > Modify: Trim, Extend, Stitch, Unstitch, Thicken, Delete Face and Fit to Surface (kernel ops in kernel/surface-ops.ts). */
+import { ArrowLineRight, Eraser, LinkBreak, Needle, Rows, Scissors, Swap } from '@phosphor-icons/react'
 import { RefError, RefReport, bodyIdsOf, decodeRef, faceSigs, resolveEdge } from '@/doc/refs'
-import type { SurfaceDeleteFaceArgs, SurfaceExtendArgs, SurfaceStitchArgs, SurfaceThickenArgs, SurfaceTrimArgs, SurfaceUnstitchArgs, TrimTool } from '@/kernel/surface-ops'
+import type { SurfaceDeleteFaceArgs, SurfaceExtendArgs, SurfaceReplaceFaceArgs, SurfaceStitchArgs, SurfaceThickenArgs, SurfaceTrimArgs, SurfaceUnstitchArgs, TrimTool } from '@/kernel/surface-ops'
 import type { Body } from '@/kernel/types'
 import { mul3 } from '@/kernel/xform'
 import type { ParamSchema } from '@/ui/schema'
@@ -230,6 +230,57 @@ registerSurfaceTool({
       bodies.push(await call<Body>(env, 'surfaceDeleteFace', args))
     }
     return { bodies }
+  },
+})
+
+// ------------------------------------------------------------------------------------------------ replace face
+
+export const surfaceReplaceFaceSchema: ParamSchema = {
+  id: 'surfaceReplaceFace',
+  title: 'Fit Face to Surface',
+  params: [
+    { type: 'selection-ref', key: 'faces', help: 'The faces of the solid to move onto the target. Click them in the viewport. The faces next to them are extended or cut back to meet the new surface.', label: 'Faces', accepts: ['face'], multiple: true, required: true, pick: true, default: [] },
+    { type: 'selection-ref', key: 'target', help: 'The surface to move onto: a surface body, a plane or construction plane, or a face of another body. Seen along the face it has to reach over all of it (a plane always does).', label: 'Replace with', accepts: ['body', 'face', 'plane'], multiple: true, required: true, pick: true, default: [] },
+    { type: 'bool', key: 'keep', help: 'Keep the target surface in the document. Off: a target that is a surface body is used up (removed). A plane or a face of another body always stays.', label: 'Keep the target surface', default: true },
+  ],
+}
+
+registerSurfaceTool({
+  type: 'surfaceReplaceFace',
+  label: 'Fit to Surface',
+  icon: Swap,
+  schema: surfaceReplaceFaceSchema,
+  filter: 'face',
+  async build(p, env, report) {
+    const groups = facesOf(p.faces as string[], env, report)
+    if (groups.length > 1) throw new Error('Pick the faces of one solid at a time')
+    const [g] = groups
+    if (g.body.kind !== 'brep' || g.body.surface) throw new Error(`${g.body.name} is a ${g.body.kind === 'mesh' ? 'mesh' : 'surface'}: Fit to Surface moves the faces of a solid`)
+    const refs = p.target as string[]
+    const first = refs[0]
+    const faceRef = first.startsWith('{') && decodeRef(first)?.kind === 'face'
+    let target: TrimTool
+    let used: Body | undefined
+    if (faceRef) {
+      const tg = facesOf(refs, env, report)
+      if (tg.length > 1) throw new Error('Pick the target faces of one body')
+      if (tg[0].body.id === g.body.id) throw new Error('A solid cannot move its own face onto another one of its faces: pick a face of another body, a surface or a plane')
+      target = { kind: 'faces', key: tg[0].body.key, faces: tg[0].faces.map((f) => f.index) }
+    } else {
+      const body = env.bodies.find((b) => b.id === first)
+      if (body) {
+        if (body.id === g.body.id) throw new Error('Pick a different body as the target: a solid cannot be moved onto itself')
+        if (body.kind !== 'brep' || !body.surface) throw new Error(`${body.name} is a ${body.kind === 'mesh' ? 'mesh' : 'solid'}: pick a surface body, a plane or a face of it`)
+        target = { kind: 'body', key: body.key }
+        used = body
+      } else {
+        const pl = await resolvePlane(first, env, report)
+        target = { kind: 'plane', origin: pl.origin, normal: pl.normal }
+      }
+    }
+    const args: SurfaceReplaceFaceArgs = { id: g.body.id, name: g.body.name, key: g.body.key, faces: g.faces.map((f) => f.index), target }
+    const out = await call<Body>(env, 'surfaceReplaceFace', args)
+    return { bodies: [out], remove: used && !p.keep ? [used.id] : undefined }
   },
 })
 

@@ -2,7 +2,7 @@
  * Surface workspace: the tools' features, their commands and what a click on the ribbon preselects. The ribbon tab itself is in
  * app/ribbon.ts. The only hook into the shared code is the import of this file (app/docCommands.ts).
  */
-import { ArrowFatLineUp, ArrowLineRight, ArrowsClockwise, Eraser, LinkBreak, Needle, Path, Rows, Scissors, SelectionBackground, Shapes, Stack } from '@phosphor-icons/react'
+import { ArrowFatLineUp, ArrowLineRight, ArrowsClockwise, Eraser, LinkBreak, Needle, Path, Rows, Scissors, SelectionBackground, Shapes, Stack, Swap } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { registerCommand } from '@/app/commands'
 import { createFeature } from '@/doc/editor'
@@ -88,3 +88,8 @@ cmd('surface.thicken', 'Thicken', Rows, () => start('surfaceThicken', 'surface.t
   'Give a surface a thickness on one side or both: the result is a solid')
 cmd('surface.deleteFace', 'Delete Face', Eraser, () => start('surfaceDeleteFace', 'surface.deleteFace', { faces: pickedFaces() }),
   'Remove faces from a solid or a surface, leaving an open surface')
+cmd('surface.replaceFace', 'Fit to Surface', Swap, () => {
+  const solidFaces = selection().filter((r) => r.kind === 'face' && !geometry().find((b) => b.id === r.id)?.surface)
+  const target = [...pickedSurfaces(), ...selection().filter((r) => r.kind === 'plane').map((r) => r.id)]
+  start('surfaceReplaceFace', 'surface.replaceFace', { faces: encodeSelection(solidFaces, geometry()), target })
+}, 'Move faces of a solid onto a surface, plane or face of any shape: the flat faces next to them carry on or cut back to meet it. Select the faces first, then pick the surface.')
