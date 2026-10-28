@@ -1,12 +1,15 @@
 import * as T from '@radix-ui/react-tooltip'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Command } from '@/app/commands'
 import { helpFor } from '@/help/commandHelp'
 import { useSettings } from '@/settings/settings'
 
+/** true under a TooltipProvider; React roots of their own (the canvas, drei's Html) don't inherit it */
+const HasProvider = createContext(false)
+
 export const TooltipProvider = ({ children }: { children: ReactNode }) => (
   <T.Provider delayDuration={400} skipDelayDuration={250}>
-    {children}
+    <HasProvider.Provider value={true}>{children}</HasProvider.Provider>
   </T.Provider>
 )
 
@@ -32,7 +35,12 @@ export interface TipProps {
  * screens a long press shows it (and swallows the tap that would follow); a tap anywhere else puts it away.
  * Wraps a single child element. The Help setting "Show tooltips" turns every one of them off.
  */
-export function Tip({ label, shortcut, desc, select, children, side = 'bottom' }: TipProps) {
+export function Tip(props: TipProps) {
+  const inside = useContext(HasProvider)
+  return inside ? <TipInner {...props} /> : <TooltipProvider><TipInner {...props} /></TooltipProvider>
+}
+
+function TipInner({ label, shortcut, desc, select, children, side = 'bottom' }: TipProps) {
   const enabled = useSettings((s) => s.tooltips)
   const [open, setOpen] = useState(false)
   const held = useRef(false) // the tip was opened by a long press and stays until the next touch elsewhere

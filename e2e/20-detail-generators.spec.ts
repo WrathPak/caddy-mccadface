@@ -32,7 +32,7 @@ for (const k of kinds) {
     await app.cameraStable()
     await app.shot(`detail-${k.title.toLowerCase()}-preview`)
     // plain-language help on the labels
-    await expect(app.inspector().locator('.field-label').first()).toHaveAttribute('title', /.{12}/)
+    await app.labelTip(app.inspector().locator('.field-label').first(), /.{12}/)
     await app.ok()
     const feats = await app.features()
     expect(feats.map((f) => f.state), JSON.stringify(feats.map((f) => f.error))).toEqual(['ok', 'ok'])

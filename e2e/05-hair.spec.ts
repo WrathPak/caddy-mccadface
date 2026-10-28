@@ -103,7 +103,7 @@ test('hair: the dialog explains itself - presets, help hints, direction list, pr
 
   // every field has a help text: tooltip on the label and a hint line while focused
   const dens = dlg.locator('.field', { has: page.locator('.field-label', { hasText: 'Density' }) }).first()
-  await expect(dens.locator('.field-label')).toHaveAttribute('title', /Strands per square centimetre/)
+  await app.labelTip(dens.locator('.field-label'), /Strands per square centimetre/)
   await dens.locator('input').focus()
   await expect(dlg.getByTestId('field-hint')).toContainText('Strands per square centimetre')
   await app.shot('hair-help-hint')

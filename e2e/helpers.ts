@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from '@playwright/test'
+import { test as base, expect, type Page, type Locator } from '@playwright/test'
 import path from 'node:path'
 
 export { expect }
@@ -191,6 +191,14 @@ export class App {
   }
   inspector() {
     return this.page.locator('.panel', { has: this.page.locator('.inspector-foot') })
+  }
+  /** Hover a field label and check its tooltip text, then move off so the tip closes again. */
+  async labelTip(label: Locator, text: RegExp) {
+    await label.hover()
+    await expect(this.page.locator('.tip')).toContainText(text)
+    await this.page.mouse.move(700, 450, { steps: 6 })
+    await this.page.mouse.move(760, 520, { steps: 6 })
+    await expect(this.page.locator('.tip')).toHaveCount(0)
   }
   async ok() {
     await this.page.locator('.inspector-foot').getByRole('button', { name: 'OK' }).click()
