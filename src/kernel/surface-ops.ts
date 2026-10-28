@@ -815,3 +815,120 @@ surfaceOp<SurfaceDeleteFaceArgs>('surfaceDeleteFace', 'Delete Face', 'the body m
   const { out } = sewNamed(rest.map((i) => facePart(src, i)), 1e-6, a.id)
   return send(h, a, out)
 })
+
+// ------------------------------------------------------------------------------------------------ replace face
+
+export interface SurfaceReplaceFaceArgs {
+  id: string
+  name: string
+  /** the solid */
+  key: string
+  /** the faces of the solid that move onto the target */
+  faces: number[]
+  /** what they move onto: a plane, a surface body, or faces of some body */
+  target: TrimTool
+}
+
+const volume = (s: Sh | AnyShape) => { try { return Math.abs(measureVolume(any(s) as never)) } catch { return 0 } }
+
+/** The prism of a face (or shape) along `v`, with the face it started from named `name`. */
+function prismNamed(src: Sh, v: Vec3, name?: string): NShape {
+  const o = oc()
+  const vec = new Vector(v)
+  const mk = new o.BRepPrimAPI_MakePrism(any(src).wrapped, vec.wrapped, false, true)
+  try {
+    const shape = cast(mk.Shape()) as unknown as Sh
+    const topo = topoOf(shape as unknown as AnyShape)
+    const claims: string[][] = topo.faces.map(() => [])
+    if (name) {
+      const j = indexer(topo.faces, topo.faceHashes)(mk.FirstShape() as never)
+      if (j >= 0) claims[j].push(name)
+    }
+    return { shape, faces: claims }
+  } finally { mk.delete(); vec.delete() }
+}
+
+/** A boolean that may come out empty (disjoint inputs): `null` then, instead of an error. */
+function tryBool(op: 'fuse' | 'cut' | 'common', a: NShape, b: NShape, fid: string): NShape | null {
+  let r: NShape
+  try { r = boolNamed(op, a, b, fid) } catch { return null }
+  return volume(r.shape) > 1e-9 ? r : null
+}
+
+const fuseAll = (parts: NShape[], fid: string): NShape => parts.slice(1).reduce((acc, p) => boolNamed('fuse', acc, p, fid), parts[0])
+
+surfaceOp<SurfaceReplaceFaceArgs>('surfaceReplaceFace', 'Replace Face', 'the target may be too far from the faces or too tangled', (a, h) => {
+  const src = h.getNamed(a.key)
+  const solid = any(src)
+  if (solid.solids.length !== 1) throw new Error('Replace Face needs a solid body: a surface has no inside to grow or cut')
+  const faces = topoOf(solid).faces
+  if (!a.faces.length) throw new Error('Select the faces to replace')
+  if (a.faces.some((i) => !faces[i])) throw new Error('A face you picked no longer exists')
+  const boundsOf = (s: AnyShape) => (s as unknown as { boundingBox: { bounds: [Vec3, Vec3] } }).boundingBox.bounds
+  const sbb = boundsOf(solid)
+  const sCentre = mul3(add3(sbb[0], sbb[1]), 0.5)
+  const sDiag = dist3(sbb[0], sbb[1])
+
+  // the target, as faces (a plane is made big enough for every face once that face's direction is known)
+  const t = a.target
+  let tFaces: Face[] = []
+  let tCentre: Vec3 = sCentre, tDiag = 0
+  if (t.kind !== 'plane') {
+    const body = any(h.getNamed(t.key))
+    if (t.kind === 'body' && body.solids.length) throw new Error('The target has to be a surface, a plane or faces: a solid body has no single surface to move onto')
+    const all = topoOf(body).faces
+    tFaces = t.kind === 'faces' ? t.faces.map((i) => all[i]).filter(Boolean) : all
+    if (!tFaces.length || (t.kind === 'faces' && tFaces.length !== t.faces.length)) throw new Error('The target surface no longer exists')
+    const tb = boundsOf(body)
+    tCentre = mul3(add3(tb[0], tb[1]), 0.5)
+    tDiag = dist3(tb[0], tb[1])
+  } else {
+    const n = norm3(t.normal)
+    tCentre = sub3(sCentre, mul3(n, dot3(sub3(sCentre, t.origin), n)))
+  }
+  // far enough to span the solid, the target and the gap between them
+  const L = 4 * (sDiag + tDiag) + 2 * dist3(sCentre, tCentre) + 10
+
+  let cur: NShape = src
+  // every normal is taken before the solid changes
+  const dirs = a.faces.map((i) => norm3(v3(faces[i].normalAt(insidePoint(faces[i]) as never))))
+  a.faces.forEach((fi, k) => {
+    const d = dirs[k]
+    const fc = faces[fi]
+    let tf = tFaces
+    if (t.kind === 'plane') {
+      const n = norm3(t.normal)
+      const nd = dot3(n, d)
+      if (Math.abs(nd) < 1e-3) throw new Error('The plane runs along the face, so it never meets it: pick a plane that crosses the face')
+      const fcen = v3(fc.center)
+      const c = add3(fcen, mul3(d, dot3(sub3(t.origin, fcen), n) / nd))
+      const half = (sDiag * 2 + 1) / Math.max(Math.abs(nd), 0.05)
+      const u = norm3(cross3(n, Math.abs(n[2]) > 0.9 ? [1, 0, 0] : [0, 0, 1]))
+      const w = cross3(n, u)
+      const corner = (s: number, q: number): Vec3 => add3(c, add3(mul3(u, s * half), mul3(w, q * half)))
+      tf = [makePolygon([corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)]) as unknown as Face]
+    }
+    const name = `${a.id}:replace`
+    const sweepAll = (v: Vec3) => fuseAll(tf.map((x) => prismNamed(x as unknown as Sh, v, name)), a.id)
+    // the column over the face (both ways), and its upper half
+    const colFull = prismNamed(fc.clone().translate(-d[0] * L, -d[1] * L, -d[2] * L) as unknown as Sh, mul3(d, 2 * L))
+    const colUp = prismNamed(fc.clone() as unknown as Sh, mul3(d, L))
+    const aboveT = sweepAll(mul3(d, 3 * L)), belowT = sweepAll(mul3(d, -3 * L))
+    const cut = tryBool('common', aboveT, colFull, a.id)
+    const under = tryBool('common', belowT, colFull, a.id)
+    const covered = (cut ? volume(cut.shape) : 0) + (under ? volume(under.shape) : 0)
+    if (!(covered > (1 - 1e-5) * volume(colFull.shape))) {
+      throw new Error("The target does not cover the face: seen along the face's normal it has to reach over the whole face (extend the surface, or use a plane)")
+    }
+    // where the target is below the face the solid is cut back to it, where it is above the solid grows up to it
+    if (cut) cur = boolNamed('cut', cur, cut, a.id)
+    const grow = tryBool('common', belowT, colUp, a.id)
+    if (grow) cur = boolNamed('fuse', cur, grow, a.id)
+  })
+
+  const out = any(cur)
+  if (out.solids.length !== 1) throw new Error(out.solids.length ? 'The target would split the solid into separate pieces' : 'Nothing is left of the solid')
+  if (!(volume(out) > 1e-9) || !new (oc().BRepCheck_Analyzer)(out.wrapped, true, false).IsValid()) throw new Error('The result is not a valid solid: try a target that is not so close to the edges of the face')
+  if (openEdges(out).length) throw new Error('The result has gaps: the target has to cover the whole face')
+  return send(h, a, cur)
+})

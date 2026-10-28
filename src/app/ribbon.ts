@@ -54,7 +54,7 @@ export const RIBBON_TABS: RibbonTab[] = [
       },
       {
         label: 'Modify',
-        items: [{ cmd: 'surface.trim' }, { cmd: 'surface.extend' }, { cmd: 'surface.stitch', menu: ['surface.stitch', 'surface.unstitch'] }, { cmd: 'surface.thicken' }, { cmd: 'surface.deleteFace' }, { cmd: 'solid.move' }],
+        items: [{ cmd: 'surface.trim' }, { cmd: 'surface.extend' }, { cmd: 'surface.stitch', menu: ['surface.stitch', 'surface.unstitch'] }, { cmd: 'surface.thicken' }, { cmd: 'surface.deleteFace' }, { cmd: 'surface.replaceFace' }, { cmd: 'solid.move' }],
       },
       { label: 'Construct', items: [{ cmd: 'construct.plane' }] },
       { label: 'Inspect', items: [{ cmd: 'inspect.measure' }, { cmd: 'inspect.section' }] },

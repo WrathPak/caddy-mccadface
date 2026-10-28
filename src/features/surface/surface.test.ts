@@ -149,6 +149,53 @@ describe('thicken and delete face', () => {
   })
 })
 
+describe('replace face', () => {
+  /** a rectangle sketch of loose lines, -h .. h on both axes */
+  function centred(h: number) {
+    const m = emptyModel()
+    const p = [addPoint(m, -h, -h), addPoint(m, h, -h), addPoint(m, h, h), addPoint(m, -h, h)]
+    p.forEach((id, i) => addLine(m, id, p[(i + 1) % 4]))
+    return { sketch: JSON.stringify({ plane: XY, face: null, model: m }) }
+  }
+  const faceRef = (id: string, name: string) => {
+    const b = body(id)
+    return encodeRef(refFromSelection({ kind: 'face', id, index: b.mesh.faceNames!.findIndex((n) => n[0] === name) }, [b])!)
+  }
+
+  it('moves the top of a box onto a surface, keeps or uses up the surface, follows edits', async () => {
+    const box = await add('box', { width: 10, depth: 10, height: 10, position: [0, 0, 0] })
+    const sk = await add('sketch', centred(20))
+    const patch = await add('surfacePatch', { boundary: [chainRef(sk)], continuity: 'g0' })
+    const lid = await add('surfaceOffset', { faces: [patch], distance: 6 })
+    expect(feat(lid).state, feat(lid).error).toBe('ok')
+    const rep = await add('surfaceReplaceFace', { faces: [faceRef(box, `${box}:zmax`)], target: [lid], keep: true })
+    expect(feat(rep).state, feat(rep).error).toBe('ok')
+    near(vol(body(box)), 10 * 10 * 6)
+    expect(body(box).surface).toBeFalsy()
+    expect(body(lid).surface).toBe(true) // kept
+
+    // the box gets taller upstream: the top is found again and still lands on the surface
+    await edit(box, { width: 10, depth: 10, height: 14, position: [0, 0, 0] })
+    expect(states().every((s) => s === 'ok'), states().join()).toBe(true)
+    near(vol(body(box)), 10 * 10 * 6)
+
+    // with the keep switch off the surface is used up
+    await edit(rep, { ...feat(rep).params, keep: false })
+    expect(feat(rep).state, feat(rep).error).toBe('ok')
+    expect(doc().geometry.some((b) => b.id === lid)).toBe(false)
+    near(vol(body(box)), 10 * 10 * 6)
+  })
+
+  it('says why a target that is too small does not work', async () => {
+    const box = await add('box', { width: 10, depth: 10, height: 10, position: [0, 0, 0] })
+    const sk = await add('sketch', centred(3))
+    const patch = await add('surfacePatch', { boundary: [chainRef(sk)], continuity: 'g0' })
+    const rep = await add('surfaceReplaceFace', { faces: [faceRef(box, `${box}:zmax`)], target: [patch], keep: true })
+    expect(feat(rep).state).toBe('error')
+    expect(feat(rep).error).toMatch(/does not cover the face/)
+  })
+})
+
 describe('the surface tools say what is wrong', () => {
   it('an extrude without curves, a trim by a surface that misses, a stitch of a solid', async () => {
     const none = await add('surfaceExtrude', { curves: [], direction: 'one', distance: 5, distance2: 5, axis: 'normal' })

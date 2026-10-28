@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { measureArea, measureVolume, type AnyShape } from 'replicad'
 import { box, initOcc, topoOf } from './occ'
 import { bodyFromShape, getBrep, getOp, helpers } from './store'
-import { boxNames } from './naming'
+import { boxNames, openEdges } from './naming'
 import { bbox, computeFaceSigs, isSolidBody, type Body } from './types'
 import './model-ops'
 import './solid-ops'
@@ -493,6 +493,126 @@ describe('surface thicken', () => {
     expect(t.surface).toBeUndefined()
     expect(volOf(t)).toBeGreaterThan(90)
     expect(volOf(t)).toBeLessThan(120)
+  })
+})
+
+describe('surface replace face', () => {
+  const closed = (b: Body) => openEdges(getBrep(b.key) as unknown as AnyShape).length === 0
+  const topOf = (b: Body) => faceIdx(b, (_c, n) => n[2] > 0.9)
+  const replace = (b: Body, faces: number[], target: unknown) => run('surfaceReplaceFace', { id: 'r', name: 'r', key: b.key, faces, target })
+  const plane = (z: number) => ({ kind: 'plane', origin: [0, 0, z], normal: [0, 0, 1] })
+  /** a 20 x 20 x 10 block centred on the origin: its top is at z = 5 */
+  const block = () => mkBox('b', [20, 20, 10], [0, 0, -5])
+  /** area under a circle of radius 20 for x = -10 .. 10, measured from its centre line */
+  const arc = 2 * (5 * Math.sqrt(300) + 200 * Math.asin(0.5))
+
+  it('a plane below the top cuts the block down', async () => {
+    const b = block()
+    const r = await replace(b, topOf(b), plane(2))
+    expect(r.surface).toBeFalsy()
+    expect(isSolidBody(r)).toBe(true)
+    expect(closed(r)).toBe(true)
+    near(volOf(r), 20 * 20 * 7)
+    expect(faceCount(r)).toBe(6)
+    expect(bbox(r.mesh.positions).max[2]).toBeCloseTo(2, 4)
+  })
+  it('a plane above the top builds the block up', async () => {
+    const b = block()
+    const r = await replace(b, topOf(b), plane(8))
+    expect(closed(r)).toBe(true)
+    near(volOf(r), 20 * 20 * 13)
+    expect(faceCount(r)).toBe(6)
+    expect(bbox(r.mesh.positions).max[2]).toBeCloseTo(8, 4)
+  })
+  it('a plane already on the face changes nothing', async () => {
+    const b = block()
+    const r = await replace(b, topOf(b), plane(5))
+    near(volOf(r), 4000)
+    expect(faceCount(r)).toBe(6)
+  })
+  it('a tilted plane cuts one side and builds the other', async () => {
+    const b = block()
+    // x + z = 6: the top rises to 16 at one end and the other end is cut down to -4
+    const r = await replace(b, topOf(b), { kind: 'plane', origin: [0, 0, 6], normal: [1 / Math.SQRT2, 0, 1 / Math.SQRT2] })
+    expect(closed(r)).toBe(true)
+    // the mean height of a tilted plane over the footprint is its height in the middle
+    near(volOf(r), 20 * 20 * 11)
+    expect(bbox(r.mesh.positions).max[2]).toBeCloseTo(16, 3)
+    expect(faceCount(r)).toBe(6)
+  })
+  it('a cylindrical surface cuts a curved top into the block', async () => {
+    const b = block()
+    // an arc of radius 20 whose top touches z = 5 at x = 0 (axis along Y at z = -15), spanning x = -12 .. 12
+    const cyl = await run('surfaceRevolve', { id: 'c', name: 'c', curves: [chain([line([-12, -15, 1], [-12, 15, 1], 'l')])], axisOrigin: [0, 0, -15], axisDir: [0, 1, 0], angle: 73.74 })
+    const r = await replace(b, topOf(b), { kind: 'body', key: cyl.key })
+    expect(closed(r)).toBe(true)
+    expect(isSolidBody(r)).toBe(true)
+    near(volOf(r), 20 * (arc - 200), 5e-3)
+    expect(volOf(r)).toBeLessThan(4000)
+    expect(faceCount(r)).toBe(6)
+    expect(bbox(r.mesh.positions).max[2]).toBeGreaterThan(4.9)
+    expect(bbox(r.mesh.positions).max[2]).toBeLessThan(5.001)
+  })
+  it('a bowl that dips below the top and rises above it at the sides does both', async () => {
+    const b = block()
+    // the bottom of a circle of radius 20 centred at z = 24: z = 4 at x = 0, 6.68 at x = +-10
+    const bowl = await run('surfaceRevolve', { id: 'c', name: 'c', curves: [chain([line([12, -15, 8], [12, 15, 8], 'l')])], axisOrigin: [0, 0, 24], axisDir: [0, 1, 0], angle: 73.74 })
+    const r = await replace(b, topOf(b), { kind: 'body', key: bowl.key })
+    expect(closed(r)).toBe(true)
+    near(volOf(r), 20 * (29 * 20 - arc), 5e-3)
+    expect(bbox(r.mesh.positions).max[2]).toBeGreaterThan(6.5)
+    expect(faceCount(r)).toBe(6)
+  })
+  it('a B-spline patch becomes the new top', async () => {
+    const b = block()
+    const pt = (x: number, y: number, z: number): [number, number, number] => [x, y, z]
+    const c = chain([line(pt(-14, -14, 2), pt(14, -14, -2), 'a'), line(pt(14, -14, -2), pt(14, 14, 2), 'b'), line(pt(14, 14, 2), pt(-14, 14, -2), 'c'), line(pt(-14, 14, -2), pt(-14, -14, 2), 'd')], true)
+    const patch = await run('surfacePatch', { id: 'p', name: 'p', boundary: [c], continuity: 'g0' })
+    const r = await replace(b, topOf(b), { kind: 'body', key: patch.key })
+    expect(closed(r)).toBe(true)
+    expect(isSolidBody(r)).toBe(true)
+    // the top now lies between z = -2 and 2 over the block: about 5 thick instead of 10
+    expect(volOf(r)).toBeGreaterThan(20 * 20 * 3)
+    expect(volOf(r)).toBeLessThan(20 * 20 * 7)
+    expect(bbox(r.mesh.positions).max[2]).toBeLessThan(2.01)
+    expect(faceCount(r)).toBe(6)
+    // the face on the patch has a name of the feature
+    expect(r.mesh.faceNames!.some((n) => n.some((x) => x === 'r:replace'))).toBe(true)
+  })
+  it('a face of another body works as the target', async () => {
+    const b = block()
+    const other = mkBox('o', [30, 30, 4], [0, 0, 18])
+    const r = await replace(b, topOf(b), { kind: 'faces', key: other.key, faces: faceIdx(other, (_c, n) => n[2] < -0.9) })
+    near(volOf(r), 20 * 20 * 23)
+  })
+  it('several faces move together, one cut and one built up', async () => {
+    const a = mkBox('a', [10, 10, 10], [-5, 0, -5])
+    const c = mkBox('c', [10, 10, 8], [5, 0, -5])
+    const u = await api.boolean({ id: 'u', name: 'u', op: 'union', base: a.key, tools: [c.key] })
+    const tops = faceIdx(u, (_c, n) => n[2] > 0.9)
+    expect(tops.length).toBe(2)
+    const r = await replace(u, tops, plane(4))
+    expect(closed(r)).toBe(true)
+    near(volOf(r), 20 * 10 * 9)
+    const down = await replace(u, tops, plane(1))
+    near(volOf(down), 20 * 10 * 6)
+    expect(faceCount(down)).toBe(6)
+  })
+  it('a target that does not reach over the face is refused', async () => {
+    const b = block()
+    const small = await run('surfacePatch', { id: 'p', name: 'p', boundary: [chain([line([0, 0, 0], [5, 0, 0], 'a'), line([5, 0, 0], [5, 5, 0], 'b'), line([5, 5, 0], [0, 5, 0], 'c'), line([0, 5, 0], [0, 0, 0], 'd')], true)], continuity: 'g0' })
+    await expect(replace(b, topOf(b), { kind: 'body', key: small.key })).rejects.toThrow(/does not cover the face/)
+  })
+  it('says what is wrong with a bad pick', async () => {
+    const b = block()
+    await expect(replace(b, [], plane(2))).rejects.toThrow(/Select the faces/)
+    await expect(replace(b, [99], plane(2))).rejects.toThrow(/no longer exists/)
+    await expect(replace(b, topOf(b), { kind: 'plane', origin: [0, 0, 0], normal: [1, 0, 0] })).rejects.toThrow(/runs along the face/)
+    await expect(replace(b, topOf(b), { kind: 'body', key: b.key })).rejects.toThrow(/surface/)
+    const s = await flat('s', 10, 10)
+    await expect(replace(s, [0], plane(2))).rejects.toThrow(/solid body/)
+    // a plane below the whole block
+    await expect(replace(b, topOf(b), plane(-20))).rejects.toThrow()
   })
 })
 
