@@ -2,7 +2,7 @@
 import { useThree } from '@react-three/fiber'
 import { useEffect } from 'react'
 import type { Camera, Raycaster, Scene, WebGLRenderer } from 'three'
-import { runCommand } from './commands'
+import { allCommands, runCommand } from './commands'
 import { regenerate } from '@/doc/engine'
 import { useDoc } from '@/doc/store'
 import { useSketch } from '@/sketch/store'
@@ -52,7 +52,7 @@ export function installDebugHandle() {
   ;(window as unknown as { __caddy: unknown }).__caddy = {
     doc: useDoc, ui: useUi, sketch: useSketch, sketchData: useSketchData, hair: useHairView, preview: usePreview, planes: usePlanes, paint: useHairPaint, bus: viewportBus, motion: useMotion, lodState, projects: useProjects, plugins: usePlugins, pluginHost: hostOf,
     ...((window as unknown as { __caddyExtra?: object }).__caddyExtra ?? {}),
-    assembly: assemblyDebug, nav: navTools, drawing: drawingDebug, runCommand, regenerate, importFiles, saveDocument, serializeProject, parseProject,
+    assembly: assemblyDebug, nav: navTools, drawing: drawingDebug, runCommand, allCommands, regenerate, importFiles, saveDocument, serializeProject, parseProject,
   }
 }
 

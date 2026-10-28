@@ -7,7 +7,14 @@
  */
 
 /** Smallest comfortable minor cell on screen, in pixels (cells are between TARGET / 10 and TARGET px while they fade). */
-export const GRID_TARGET_PX = 12
+export let GRID_TARGET_PX = 12
+
+/** The Settings choice: how close together the grid lines are allowed to get on screen. */
+export type GridDensity = 'fine' | 'normal' | 'coarse'
+const DENSITY_PX: Record<GridDensity, number> = { fine: 6, normal: 12, coarse: 24 }
+export function setGridDensity(d: GridDensity) {
+  GRID_TARGET_PX = DENSITY_PX[d]
+}
 
 /** `step`: the finest layer's spacing (10^n); `blend` 0..1: how far this layer has faded out (0 = full strength). */
 export function gridLevels(worldPerPixel: number): { step: number; blend: number } {

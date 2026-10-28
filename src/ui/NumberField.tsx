@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { evalNumber } from '@/doc/params'
+import { useUi } from '@/store/ui'
+import { Tip } from './Tooltip'
 
 export interface NumberFieldProps {
   label?: string
@@ -18,7 +20,11 @@ export interface NumberFieldProps {
   disabled?: boolean
   /** plain-language explanation shown as the label tooltip */
   help?: string
+  /** a length in millimetres that has no unit label of its own (the X / Y / Z of a vector): still shown in the document units */
+  length?: boolean
 }
+
+const MM_PER_IN = 25.4
 
 const clamp = (v: number, min?: number, max?: number) =>
   Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v))
@@ -29,29 +35,37 @@ const fmt = (v: number | undefined, p: number) =>
 /** Evaluate an expression (mathjs, with user parameters). Returns a number in `unit`, or null if invalid. */
 export const evalExpr = (text: string, unit?: string): number | null => evalNumber(text, unit)
 
-export function NumberField({ label, value, onChange, expr, unit, min, max, step = 1, precision = 3, prefix, disabled, help }: NumberFieldProps) {
-  const [text, setText] = useState(expr ?? fmt(value, precision))
+export function NumberField({ label, value, onChange, expr, unit, min, max, step = 1, precision = 3, prefix, disabled, help, length }: NumberFieldProps) {
+  // Lengths are stored in millimetres. With inches chosen in Settings the field shows and takes inches and converts at the edge.
+  const inch = useUi((s) => s.units === 'in') && (unit === 'mm' || !!length)
+  const k = inch ? 1 / MM_PER_IN : 1
+  const prec = inch ? precision + 1 : precision
+  const shown = (v: number | undefined) => fmt(typeof v === 'number' ? v * k : v, prec)
+  const [text, setText] = useState(expr ?? shown(value))
   const [editing, setEditing] = useState(false)
   const [bad, setBad] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const escaped = useRef(false)
 
   useEffect(() => {
-    if (!editing) setText(expr ?? fmt(value, precision))
-  }, [value, editing, precision, expr])
+    if (!editing) setText(expr ?? shown(value))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, editing, prec, expr, inch])
 
   const commit = () => {
-    const r = evalExpr(text, unit)
+    const t = text.trim()
+    // in inches a bare number (or plain arithmetic) means inches; a name or a unit in the text keeps its own meaning
+    const bare = inch && !/[a-zA-Z_]/.test(t.replace(/e[-+]?\d+/gi, ''))
+    const r = bare ? evalExpr(t, 'in') : evalExpr(t, unit === 'mm' || length ? 'mm' : unit)
     if (r === null) {
       setBad(true)
-      setText(fmt(value, precision))
+      setText(shown(value))
       setTimeout(() => setBad(false), 600)
     } else {
-      const v = clamp(r, min, max)
-      const t = text.trim()
-      const plain = /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(t)
+      const v = clamp(bare ? r * MM_PER_IN : r, min, max)
+      const plain = bare || /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(t)
       onChange(v, plain ? undefined : t)
-      setText(plain ? fmt(v, precision) : t)
+      setText(plain ? shown(v) : t)
     }
   }
 
@@ -61,10 +75,10 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
       inputRef.current?.blur()
     } else if (e.key === 'Escape') {
       // a pending edit is reverted first; with nothing to revert the key reaches the dialog (which cancels)
-      if (text !== fmt(value, precision) && !expr) {
+      if (text !== shown(value) && !expr) {
         e.stopPropagation()
         escaped.current = true // the blur below must not commit the abandoned text
-        setText(fmt(value, precision))
+        setText(shown(value))
       }
       inputRef.current?.blur()
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -72,7 +86,7 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
       const m = e.shiftKey ? 10 : e.altKey ? 0.1 : 1
       const v = clamp((Number.isFinite(value) ? (value as number) : 0) + (e.key === 'ArrowUp' ? 1 : -1) * step * m, min, max)
       onChange(v)
-      setText(fmt(v, precision))
+      setText(shown(v))
     }
   }
 
@@ -115,15 +129,17 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKey}
       />
-      {unit && <span className="unit">{unit}</span>}
+      {unit && <span className="unit">{inch ? 'in' : unit}</span>}
     </div>
   )
   if (!label) return input
   return (
     <div className="field">
-      <span className="field-label scrub" onPointerDown={onScrub} title={help ? help + ' (drag the label to adjust)' : label + ' (drag to adjust)'}>
-        {label}
-      </span>
+      <Tip label={label} desc={help ? help + ' Drag the label to adjust.' : 'Drag the label to adjust.'} side="left">
+        <span className="field-label scrub" onPointerDown={onScrub}>
+          {label}
+        </span>
+      </Tip>
       {input}
     </div>
   )

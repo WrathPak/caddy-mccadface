@@ -12,8 +12,12 @@ export const NAV_PRESETS: { id: NavPreset; label: string; help: string }[] = [
 
 const KEY = 'caddy.nav'
 
-interface Saved { preset: NavPreset; inertia: boolean }
-const DEFAULTS: Saved = { preset: 'fusion', inertia: false }
+export type ZoomDirection = 'normal' | 'reverse'
+/** Orbit speed choices: a multiplier of the default turn per pixel of drag. */
+export const ORBIT_SPEEDS = [0.5, 1, 1.5, 2]
+
+interface Saved { preset: NavPreset; inertia: boolean; zoomDirection: ZoomDirection; orbitSpeed: number }
+const DEFAULTS: Saved = { preset: 'fusion', inertia: false, zoomDirection: 'normal', orbitSpeed: 1 }
 
 function load(): Saved {
   try {
@@ -23,6 +27,8 @@ function load(): Saved {
     return {
       preset: NAV_PRESETS.some((p) => p.id === v.preset) ? (v.preset as NavPreset) : DEFAULTS.preset,
       inertia: v.inertia === true,
+      zoomDirection: v.zoomDirection === 'reverse' ? 'reverse' : 'normal',
+      orbitSpeed: ORBIT_SPEEDS.includes(v.orbitSpeed as number) ? (v.orbitSpeed as number) : 1,
     }
   } catch {
     return DEFAULTS
@@ -32,17 +38,21 @@ function load(): Saved {
 interface NavSettings extends Saved {
   setPreset: (p: NavPreset) => void
   setInertia: (on: boolean) => void
+  setZoomDirection: (d: ZoomDirection) => void
+  setOrbitSpeed: (s: number) => void
 }
 
 export const useNavSettings = create<NavSettings>((set, get) => {
   const save = () => {
-    const { preset, inertia } = get()
-    try { localStorage.setItem(KEY, JSON.stringify({ preset, inertia })) } catch { /* private mode / blocked storage: the setting just lasts for this session */ }
+    const { preset, inertia, zoomDirection, orbitSpeed } = get()
+    try { localStorage.setItem(KEY, JSON.stringify({ preset, inertia, zoomDirection, orbitSpeed })) } catch { /* private mode / blocked storage: the setting just lasts for this session */ }
   }
   return {
     ...load(),
     setPreset: (preset) => { set({ preset }); save() },
     setInertia: (inertia) => { set({ inertia }); save() },
+    setZoomDirection: (zoomDirection) => { set({ zoomDirection }); save() },
+    setOrbitSpeed: (orbitSpeed) => { set({ orbitSpeed }); save() },
   }
 })
 

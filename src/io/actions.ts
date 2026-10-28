@@ -12,6 +12,7 @@ import { commitSavedHistory, loadProject, resetProjectSections, serializeProject
 import { resetHistory } from '@/history/store'
 import { rememberSource } from './meshImport'
 import { shouldAutosave, worthRecovering } from './autosave'
+import { useSettings } from '@/settings/settings'
 import { parseProject } from './projectParse'
 import { write3mf } from './threemf'
 import { writeStl } from './stl'
@@ -288,11 +289,16 @@ export async function initPersistence() {
       else void del(AUTOSAVE_KEY)
     }
   } catch { /* IndexedDB unavailable */ }
+  // Settings > General sets whether to autosave and how often; it is read again on every check, so a change applies at once
+  let last = Date.now()
   setInterval(async () => {
+    const st = useSettings.getState()
+    if (Date.now() - last < st.autosaveSeconds * 1000) return
+    last = Date.now()
     const d = useDoc.getState()
-    if (!shouldAutosave(d) || useRecovery.getState().record) return
+    if (!st.autosave || !shouldAutosave(d) || useRecovery.getState().record) return
     try {
       await set(AUTOSAVE_KEY, { bytes: await serializeProject(false), name: d.name, savedAt: Date.now() } satisfies AutosaveRecord)
     } catch { /* quota or private mode */ }
-  }, 30_000)
+  }, 2000)
 }

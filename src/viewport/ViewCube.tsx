@@ -1,3 +1,4 @@
+import { Tip } from '@/ui/Tooltip'
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { ArrowArcLeft, ArrowArcRight, CaretDown, CaretLeft, CaretRight, CaretUp, House } from '@phosphor-icons/react'
@@ -121,13 +122,17 @@ export function ViewCube() {
           ))}
         </div>
       </div>
-      <button type="button" className="vc-btn home" title="Home view" aria-label="Home view" onClick={() => viewportBus.emit('view', 'home')}>
-        <House size={14} weight="fill" />
-      </button>
-      {ARROWS.map((a) => (
-        <button key={a.kind} type="button" className={'vc-btn ' + a.cls} title={a.label} aria-label={a.label} onClick={() => viewportBus.emit('step', a.kind)}>
-          <a.icon size={a.kind.startsWith('roll') ? 15 : 13} weight="bold" />
+      <Tip label="Home view" desc="Go back to the default angled view." side="left">
+        <button type="button" className="vc-btn home" aria-label="Home view" onClick={() => viewportBus.emit('view', 'home')}>
+          <House size={14} weight="fill" />
         </button>
+      </Tip>
+      {ARROWS.map((a) => (
+        <Tip key={a.kind} label={a.label} desc={a.kind.startsWith('roll') ? 'Turn the view around the direction you are looking, a quarter turn at a time.' : 'Turn the model a quarter turn. You can also click a face, edge or corner of the cube to look from there.'} side="left">
+          <button type="button" className={'vc-btn ' + a.cls} aria-label={a.label} onClick={() => viewportBus.emit('step', a.kind)}>
+            <a.icon size={a.kind.startsWith('roll') ? 15 : 13} weight="bold" />
+          </button>
+        </Tip>
       ))}
     </div>
   )
