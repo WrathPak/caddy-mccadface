@@ -1,4 +1,4 @@
-/** Surface > Modify: Trim, Extend, Stitch, Unstitch, Thicken, Delete Face and Replace Face (kernel ops in kernel/surface-ops.ts). */
+/** Surface > Modify: Trim, Extend, Stitch, Unstitch, Thicken, Delete Face and Fit to Surface (kernel ops in kernel/surface-ops.ts). */
 import { ArrowLineRight, Eraser, LinkBreak, Needle, Rows, Scissors, Swap } from '@phosphor-icons/react'
 import { RefError, RefReport, bodyIdsOf, decodeRef, faceSigs, resolveEdge } from '@/doc/refs'
 import type { SurfaceDeleteFaceArgs, SurfaceExtendArgs, SurfaceReplaceFaceArgs, SurfaceStitchArgs, SurfaceThickenArgs, SurfaceTrimArgs, SurfaceUnstitchArgs, TrimTool } from '@/kernel/surface-ops'
@@ -237,7 +237,7 @@ registerSurfaceTool({
 
 export const surfaceReplaceFaceSchema: ParamSchema = {
   id: 'surfaceReplaceFace',
-  title: 'Replace Face',
+  title: 'Fit Face to Surface',
   params: [
     { type: 'selection-ref', key: 'faces', help: 'The faces of the solid to move onto the target. Click them in the viewport. The faces next to them are extended or cut back to meet the new surface.', label: 'Faces', accepts: ['face'], multiple: true, required: true, pick: true, default: [] },
     { type: 'selection-ref', key: 'target', help: 'The surface to move onto: a surface body, a plane or construction plane, or a face of another body. Seen along the face it has to reach over all of it (a plane always does).', label: 'Replace with', accepts: ['body', 'face', 'plane'], multiple: true, required: true, pick: true, default: [] },
@@ -247,7 +247,7 @@ export const surfaceReplaceFaceSchema: ParamSchema = {
 
 registerSurfaceTool({
   type: 'surfaceReplaceFace',
-  label: 'Replace Face',
+  label: 'Fit to Surface',
   icon: Swap,
   schema: surfaceReplaceFaceSchema,
   filter: 'face',
@@ -255,7 +255,7 @@ registerSurfaceTool({
     const groups = facesOf(p.faces as string[], env, report)
     if (groups.length > 1) throw new Error('Pick the faces of one solid at a time')
     const [g] = groups
-    if (g.body.kind !== 'brep' || g.body.surface) throw new Error(`${g.body.name} is a ${g.body.kind === 'mesh' ? 'mesh' : 'surface'}: Replace Face moves the faces of a solid`)
+    if (g.body.kind !== 'brep' || g.body.surface) throw new Error(`${g.body.name} is a ${g.body.kind === 'mesh' ? 'mesh' : 'surface'}: Fit to Surface moves the faces of a solid`)
     const refs = p.target as string[]
     const first = refs[0]
     const faceRef = first.startsWith('{') && decodeRef(first)?.kind === 'face'

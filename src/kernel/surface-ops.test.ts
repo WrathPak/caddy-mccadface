@@ -598,6 +598,50 @@ describe('surface replace face', () => {
     near(volOf(down), 20 * 10 * 6)
     expect(faceCount(down)).toBe(6)
   })
+  describe('on a tapered block the slanted walls carry on up to the target', () => {
+    const XYP = { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] }
+    const sq = [{ k: 'l', a: [0, 0], b: [20, 0] }, { k: 'l', a: [20, 0], b: [20, 20] }, { k: 'l', a: [20, 20], b: [0, 20] }, { k: 'l', a: [0, 20], b: [0, 0] }]
+    const taper = async (outer: unknown) => run('extrudeTool', { id: 'e', name: 'e', faces: [], mode: 'one', d1: 10, d2: 0, faceDir: 1, taper: 10, groups: [{ plane: XYP, profiles: [{ outer, holes: [] }] }] })
+    const t = Math.tan((10 * Math.PI) / 180)
+    /** volume of the frustum with 20 mm base up to height z */
+    const frustumTo = (z: number) => (20 ** 3 - (20 - 2 * t * z) ** 3) / (6 * t)
+    it('raised to a plane, with no step', async () => {
+      const b = await taper(sq)
+      const r = await replace(b, topOf(b), plane(15))
+      expect(closed(r)).toBe(true)
+      near(volOf(r), frustumTo(15), 2e-3)
+      expect(faceCount(r)).toBe(6)
+    })
+    it('cut down to a plane, with no ledge', async () => {
+      const b = await taper(sq)
+      const r = await replace(b, topOf(b), plane(6))
+      expect(closed(r)).toBe(true)
+      near(volOf(r), frustumTo(6), 2e-3)
+      expect(faceCount(r)).toBe(6)
+    })
+    it('raised to a curved surface', async () => {
+      const b = await taper(sq)
+      // a bowl: the bottom of a circle of radius 30 centred at z = 42 above x = 10 (z = 12 in the middle, about 13.7 at the walls)
+      const bowl = await run('surfaceRevolve', { id: 'c', name: 'c', curves: [chain([line([25, -5, 16.0192], [25, 25, 16.0192], 'l')])], axisOrigin: [10, 0, 42], axisDir: [0, 1, 0], angle: 60 })
+      const r = await replace(b, topOf(b), { kind: 'body', key: bowl.key })
+      expect(closed(r)).toBe(true)
+      expect(faceCount(r)).toBe(6)
+      // numeric volume: up to the bowl or to where the slanted walls meet, whichever is lower
+      let v = 0
+      const n = 400, dx = 20 / n
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+        const x = (i + 0.5) * dx, y = (j + 0.5) * dx
+        const zt = 42 - Math.sqrt(900 - (x - 10) ** 2)
+        const zw = (10 - Math.max(Math.abs(x - 10), Math.abs(y - 10))) / t
+        v += Math.max(0, Math.min(zt, zw)) * dx * dx
+      }
+      near(volOf(r), v, 4e-3)
+    })
+    it('curved walls that lean are refused with a sentence', async () => {
+      const cone = await taper([{ k: 'c', c: [10, 10], r: 10 }])
+      await expect(replace(cone, topOf(cone), plane(15))).rejects.toThrow(/neighbours are flat/)
+    })
+  })
   it('a target that does not reach over the face is refused', async () => {
     const b = block()
     const small = await run('surfacePatch', { id: 'p', name: 'p', boundary: [chain([line([0, 0, 0], [5, 0, 0], 'a'), line([5, 0, 0], [5, 5, 0], 'b'), line([5, 5, 0], [0, 5, 0], 'c'), line([0, 5, 0], [0, 0, 0], 'd')], true)], continuity: 'g0' })

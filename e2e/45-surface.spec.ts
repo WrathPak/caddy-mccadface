@@ -450,11 +450,11 @@ test('surface workspace: every tool opens its dialog with a live preview, and Es
   expect(await states(app)).not.toContain('error')
 })
 
-test('surface workspace: Replace Face moves the top of a box onto a surface, with undo, a keep switch and a readable error', async ({ app, page }) => {
+test('surface workspace: Fit to Surface moves the top of a box onto a surface, with undo, a keep switch and a readable error', async ({ app, page }) => {
   test.setTimeout(150_000)
   await app.open()
   await app.tab('Surface')
-  await expect(app.ribbon('Replace Face').first()).toBeVisible()
+  await expect(app.ribbon('Fit to Surface').first()).toBeVisible()
   const add = async (type: string, params: Record<string, unknown>) => {
     const id = await app.ev((c, a) => c.doc.getState().addFeature(a.type, a.params), { type, params })
     await app.idle()
@@ -473,8 +473,8 @@ test('surface workspace: Replace Face moves the top of a box onto a surface, wit
   const top = await faceAtHeight(app, box, 10)
   expect(top).toBeGreaterThanOrEqual(0)
   await select(app, [{ kind: 'face', id: box, index: top }])
-  await app.ribbon('Replace Face').first().click()
-  await expect(title(app)).toHaveText('Replace Face')
+  await app.ribbon('Fit to Surface').first().click()
+  await expect(title(app)).toHaveText('Fit Face to Surface')
   await expect(app.inspector().getByTestId('sel-faces')).toContainText('1 selected')
   await select(app, [{ kind: 'body', id: lid }])
   await expect(app.inspector().getByTestId('sel-target')).toContainText('1 selected')
@@ -511,7 +511,7 @@ test('surface workspace: Replace Face moves the top of a box onto a surface, wit
   const top2 = await faceAtHeight(app, box, 6)
   expect(top2).toBeGreaterThanOrEqual(0)
   await select(app, [{ kind: 'face', id: box, index: top2 }])
-  await app.ribbon('Replace Face').first().click()
+  await app.ribbon('Fit to Surface').first().click()
   await select(app, [{ kind: 'body', id: tiny }])
   await expect.poll(() => app.ev((c) => c.ui.getState().inspectorNotice), { timeout: 15_000 }).toMatch(/does not cover the face/)
   await page.keyboard.press('Escape')
