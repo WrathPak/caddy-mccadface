@@ -132,7 +132,7 @@ export function HairPaintBar() {
     <div className="hair-bar">
       <div className="vp-bar">
         {MODES.map((m) => (
-          <Tip key={m.id} label={m.tip} side="bottom">
+          <Tip key={m.id} label={m.label} desc={m.tip} side="bottom">
             <button type="button" data-active={mode === m.id} onClick={() => setPaint({ mode: m.id })}><m.icon size={14} /> {m.label}</button>
           </Tip>
         ))}
@@ -150,7 +150,7 @@ export function HairPaintBar() {
           </label>
         )}
         <span className="hair-count">{sel.size ? `${sel.size.toLocaleString()} ${kind === 'brep' ? 'faces' : 'tris'}` : 'Nothing selected'}</span>
-        <Tip label="Clear the selected surface" side="bottom">
+        <Tip label="Clear" desc="Forget the painted surface and start again." side="bottom">
           <button type="button" onClick={() => clearSelection(useDoc.getState().geometry)}><Trash size={14} /></button>
         </Tip>
       </div>

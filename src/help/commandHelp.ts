@@ -1,0 +1,256 @@
+/**
+ * Plain-language help for every command: what it does, when to use it and what to select first. The ribbon, menus and the
+ * command palette tooltips are built from this table. A command a plugin (or a later feature) registers with its own `tip` still
+ * gets a tooltip from that text; this table wins when both exist.
+ */
+import type { Command } from '@/app/commands'
+
+export interface CommandHelp {
+  /** one or two sentences, no jargon without a word of explanation */
+  desc: string
+  /** what to pick first (a tool that works on a selection) */
+  select?: string
+}
+
+const h = (desc: string, select?: string): CommandHelp => ({ desc, select })
+
+export const COMMAND_HELP: Record<string, CommandHelp> = {
+  // ---- file and edit
+  'file.new': h('Start a fresh, empty document. If you have unsaved changes you are asked first.'),
+  'file.open': h('Open a .caddy project from your computer. Nothing is uploaded anywhere.'),
+  'file.save': h('Save the project to a .caddy file on your computer. Every save also keeps a version you can go back to in History.'),
+  'file.saveAs': h('Save a copy of the project under a new name or in a new place.'),
+  'file.saveNote': h('Save, and attach a short note to this version. Notes show up in the History panel so you can find it again later.'),
+  'file.import': h('Bring in a model from an STL, 3MF or STEP file, or another .caddy project. STL and 3MF arrive as meshes, STEP keeps its exact solid shape.'),
+  'file.export': h('Save bodies out as STL or 3MF for 3D printing, or STEP for other CAD programs. You choose which bodies and the format.'),
+  'edit.undo': h('Take back your last change. You can keep stepping back as far as you like.'),
+  'edit.redo': h('Bring back a change you just undid.'),
+  'edit.delete': h('Remove the selected body, component or timeline step.', 'A body or component in the viewport or Browser, or a step in the timeline'),
+  'edit.escape': h('Cancels the open tool or dialog. With nothing open, it clears your selection.'),
+
+  // ---- solid: create
+  'sketch.create': h('Start a 2D drawing on a flat plane or a flat face. Sketches are the starting point for most solid shapes.', 'A plane (XY, XZ, YZ) or a flat face to draw on'),
+  'solid.extrude': h('Push a flat sketch shape up into a solid, like pressing dough through a cutter. Use it for anything with a constant cross-section.', 'A closed sketch shape (profile), or a flat face to push or pull'),
+  'solid.revolve': h('Spin a sketch shape around a line to make a round part, like a vase, a wheel or a knob.', 'A closed sketch shape, then a line or edge to spin around (the axis)'),
+  'solid.sweep': h('Drag a sketch shape along a path to make a pipe, rail or handle.', 'The shape to drag (profile), then the path it should follow'),
+  'solid.loft': h('Blend smoothly from one sketch shape to another, even when they differ in size or shape. Good for bottles and organic forms.', 'Two or more sketch shapes, picked in order'),
+  'solid.box': h('Drop in a rectangular block with a length, width and height. The quickest way to get a solid to work with.'),
+  'solid.cylinder': h('Drop in a round post with a radius and a height.'),
+  'solid.pattern': h('Repeat a feature, a face or a whole body many times: in a grid, around an axis or along a path. Click a copy to skip it.', 'What to repeat (features, faces or bodies), then the direction or axis'),
+  'solid.mirror': h('Make a mirrored copy across a plane, so you only have to model half of a symmetrical part.', 'What to mirror (features, faces or bodies), then the mirror plane or a flat face'),
+  'solid.hole': h('Add a proper hole: plain, counterbore (a step for a screw head), countersink (a cone) or tapped (for threads). Common screw sizes are built in.', 'A flat face to put the hole in, then click where it goes (or pick sketch points)'),
+
+  // ---- solid: modify
+  'solid.fillet': h('Round off sharp edges. Use it to make a part nicer to hold, stronger, or easier to print.', 'One or more edges, or a face to round all its edges'),
+  'solid.chamfer': h('Cut a sharp edge off at an angle, leaving a flat bevel instead of a round.', 'One or more edges'),
+  'solid.shell': h('Hollow a solid out, leaving walls of an even thickness. Faces you pick become openings.', 'The faces that should become openings'),
+  'solid.move': h('Move, rotate or copy bodies, or lift a whole part up to sit on the build plate. Type exact numbers or drag the handles.', 'The bodies to move'),
+  'solid.combine': h('Join, cut or intersect two bodies. The small arrow beside the button lists the three choices.', 'A target body, then one or more tool bodies'),
+  'solid.join': h('Fuse two bodies into one. Anything they share becomes a single solid.', 'A target body, then the body to add to it'),
+  'solid.cut': h('Use one body like a cookie cutter to carve a shape out of another.', 'The body to cut into, then the body to cut with'),
+  'solid.intersect': h('Keep only the space that two bodies share and throw the rest away.', 'Two bodies that overlap'),
+  'solid.pressPull': h('Push or pull a face, or round an edge, just by dragging it. A quick way to make small changes without opening a dialog.', 'A face to push or pull, or an edge to round'),
+  'solid.offsetFace': h('Move faces in or out along the direction they point. Handy for making a slot wider or a boss thicker.', 'One or more faces'),
+  'solid.deleteFace': h('Remove faces and let the neighbours close the gap. Great for deleting a fillet, a hole or a small bump.', 'The faces to remove'),
+  'solid.replaceFace': h('Move faces so they sit exactly on a plane or on another face. Use it to flatten a side or match two parts.', 'The faces to move, then the plane or face to move them onto'),
+  'solid.splitFace': h('Cut a face into pieces without splitting the body. Useful for painting part of a face or adding a feature to one half.', 'The face to divide, then a plane, face or body to cut it with'),
+  'solid.splitBody': h('Cut a body into separate pieces with a plane, a face or another body.', 'The body to cut, then the plane, face or body to cut with'),
+  'solid.draft': h('Tilt faces by a small angle so a molded or cast part can be released. Also good for printing tall walls with a slight lean.', 'The faces to tilt, then a neutral plane that stays put'),
+
+  // ---- construct / inspect / document
+  'construct.plane': h('Make a new flat plane next to an existing plane or face, at a distance you set. Sketches can then sit on it.', 'A plane or a flat face to offset from'),
+  'construct.planeAngle': h('Make a plane that is turned by an angle around an edge or an axis.', 'An axis or an edge to turn around, and a plane or face to start from'),
+  'construct.planeTangent': h('Make a plane that just touches a round surface at one line, like a sheet laid against a can.', 'A cylinder or sphere face'),
+  'construct.planeMid': h('Make a plane exactly halfway between two parallel planes or faces. Useful for mirror planes.', 'Two parallel planes or faces'),
+  'construct.plane3': h('Make a plane that passes through three points.', 'Three points or vertices (corners)'),
+  'construct.axis': h('Make a straight reference line (an axis) through an edge, two points, a face normal or the center of a cylinder. Use it to revolve or pattern around.', 'An edge, two points, a flat face or a cylindrical face'),
+  'construct.axisPoints': h('Make a reference line that runs through two points.', 'Two points or vertices'),
+  'construct.axisNormal': h('Make a reference line that sticks straight out of a flat face.', 'A flat face'),
+  'construct.axisCyl': h('Make a reference line down the middle of a round hole, post or other cylindrical face.', 'A cylindrical face'),
+  'construct.point': h('Place a reference point at coordinates, a corner, a center, or where an axis meets a plane. Other tools can snap to it.'),
+  'construct.pointVertex': h('Place a reference point on an existing corner.', 'A vertex (corner)'),
+  'construct.pointCenter': h('Place a reference point at the center of a circle or round face.', 'A circular edge or a round face'),
+  'construct.pointAxisPlane': h('Place a reference point where an axis pierces a plane.', 'An axis and a plane'),
+  'inspect.measure': h('Read off distances, angles, lengths and areas. Click two things to see how far apart they are.', 'Two things to compare, such as points, edges, faces or bodies'),
+  'inspect.section': h('Slice the view with a cutting plane so you can look inside a part. It only changes the view, not the model.'),
+  'doc.parameters': h('Named numbers, like wall = 2 mm, that you can use in any size field. Change one and everything that uses it follows.'),
+  'doc.configs': h('Sets of parameter values, like Small, Medium and Large, that you can switch between and export one by one.'),
+  'doc.suppress': h('Switch a timeline step off without deleting it, so you can see the model without it. Run it again to switch it back on.', 'A step in the timeline'),
+
+  // ---- mesh
+  'mesh.import': h('Bring in a triangle mesh from an STL or 3MF file. Meshes with millions of triangles are fine.'),
+  'mesh.remesh': h('Split long triangles so the surface gets smaller, more even triangles. Do this before smoothing or bending a coarse mesh.', 'A mesh body'),
+  'mesh.smooth': h('Soften a rough or noisy mesh by evening out its bumps. More passes means smoother, and also slightly smaller.', 'A mesh body'),
+  'mesh.reduce': h('Make a mesh lighter by merging triangles while keeping its overall shape. Use it on huge files that feel slow.', 'A mesh body'),
+  'mesh.planeCut': h('Slice a mesh with a plane and keep one side or both. Handy for cutting a big model into parts that fit your printer.', 'A mesh body, then a plane to cut along'),
+  'mesh.repair': h('Close holes and fix broken triangles so the mesh is watertight, which is what slicers need.', 'A mesh body'),
+  'mesh.convert': h('Turn a solid into a triangle mesh. Do this when you want to use the mesh tools on it. It cannot be turned back into a solid.', 'A solid body'),
+
+  // ---- hair
+  'hair.create': h('Grow strands of hair, fur or spikes from the surface of a model, tuned so they print as thin lines. Use a preset first, then tweak.', 'The faces the strands grow from (or paint them after opening the dialog)'),
+  'hair.faces': h('Paint the faces hair should grow from using a brush, a fill or single clicks. Hold Shift to erase, and press [ or ] to change the brush size.', 'Nothing yet: click or paint on the model'),
+  'hair.wall': h('Open the Hair dialog with the sacrificial wall switched on. The wall is a thin sheet the strand tips attach to so they print in place. You cut it away afterwards.', 'The faces the strands grow from'),
+  'hair.preview': h('Show or hide the live preview of the strands while you work. Hide it if your computer feels slow.'),
+
+  // ---- detail
+  'detail.text': h('Raise or cut text into a face, including curved ones. Pick a font, a size and a depth.', 'The face to put the text on'),
+  'detail.logo': h('Raise or cut an SVG logo or a picture into a face.', 'The face to put the logo on'),
+  'detail.texture': h('Cover faces with a pattern like knurl, leather, hexagons, wood, carbon fiber or your own picture.', 'The faces to cover'),
+  'detail.fur': h('Cover a face with short, dense, tapered fur strands. For long hair that prints cleanly, use the Hair tab instead.', 'The faces to cover'),
+  'detail.scales': h('Cover a face with overlapping scales that point along a direction you choose.', 'The faces to cover'),
+  'detail.spikes': h('Cover a face with cones or pyramids of different sizes.', 'The faces to cover'),
+  'detail.grass': h('Cover a face with curved, tapered blades of grass.', 'The faces to cover'),
+  'detail.thread': h('Model a real screw thread on a round face, with extra clearance so a printed nut still turns. ISO metric sizes are built in.', 'A cylindrical face (the outside of a bolt or the inside of a hole)'),
+
+  // ---- print
+  'print.settings': h('Tell the app about your printer and filament: nozzle, layer height, walls, infill, supports and filament colors. They are written into the 3MF so the slicer starts with them.'),
+  'print.sendBambu': h('Save the plate as a 3MF you can open in Bambu Studio. The file is saved to your computer, nothing is uploaded.'),
+  'print.sendOrca': h('Save the plate as a 3MF you can open in OrcaSlicer. The file is saved to your computer, nothing is uploaded.'),
+  'print.export3mf': h('Download the plate as a 3MF for Bambu Studio or OrcaSlicer. Every visible body becomes an object, with its colors and print settings.'),
+  'print.paintBody': h('Give whole bodies a filament color for multi-color printing.', 'The bodies to color'),
+  'print.paintFaces': h('Paint individual faces with filament colors using a brush, a face click or a fill. Handy for lettering and logos.', 'Nothing yet: click or paint on the model'),
+  'print.overhang': h('Color the surfaces that lean out further than a set angle. Those are the places that usually need support. Click again to hide.'),
+  'print.thin': h('Color walls that are thinner than a minimum thickness, since they might not print or might snap. Click again to hide.'),
+  'print.small': h('Color features narrower than a minimum size, since the printer might skip them. Click again to hide.'),
+  'print.orient': h('Find the way up that needs the least support and turn the part that way. It is added as a Move step you can edit.', 'The bodies to turn'),
+  'print.split': h('Cut a body into parts that fit your printer, with optional alignment pins or dovetails so they fit back together.', 'The body to cut, then a plane or sketch to cut along'),
+  'print.hollow': h('Hollow a body out to a wall thickness to save filament. Click to place drain holes so loose resin or powder can escape.', 'The body to hollow'),
+
+  // ---- surface
+  'surface.extrude': h('Push sketch curves or edges out into a surface. Open curves make an open sheet, closed ones make a skin.', 'Sketch curves or edges'),
+  'surface.revolve': h('Spin sketch curves or edges around an axis into a surface.', 'Sketch curves or edges, then a line to spin around'),
+  'surface.sweep': h('Drag curves along a path to make a surface.', 'The curves to drag, then the path'),
+  'surface.loft': h('Blend a surface through two or more curves, open or closed.', 'Two or more curves, in order'),
+  'surface.patch': h('Fill a closed outline of curves or surface edges with a surface. It can follow the neighbouring faces so the join stays smooth.', 'A closed loop of sketch curves or surface edges'),
+  'surface.offset': h('Copy surfaces or faces to a new surface at a distance.', 'Surfaces or faces'),
+  'surface.trim': h('Cut a surface with a plane, another surface, a face or a solid, and keep the side you want.', 'The surface to trim, then the cutting plane, face, surface or solid'),
+  'surface.extend': h('Stretch the open edges of a surface outward, following its curve or going straight along its tangent.', 'The open edges to extend'),
+  'surface.stitch': h('Sew surfaces together along the edges they share. When the result is fully closed it becomes a solid.', 'Two or more surfaces that touch along edges'),
+  'surface.unstitch': h('Split a body into one surface per face, or pull chosen faces off as separate surfaces.', 'A body, or the faces to pull off'),
+  'surface.thicken': h('Give a surface a thickness on one side or both, which turns it into a solid.', 'The surface to thicken'),
+  'surface.deleteFace': h('Remove faces from a solid or a surface and leave an open surface behind.', 'The faces to remove'),
+
+  // ---- assemble
+  'assembly.newComponent': h('Add an empty component inside the active one and make it active. The features you add next go into it. Components keep parts of an assembly apart.'),
+  'assembly.fromBodies': h('Turn each selected body into its own component, together with the feature that made it.', 'The bodies to convert'),
+  'assembly.activateRoot': h('Stop editing a component and go back to the top level. New features then go into the root again.'),
+  'assembly.insertLinked': h('Bring in another .caddy file as a component that follows the file, so you are told when the file changes.'),
+  'assembly.insertEmbedded': h('Bring in another .caddy file as a component, stored as a copy inside this document.'),
+  'assembly.copy': h('Copy a component so you can paste it as another instance.', 'A component in the Browser or the viewport'),
+  'assembly.paste': h('Add another instance of the copied component. Instances share geometry, so editing one changes all of them.'),
+  'assembly.ground': h('Fix components in place. Joints then move the other parts around them.', 'The components to hold still'),
+  'assembly.joint': h('Connect two components at points you snap to faces, edges, circles or corners. Joints can be rigid, hinged, sliding and more.', 'A snap point on the first component, then one on the second'),
+  'assembly.asBuilt': h('Connect two components right where they are now, without moving them. Use it when the parts are already in place.', 'Two components that are positioned correctly'),
+  'assembly.motionLink': h('Make one joint follow another by a ratio, like gears, a rack and pinion or a screw.', 'Two joints'),
+  'assembly.drive': h('Open sliders for the joints and drag them to see the assembly move.'),
+  'assembly.drag': h('Drag a component in the viewport. It moves only the way its joints allow.', 'A component'),
+  'assembly.motion': h('Record joint values at keyframes and play them back as an animation.'),
+  'assembly.interference': h('Find parts that overlap each other and show the overlap in red.'),
+  'assembly.clearance': h('Measure the smallest gap between two components.', 'Two components'),
+  'assembly.explode': h('Build an exploded view as a series of steps that slide components apart along a direction.'),
+  'assembly.explodeToggle': h('Play the exploded view out, or put everything back together.'),
+
+  // ---- drawing
+  'drawing.sheet.new': h('Add another sheet (page) to the drawing.'),
+  'drawing.sheet.setup': h('Choose paper size, projection style, scale and the text in the title block.'),
+  'drawing.template': h('Edit the layout of the title block: add, move and rename its fields.'),
+  'drawing.view.base': h('Place a flat 2D view of the model, from the front, top, right or any other side. Other views and dimensions build on it.'),
+  'drawing.view.iso': h('Place an angled 3D-looking (isometric) view of the model on the sheet.'),
+  'drawing.view.projected': h('Place a view unfolded from an existing one, beside it or above it. The projection style is set in Setup.', 'An existing view on the sheet'),
+  'drawing.view.section': h('Cut the model along a line to show what is inside, drawn with hatching.', 'An existing view, then draw the cutting line'),
+  'drawing.view.detail': h('Circle a small feature and show it enlarged in its own view.', 'An existing view, then draw a circle around the feature'),
+  'drawing.dim.linear': h('Dimension a horizontal or vertical distance between two points.', 'Two points or edges in a view'),
+  'drawing.dim.aligned': h('Dimension the true straight-line distance between two points, even when it is slanted.', 'Two points or an edge in a view'),
+  'drawing.dim.angular': h('Dimension the angle between two lines that meet at a corner.', 'Two lines in a view'),
+  'drawing.dim.radius': h('Dimension the radius of a circle or an arc.', 'A circle or arc in a view'),
+  'drawing.dim.diameter': h('Dimension the diameter of a circle.', 'A circle in a view'),
+  'drawing.dim.ordinate': h('Dimension distances from one origin point, all shown along a single axis. Keeps a busy drawing tidy.', 'An origin point, then the features to measure'),
+  'drawing.dim.baseline': h('Stack several distances that are all measured from the same starting point.', 'A starting point, then the points to measure to'),
+  'drawing.ann.note': h('Place a block of text on the sheet.'),
+  'drawing.ann.leader': h('Place text with an arrow pointing at a feature.', 'The feature to point at'),
+  'drawing.ann.gdt': h('Place a geometric tolerance frame, such as position, flatness or parallelism. Used when the part must meet tight shape rules.'),
+  'drawing.ann.datum': h('Place a datum symbol (A, B, C), a reference that tolerances are measured from.', 'The edge or face that is the datum'),
+  'drawing.ann.finish': h('Place a surface roughness symbol that says how smooth a face must be.', 'The face or edge it applies to'),
+  'drawing.ann.balloon': h('Place a numbered balloon that points at a part. The number comes from the parts list.', 'The part to point at'),
+  'drawing.ann.partsList': h('Place a table that lists the parts of the model and how many of each there are.'),
+  'drawing.export.pdf': h('Save every sheet as a PDF with real, selectable text.'),
+  'drawing.export.dxf': h('Save the active sheet as a DXF, with layers and line types, for CAM and other CAD programs.'),
+  'drawing.export.svg': h('Save the active sheet as an SVG picture.'),
+
+  // ---- render
+  'render.assign': h('Give bodies or faces a material, such as metal, plastic or wood, from the library. Only affects how renders look.', 'The bodies or faces to color'),
+  'render.focus': h('Set the sharp point of the depth of field blur to the selection, or to the whole model if nothing is selected.', 'What should be in focus (optional)'),
+  'render.dof': h('Blur what is in front of and behind the focus point, like a camera with a wide aperture. Click again to turn it off.'),
+  'render.image': h('Make a realistic image of the model at the size set in the Render panel and save it as a PNG. It is a path-traced render, so it takes a little while.'),
+  'render.turntable': h('Record a video of the model turning once around, saved as a WebM file.'),
+
+  // ---- sketch tools
+  'sketch.finish': h('Close the sketch and go back to 3D. The shapes you drew become profiles you can extrude or revolve.'),
+  'sketch.line': h('Draw straight lines by clicking points. Keep clicking to chain lines, double-click or press Enter to stop.'),
+  'sketch.rect': h('Draw a rectangle from two opposite corners. The small arrow beside the button also offers a rectangle drawn from the center.'),
+  'sketch.rectCenter': h('Draw a rectangle starting at its center, then dragging to a corner.'),
+  'sketch.circle': h('Draw a circle: click the center, then click or type the size.'),
+  'sketch.arc': h('Draw an arc (part of a circle) by clicking the center, the start and the end.'),
+  'sketch.spline': h('Draw a smooth curve that passes through every point you click.'),
+  'sketch.splineC': h('Draw a smooth curve that is shaped by control points. The curve is pulled toward the points but does not touch them.'),
+  'sketch.arcT': h('Draw an arc that leaves the end of an existing line or arc smoothly, without a kink.', 'The end of a line or arc to continue from'),
+  'sketch.ellipse': h('Draw an ellipse: click the center, then the end of the long axis, then the short radius.'),
+  'sketch.slotCC': h('Draw a slot (a rounded rectangle) between two center points.'),
+  'sketch.slotOv': h('Draw a slot given its overall length from end to end.'),
+  'sketch.slotArc': h('Draw a curved slot that follows an arc.'),
+  'sketch.polygon': h('Draw a regular polygon with as many sides as you like. It can be sized by its inside, its outside or by one edge.'),
+  'sketch.fillet': h('Round the corner where two lines meet.', 'The corner point, or the two lines'),
+  'sketch.chamfer': h('Cut the corner where two lines meet with a straight bevel.', 'The corner point, or the two lines'),
+  'sketch.mirror': h('Mirror the selected curves across a line. The copies stay linked, so changing one changes the other.', 'The curves to mirror, then the mirror line'),
+  'sketch.patternR': h('Repeat the selected curves in a grid. The copies stay linked to the originals.', 'The curves to repeat'),
+  'sketch.patternC': h('Repeat the selected curves around a center point. The copies stay linked to the originals.', 'The curves to repeat, then the center point'),
+  'sketch.text': h('Add text whose letter outlines become shapes you can extrude or cut.'),
+  'sketch.handles': h('Show draggable handles at the ends of a fit point spline so you can shape how it leaves each point.', 'A fit point spline'),
+  'sketch.import': h('Put the shapes of an SVG or DXF file into the sketch.'),
+  'sketch.snapSettings': h('Choose which snaps and hints (parallel, perpendicular, tangent and so on) show up while you draw.'),
+  'sketch.dimension': h('Set an exact size. Click a line, a circle or two points, then type the value. The sketch is forced to match it.', 'A line, a circle, or two points'),
+  'sketch.project': h('Copy edges or faces from existing bodies into the sketch as reference geometry, so you can draw relative to them.', 'Edges or faces of an existing body'),
+  'sketch.construction': h('Turn the selected curves into guide lines. They help you draw and constrain but are ignored when you extrude.', 'The curves to turn into guides'),
+  'sketch.select': h('Switch back to the plain selection tool so you can click and drag existing shapes.'),
+  'sketch.trim': h('Click the part of a curve between two crossings to cut it away.', 'The curve piece to remove'),
+  'sketch.offset': h('Make a copy of curves at a set distance, like an inner wall. Great for rims and borders.', 'A chain of curves'),
+  'sketch.coincident': h('Pin two points together, or a point onto a curve, so they stay together.', 'Two points, or a point and a curve'),
+  'sketch.horizontal': h('Force a line to be exactly level (or two points to line up). Use Vertical for exactly upright.', 'A line, or two points'),
+  'sketch.vertical': h('Force a line to be exactly upright (or two points to line up vertically).', 'A line, or two points'),
+  'sketch.parallel': h('Force two lines to point the same way, so they never meet.', 'Two lines'),
+  'sketch.perpendicular': h('Force two lines to meet at exactly a right angle.', 'Two lines'),
+  'sketch.tangent': h('Make a line and a circle (or two arcs) touch smoothly, with no corner.', 'A line and an arc or circle, or two arcs'),
+  'sketch.equal': h('Make two lines the same length, or two circles the same size.', 'Two lines, or two circles or arcs'),
+  'sketch.midpoint': h('Put a point exactly in the middle of a line.', 'A point and a line'),
+  'sketch.fix': h('Lock a point or curve in place so it cannot move when other things change.', 'A point or a curve'),
+
+  // ---- view
+  'view.frame': h('Zoom and move the camera so every body fits in the window.'),
+  'view.frameSelection': h('Zoom to the faces, edges or bodies you have selected. With nothing selected it fits everything.', 'Faces, edges or bodies (optional)'),
+  'view.home': h('Return to the default angled view.'),
+  'view.top': h('Look straight down from above.'),
+  'view.front': h('Look at the model from the front.'),
+  'view.right': h('Look at the model from the right side.'),
+  'view.ortho': h('Switch between perspective (things shrink with distance, like a camera) and orthographic (no shrinking, better for measuring).'),
+  'view.shaded': h('Show solid colored surfaces without edge lines.'),
+  'view.shadedEdges': h('Show solid surfaces with dark outlines on the edges. The default.'),
+  'view.wireframe': h('Show only the edges so you can see through the model.'),
+  'view.xray': h('Make surfaces see-through so you can see what is inside and behind.'),
+  'view.ssao': h('Add soft shadows in the creases and corners so shapes read more clearly. Turn it off if the view feels slow.'),
+  'view.theme': h('Switch between the dark and the light look.'),
+  'view.resetLayout': h('Put the Browser, Inspector and Timeline back where they started.'),
+  'app.palette': h('Search every command by name and run it. Handy when you do not know where a button lives.'),
+  'view.history': h('Every save keeps a version of the project inside the file. Look at one, compare two, or go back to an older one.'),
+  'view.projects': h('Browse the projects in a folder on your computer, with previews, search, recent files and a trash.'),
+  'view.plugins': h('Add, switch on and off, and read the log of plugins, which are small programs that add features and commands.'),
+  'view.script': h('Write and run a quick script against the plugin API. For when you want to automate something.'),
+  'help.open': h('Open the help: getting started, keyboard shortcuts and a guide for every workspace.'),
+  'help.shortcuts': h('See every keyboard shortcut in one list.'),
+  'help.tour': h('Replay the short tour of the screen.'),
+  'app.settings': h('Open the settings: units, theme, navigation, display, autosave and help options.'),
+}
+
+/** The help for a command: this table first, then the command's own `tip`. */
+export function helpFor(c: Pick<Command, 'id' | 'tip'>): CommandHelp | undefined {
+  return COMMAND_HELP[c.id] ?? (c.tip ? { desc: c.tip } : undefined)
+}

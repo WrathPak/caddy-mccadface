@@ -11,6 +11,8 @@ import { Segmented } from './Segmented'
 import { NUDGE_EVENT } from './accept'
 import { OptionList } from './OptionList'
 import { Section } from './Section'
+import { FieldLabel } from './FieldLabel'
+import { GuideLink, ToolIntro } from '@/help/InspectorHelp'
 import { missingRequired, schemaDefaults, selectionParams, type FileParam, type ParamDef, type ParamValue, type ParamValues, type SelectionRefParam } from './schema'
 
 /** Stored refs of the feature being edited that the last regeneration re-bound by position / could not resolve. */
@@ -43,6 +45,7 @@ function Param(props: { def: ParamDef; values: ParamValues; set: Setter; pick: P
 }
 
 function ParamInner({ def, values, set, pick }: { def: ParamDef; values: ParamValues; set: Setter; pick: Pick }) {
+  const units = useUi((s) => s.units)
   if (def.type === 'group') {
     return (
       <Section title={def.label} defaultOpen={!def.collapsed} help={def.help} onActive={def.id ? () => pick.group(def.id!) : undefined}>
@@ -78,10 +81,10 @@ function ParamInner({ def, values, set, pick }: { def: ParamDef; values: ParamVa
       const vec: number[] = Array.isArray(v) && v.length === 3 ? (v as number[]) : [0, 0, 0]
       return (
         <div className="field stack">
-          <span className="field-label" title={def.help ?? def.label}>{def.label}{def.unit ? ` (${def.unit})` : ''}</span>
+          <FieldLabel label={def.label} help={def.help}>{def.label}{def.unit ? ` (${def.unit === 'mm' && units === 'in' ? 'in' : def.unit})` : ''}</FieldLabel>
           <div className="vec3">
             {(['X', 'Y', 'Z'] as const).map((ax, i) => (
-              <NumberField key={ax} value={vec[i]} step={def.step}
+              <NumberField key={ax} value={vec[i]} step={def.step} length={def.unit === 'mm'}
                 prefix={<span className={'mono axis-' + ax.toLowerCase()} style={{ marginRight: 4 }}>{ax}</span>}
                 onChange={(n) => { const c = [...vec] as [number, number, number]; c[i] = n; set(def.key, c) }} />
             ))}
@@ -92,7 +95,7 @@ function ParamInner({ def, values, set, pick }: { def: ParamDef; values: ParamVa
     case 'text':
       return (
         <div className="field stack">
-          <span className="field-label" title={def.help ?? def.label}>{def.label}</span>
+          <FieldLabel label={def.label} help={def.help} />
           <div className="inp" style={def.multiline ? { height: 'auto', alignItems: 'stretch' } : undefined}>
             {def.multiline ? (
               <textarea
@@ -112,7 +115,7 @@ function ParamInner({ def, values, set, pick }: { def: ParamDef; values: ParamVa
     case 'info':
       return (
         <div className="field stack" data-testid={'info-' + def.key}>
-          <span className="field-label" title={def.label}>{def.label}</span>
+          <span className="field-label">{def.label}</span>
           <div className="info-text">{def.text(values)}</div>
         </div>
       )
@@ -126,7 +129,7 @@ function FileField({ def, value, name, onPick }: { def: FileParam; value: string
   const input = useRef<HTMLInputElement>(null)
   return (
     <div className="field" data-testid={'file-' + def.key}>
-      <span className="field-label" title={def.help ?? def.label}>{def.label}</span>
+      <FieldLabel label={def.label} help={def.help} />
       <div className="inp file-pick">
         <span className="txt" title={name || undefined} style={{ color: value ? 'var(--text)' : 'var(--text-faint)' }}>{value ? name || 'File' : 'No file'}</span>
         <button type="button" className="btn small" onClick={() => input.current?.click()}>Choose file...</button>
@@ -160,7 +163,7 @@ function SelectionRef({ def, value, onChange, active, onActivate }: { def: Selec
   const flagColor = flag === 'lost' ? 'var(--danger, #e06060)' : '#e0b050'
   return (
     <div className="field" data-sel-key={def.key} data-active={active} data-empty={empty} data-ref-flag={flag}>
-      <span className="field-label" title={def.help ?? label}>{label}{def.required ? ' *' : ''}</span>
+      <FieldLabel label={label} help={def.help}>{label}{def.required ? ' *' : ''}</FieldLabel>
       <div className={'inp sel-ref' + (active ? ' active' : '')} data-testid={'sel-' + def.key} style={{ borderColor: flag ? flagColor : active || empty ? 'var(--accent-line)' : undefined, cursor: def.pick ? 'pointer' : undefined }} onClick={onActivate}>
         <span className="txt" title={note ?? (empty ? undefined : `${value.length} selected`)} style={{ color: flag ? flagColor : empty ? 'var(--text-faint)' : 'var(--text)' }}>
           {empty ? `Select ${accepts.join(' / ')}` : note ? `${value.length} selected - ${note}` : `${value.length} selected`}
@@ -183,7 +186,7 @@ const KIND_OF: Record<string, string> = { body: 'body', mesh: 'body', face: 'fac
 /** Schema-driven feature dialog. Renders `ui.inspector` (any ParamSchema) with OK / Cancel. */
 export function Inspector() {
   const session = useUi((s) => s.inspector)
-  if (!session) return <div className="panel"><div className="panel-title">Inspector</div><div className="empty">Select a feature or start a tool to edit its parameters.</div></div>
+  if (!session) return <div className="panel" data-tour="inspector"><div className="panel-title">Inspector</div><div className="empty">Select a feature or start a tool to edit its parameters.</div></div>
   // a fresh form per session object: its initial state is the session's values (never an empty object)
   return <InspectorForm key={sessionKey(session)} session={session} />
 }
@@ -327,8 +330,9 @@ function InspectorForm({ session }: { session: InspectorSession }) {
   const featureNote = feat && (feat.state === 'error' ? feat.error : feat.state === 'warning' ? feat.warning : undefined)
   return (
     <RefFlagsCtx.Provider value={flags}>
-    <div className="panel" data-inspector-root>
-      <div className="panel-title">{session.schema.title}</div>
+    <div className="panel" data-inspector-root data-tour="inspector">
+      <div className="panel-title"><span className="panel-title-text">{session.schema.title}</span><GuideLink schemaId={session.schema.id} title={session.schema.title} /></div>
+      <ToolIntro />
       <div className="panel-scroll">
         <div className="section-body">
           {session.schema.params.filter((p) => p.type !== 'group').map((p, i) => (

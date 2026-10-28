@@ -12,6 +12,7 @@ import {
   Unite, UploadSimple, Wall, Waves, Parallelogram, Angle, Check, Lock, Selection, Planet, Shapes, ArrowFatLineUp,
 } from '@phosphor-icons/react'
 import { useUi } from '@/store/ui'
+import { useSettings } from '@/settings/settings'
 import { useDoc } from '@/doc/store'
 import { demoExtrudeSchema, schemaDefaults } from '@/ui/schema'
 import { viewportBus } from '@/viewport/bus'
@@ -184,7 +185,7 @@ def('view.shadedEdges', 'Display: Shaded + Edges', Cube, 'View', undefined, () =
 def('view.wireframe', 'Display: Wireframe', BoundingBox, 'View', undefined, () => useUi.getState().setDisplayMode('wireframe'))
 def('view.xray', 'Display: X-Ray', Eye, 'View', undefined, () => useUi.getState().setDisplayMode('xray'))
 def('view.ssao', 'Toggle Ambient Occlusion', Sun, 'View', undefined, () => useUi.getState().toggleSsao())
-def('view.theme', 'Toggle Light / Dark Theme', Moon, 'View', undefined, () => useUi.getState().toggleTheme())
+def('view.theme', 'Toggle Light / Dark Theme', Moon, 'View', undefined, () => useSettings.getState().toggleTheme())
 def('app.palette', 'Command Palette', MagicWand, 'App', 'S', () => useUi.getState().setPaletteOpen(true))
 def('doc.suppress', 'Suppress / Unsuppress Feature', Eye, 'Timeline', undefined, () => {
   const d = useDoc.getState()
