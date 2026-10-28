@@ -92,4 +92,4 @@ cmd('surface.replaceFace', 'Fit to Surface', Swap, () => {
   const solidFaces = selection().filter((r) => r.kind === 'face' && !geometry().find((b) => b.id === r.id)?.surface)
   const target = [...pickedSurfaces(), ...selection().filter((r) => r.kind === 'plane').map((r) => r.id)]
   start('surfaceReplaceFace', 'surface.replaceFace', { faces: encodeSelection(solidFaces, geometry()), target })
-}, 'Move faces of a solid onto a surface body, plane or face of any shape, like Replace Face in the Solid tab but for freeform surfaces: the flat neighbouring faces carry on or cut back to meet it')
+}, 'Move faces of a solid onto a surface, plane or face of any shape: the flat faces next to them carry on or cut back to meet it. Select the faces first, then pick the surface.')
