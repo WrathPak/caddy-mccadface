@@ -449,3 +449,72 @@ test('surface workspace: every tool opens its dialog with a live preview, and Es
   await preview(); await leave()
   expect(await states(app)).not.toContain('error')
 })
+
+test('surface workspace: Fit to Surface moves the top of a box onto a surface, with undo, a keep switch and a readable error', async ({ app, page }) => {
+  test.setTimeout(150_000)
+  await app.open()
+  await app.tab('Surface')
+  await expect(app.ribbon('Fit to Surface').first()).toBeVisible()
+  const add = async (type: string, params: Record<string, unknown>) => {
+    const id = await app.ev((c, a) => c.doc.getState().addFeature(a.type, a.params), { type, params })
+    await app.idle()
+    return id as string
+  }
+  const box = await app.ev((c) => c.doc.getState().addFeature('box', { width: 10, depth: 10, height: 10, position: [0, 0, 0] }, 'Box'))
+  await app.idle()
+  near(await app.volume(box), 1000)
+  // a wide flat patch, then a copy of it 6 mm up: the surface the top of the box has to follow
+  const big = (await chainsOf(app, await addSketch(app, XY, [{ k: 'rect', x0: -20, y0: -20, x1: 20, y1: 20 }])))[0]
+  const patch = await add('surfacePatch', { boundary: [big.ref], continuity: 'g0' })
+  const lid = await add('surfaceOffset', { faces: [patch], distance: 6 })
+  expect((await app.features()).find((f) => f.id === lid)!.state).toBe('ok')
+
+  // pick the top face, open the tool, then pick the surface
+  const top = await faceAtHeight(app, box, 10)
+  expect(top).toBeGreaterThanOrEqual(0)
+  await select(app, [{ kind: 'face', id: box, index: top }])
+  await app.ribbon('Fit to Surface').first().click()
+  await expect(title(app)).toHaveText('Fit Face to Surface')
+  await expect(app.inspector().getByTestId('sel-faces')).toContainText('1 selected')
+  await select(app, [{ kind: 'body', id: lid }])
+  await expect(app.inspector().getByTestId('sel-target')).toContainText('1 selected')
+  await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBeGreaterThan(0)
+  expect(await app.ev((c) => c.ui.getState().inspectorNotice)).toBeNull()
+  await app.ok()
+  const rep = (await app.features()).at(-1)!
+  expect(rep.type).toBe('surfaceReplaceFace')
+  expect(rep.state, rep.error).toBe('ok')
+  near(await app.volume(box), 600)
+  expect((await info(app, box)).surface).toBe(false)
+  expect((await info(app, box)).faces).toBe(6)
+  expect((await info(app, lid)).surface).toBe(true) // kept by default
+  await app.shot('surface-replace-face')
+
+  // undo puts the top back, redo moves it again
+  await app.ev((c) => c.runCommand('edit.undo'))
+  await app.idle()
+  near(await app.volume(box), 1000)
+  await app.ev((c) => c.runCommand('edit.redo'))
+  await app.idle()
+  near(await app.volume(box), 600)
+
+  // switching off "keep" uses the surface up
+  await app.ev((c, a) => c.doc.getState().updateFeature(a.id, { ...a.params, keep: false }), { id: rep.id, params: rep.params })
+  await app.idle()
+  expect((await app.features()).find((f) => f.id === rep.id)!.state).toBe('ok')
+  expect((await infos(app)).some((b) => b.id === lid)).toBe(false)
+  near(await app.volume(box), 600)
+
+  // a surface too small to reach over the face says so in the dialog
+  const small = (await chainsOf(app, await addSketch(app, XY, [{ k: 'rect', x0: 30, y0: 30, x1: 33, y1: 33 }])))[0]
+  const tiny = await add('surfacePatch', { boundary: [small.ref], continuity: 'g0' })
+  const top2 = await faceAtHeight(app, box, 6)
+  expect(top2).toBeGreaterThanOrEqual(0)
+  await select(app, [{ kind: 'face', id: box, index: top2 }])
+  await app.ribbon('Fit to Surface').first().click()
+  await select(app, [{ kind: 'body', id: tiny }])
+  await expect.poll(() => app.ev((c) => c.ui.getState().inspectorNotice), { timeout: 15_000 }).toMatch(/does not cover the face/)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.inspector-foot')).toBeHidden()
+  near(await app.volume(box), 600)
+})
