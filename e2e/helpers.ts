@@ -25,6 +25,8 @@ export const test = base.extend<{ app: App }>({
     // force the download fallback for project saves / opens; no autosave or recovery prompt can carry over between page loads of a test
     await page.addInitScript(() => {
       ;(window as unknown as Record<string, unknown>).__e2eNoAutosave = true
+      // the first-run intro tour would sit over the page; e2e/46-help.spec.ts switches it back on
+      ;(window as unknown as Record<string, unknown>).__e2eNoTour = true
       delete (window as unknown as Record<string, unknown>).showSaveFilePicker
       delete (window as unknown as Record<string, unknown>).showOpenFilePicker
     })
