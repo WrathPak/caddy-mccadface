@@ -138,16 +138,16 @@ export function HairPaintBar() {
         ))}
         <span className="sep" />
         {mode === 'brush' && (
-          <label className="hair-num" title="Brush radius in pixels ([ and ])">
+          <Tip label="Brush radius" desc="Size of the brush in pixels. Press [ or ] to change it." side="bottom"><label className="hair-num">
             R
             <input type="number" min={4} max={200} value={radius} onChange={(e) => setPaint({ radius: Math.max(4, Math.min(200, +e.target.value || 28)) })} />
-          </label>
+          </label></Tip>
         )}
         {mode === 'flood' && (
-          <label className="hair-num" title="Maximum angle between neighbouring triangles">
+          <Tip label="Fill angle" desc="The fill stops where neighbouring triangles bend by more than this many degrees." side="bottom"><label className="hair-num">
             deg
             <input type="number" min={1} max={180} value={angle} onChange={(e) => setPaint({ angle: Math.max(1, Math.min(180, +e.target.value || 30)) })} />
-          </label>
+          </label></Tip>
         )}
         <span className="hair-count">{sel.size ? `${sel.size.toLocaleString()} ${kind === 'brep' ? 'faces' : 'tris'}` : 'Nothing selected'}</span>
         <Tip label="Clear" desc="Forget the painted surface and start again." side="bottom">

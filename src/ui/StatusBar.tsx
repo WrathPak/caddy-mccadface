@@ -45,9 +45,9 @@ export function StatusBar() {
         </D.Portal>
       </D.Root>
       {section.on && (
-        <button type="button" className="cell" title="Remove the section" data-testid="section-chip" onClick={() => useUi.getState().setSection({ on: false })}>
+        <Tip label="Section" desc="The view is sliced by a cutting plane. Click to remove the section." side="top"><button type="button" className="cell" data-testid="section-chip" onClick={() => useUi.getState().setSection({ on: false })}>
           Section: <span className="num" style={{ color: 'var(--accent)' }}>{section.axis} = {+section.offset.toFixed(3)} mm</span> ×
-        </button>
+        </button></Tip>
       )}
       <Tip label="Selection" desc="How many things you have picked. Press Esc to clear the selection." side="top"><span className="cell">{selection.length ? `${selection.length} selected` : 'Nothing selected'}</span></Tip>
       {(hs || hair.error || hair.busy) && (

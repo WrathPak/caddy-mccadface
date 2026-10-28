@@ -97,9 +97,11 @@ function ComponentRow({ node, depth, children }: { node: OccNode; depth: number;
       )}
       {error && <Tip label={error}><span className="comp-badge err" data-testid={'comp-error-' + node.id}><Warning size={12} /></span></Tip>}
       {assembly.occurrences.find((o) => o.id === node.occ)?.grounded && <Tip label="Grounded: this component does not move"><span className="comp-badge"><PushPin size={12} /></span></Tip>}
-      <button type="button" className="eye" data-off={hidden} title={hidden ? 'Show' : 'Hide'} aria-label={hidden ? 'Show component' : 'Hide component'} onClick={(e) => { e.stopPropagation(); toggleHidden(node.id) }}>
+      <Tip label={hidden ? 'Show' : 'Hide'} desc={hidden ? 'Bring this component back into the view.' : 'Hide this component from the view. It stays in the document.'} side="right">
+  <button type="button" className="eye" data-off={hidden} aria-label={hidden ? 'Show component' : 'Hide component'} onClick={(e) => { e.stopPropagation(); toggleHidden(node.id) }}>
         {hidden ? <EyeSlash size={12} /> : <Eye size={12} />}
       </button>
+      </Tip>
     </div>
   )
   const grounded = !!assembly.occurrences.find((o) => o.id === node.occ)?.grounded

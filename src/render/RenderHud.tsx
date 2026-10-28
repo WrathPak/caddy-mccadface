@@ -1,4 +1,5 @@
 /** The Render workspace panel: materials, scene, camera, still output and turntable. */
+import { Tip } from '@/ui/Tooltip'
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Camera, FilmStrip, FloppyDisk, Crosshair } from '@phosphor-icons/react'
 import { useDoc } from '@/doc/store'
@@ -72,17 +73,19 @@ function Panel() {
         <Sec id="materials" title="Materials" open>
           <div className="render-swatches">
             {PRESETS.map((p) => (
-              <button key={p.id} type="button" className="render-swatch" title={`${p.label}: ${p.desc}. Click to give it to the selected bodies or faces.`} data-testid={`mat-${p.id}`} onClick={() => assignMaterial(p.id, color)}>
-                <span className="ball" style={ballStyle(p)} />
-                {p.label}
-              </button>
+              <Tip key={p.id} label={p.label} desc={`${p.desc}. Click to give it to the selected bodies or faces.`} side="left">
+                <button type="button" className="render-swatch" data-testid={`mat-${p.id}`} onClick={() => assignMaterial(p.id, color)}>
+                  <span className="ball" style={ballStyle(p)} />
+                  {p.label}
+                </button>
+              </Tip>
             ))}
           </div>
-          <label className="render-row" title="A color as #rrggbb. Blank keeps the color of the material.">
+          <Tip label="Color" desc="A color as #rrggbb. Leave it blank to keep the color of the material." side="left"><label className="render-row">
             <span>Color</span>
             <input type="text" data-testid="mat-color" placeholder="Material color" value={color} onChange={(e) => setColor(e.target.value)} style={colorOk ? undefined : { borderColor: 'var(--danger)' }} />
             <input type="color" aria-label="Pick a color" value={parseHex(color) ?? '#808080'} onChange={(e) => setColor(e.target.value)} />
-          </label>
+          </label></Tip>
         </Sec>
 
         <Sec id="scene" title="Scene" open>
@@ -111,9 +114,11 @@ function Panel() {
           <Num label="Aperture f/" value={s.fStop} min={LIMITS.fStop[0]} max={LIMITS.fStop[1]} step={0.5} onChange={(v) => set({ fStop: v })} testid="fstop" />
           <Num label="Focus at" value={s.focusDistance} min={1} max={100000} unit="mm" onChange={(v) => set({ focusDistance: v })} testid="focus" />
           <div className="render-btns">
-            <button type="button" className="render-btn" data-testid="focus-selection" title="Focus on the selection, or on the whole model when nothing is selected" onClick={() => focusOnSelection()}>
-              <Crosshair size={13} /> Focus on selection
-            </button>
+            <Tip label="Focus on selection" desc="Set the sharp point of the depth of field blur to the selection, or to the whole model when nothing is selected." side="left">
+              <button type="button" className="render-btn" data-testid="focus-selection" onClick={() => focusOnSelection()}>
+                <Crosshair size={13} /> Focus on selection
+              </button>
+            </Tip>
           </div>
         </Sec>
 

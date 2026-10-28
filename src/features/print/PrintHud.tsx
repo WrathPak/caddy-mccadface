@@ -40,12 +40,12 @@ function MapPanel() {
         <span>{TITLES[kind]}</span>
         <Tip label="Close the map" side="top"><button type="button" aria-label="Close map" onClick={() => showMap(null)}><X size={12} /></button></Tip>
       </div>
-      <label className="print-field" title={field.tip}>
+      <Tip label={field.label} desc={field.tip} side="top"><label className="print-field">
         <span>{field.label}</span>
         <input type="number" min={field.min} max={field.max} step={kind === 'overhang' ? 5 : 0.1} value={field.value} data-testid="map-threshold"
           onChange={(e) => { const v = +e.target.value; if (v >= field.min && v <= field.max) usePrintView.setState({ [field.key]: v }) }} />
         <span className="unit">{field.unit}</span>
-      </label>
+      </label></Tip>
       <div className="print-legend" data-testid="map-legend">
         <div className="ramp" style={{ background: lg.ramp }} />
         <div className="ends"><span>{lg.from}</span><span>{lg.to}</span></div>

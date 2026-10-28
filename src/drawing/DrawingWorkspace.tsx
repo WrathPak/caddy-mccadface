@@ -96,10 +96,12 @@ function Status({ sheetId, out }: { sheetId: string; out: SheetOutput | null }) 
       <span className="hint" data-testid="drawing-hint">{tool ? hint : 'Select a view, a dimension or a note. Double-click to edit it.'}</span>
       {info && <span className="info">{info}</span>}
       {broken.length > 0 && (
-        <button type="button" className="warn" data-testid="drawing-broken" title={broken.map(([, m]) => m).join('\n')}
-          onClick={() => useDrawing.getState().select({ kind: 'dim', id: broken[0][0] })}>
-          {broken.length} {broken.length === 1 ? 'dimension has' : 'dimensions have'} lost a point in the model
-        </button>
+        <Tip label="Broken dimensions" desc={broken.map(([, m]) => m).join(' ')} side="top">
+          <button type="button" className="warn" data-testid="drawing-broken"
+            onClick={() => useDrawing.getState().select({ kind: 'dim', id: broken[0][0] })}>
+            {broken.length} {broken.length === 1 ? 'dimension has' : 'dimensions have'} lost a point in the model
+          </button>
+        </Tip>
       )}
       {errors.length > 0 && <span className="warn">{errors[0]}</span>}
       <span style={{ flex: 1 }} />

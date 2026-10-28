@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ParamDef, ParamSchema } from './schema'
 
@@ -125,4 +127,21 @@ describe('workspace guides and the tour', () => {
     const rows = shortcutRows(allCommands()).flatMap((g) => g.rows.map((r) => r.keys))
     for (const c of allCommands().filter((x) => x.shortcut)) expect(rows, c.id).toContain(c.shortcut)
   }, 280_000)
+})
+
+describe('no bare title= hints on controls', () => {
+  const walk = (dir: string): string[] =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : e.name.endsWith('.tsx') ? [path.join(dir, e.name)] : []))
+
+  it('uses the Tip component (rich tooltip, long press on touch) instead of title= on buttons, inputs, labels and selects', () => {
+    const root = path.resolve(import.meta.dirname, '..')
+    const bad: string[] = []
+    // an opening tag of an interactive element that carries title=; `=>` inside handlers must not end the tag early
+    const re = /<(button|input|label|select|textarea)\b(?:[^>]|=>)*?\stitle=/g
+    for (const f of walk(root)) {
+      const src = fs.readFileSync(f, 'utf8')
+      for (const m of src.matchAll(re)) bad.push(`${path.relative(root, f)}:${src.slice(0, m.index).split('\n').length}`)
+    }
+    expect(bad, 'use <Tip label desc> from @/ui/Tooltip').toEqual([])
+  })
 })

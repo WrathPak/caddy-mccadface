@@ -1,3 +1,4 @@
+import { Tip } from '@/ui/Tooltip'
 import { useEffect, useRef } from 'react'
 import { Play, Stop, Eraser } from '@phosphor-icons/react'
 import { EditorState } from '@codemirror/state'
@@ -80,9 +81,9 @@ export function ScriptPanel() {
     <div className="pf-panel script-panel" data-testid="script-panel" onKeyDown={(e) => e.stopPropagation()}>
       <div className="pf-head">
         <span className="pf-sub grow">Runs in a sandbox. Ctrl+Enter runs it.</span>
-        <button type="button" className="btn primary" onClick={run} title="Run (Ctrl+Enter)"><Play size={12} weight="fill" /> Run</button>
-        <button type="button" className="btn" onClick={stopScript} disabled={!running} title="Stop it and take back what it registered"><Stop size={12} weight="fill" /> Stop</button>
-        <button type="button" className="btn" onClick={() => { const v = view.current; if (v) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: STARTER } }) }} title="Put the example script back">Example</button>
+        <Tip label="Run" shortcut="Ctrl+Enter" desc="Run the script in the editor against the plugin API." side="top"><button type="button" className="btn primary" onClick={run}><Play size={12} weight="fill" /> Run</button></Tip>
+        <Tip label="Stop" desc="Stop the script and take back everything it registered." side="top"><span className="tip-wrap"><button type="button" className="btn" onClick={stopScript} disabled={!running}><Stop size={12} weight="fill" /> Stop</button></span></Tip>
+        <Tip label="Example" desc="Replace the editor text with the starter example script." side="top"><button type="button" className="btn" onClick={() => { const v = view.current; if (v) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: STARTER } }) }}>Example</button></Tip>
       </div>
       <div className="cm-host" ref={host} data-testid="script-editor" />
       <div className="pf-head" style={{ borderTop: '1px solid var(--line)', borderBottom: 'none', padding: '2px 8px' }}>

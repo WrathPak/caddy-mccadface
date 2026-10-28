@@ -21,10 +21,10 @@ export function SnapPopover() {
         <P.Content className="menu" side="top" align="start" sideOffset={6} data-testid="snap-popover" style={{ padding: 10, minWidth: 250 }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Snap and inference</div>
           {SNAP_LABELS.map((s) => (
-            <label key={s.key} title={s.help} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0', cursor: 'pointer' }}>
+            <Tip key={s.key} label={s.label} desc={s.help} side="right"><label style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0', cursor: 'pointer' }}>
               <input type="checkbox" data-testid={'snap-' + s.key} checked={flags[s.key]} onChange={(e) => set(s.key, e.target.checked)} />
               {s.label}
-            </label>
+            </label></Tip>
           ))}
           <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', color: 'var(--text-dim)', fontSize: 11 }}>
             <span>Hold Ctrl to pause, Shift to lock</span>

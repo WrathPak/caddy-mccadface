@@ -2,6 +2,7 @@ import * as C from '@radix-ui/react-checkbox'
 import { Check } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 import { FieldLabel } from './FieldLabel'
+import { Tip } from './Tooltip'
 
 export function Checkbox({ checked, onChange, label, help, ariaLabel }: { checked: boolean; onChange: (v: boolean) => void; label?: string; help?: string; /** the accessible name when there is no visible label */ ariaLabel?: string }) {
   const box = (
@@ -20,9 +21,10 @@ export function Checkbox({ checked, onChange, label, help, ariaLabel }: { checke
 
 /** Pressed/unpressed button for toolbars (styled by .vp-bar button[data-active]). */
 export function Toggle({ pressed, onChange, children, title }: { pressed: boolean; onChange: (v: boolean) => void; children: ReactNode; title?: string }) {
-  return (
-    <button type="button" title={title} aria-pressed={pressed} data-active={pressed} onClick={() => onChange(!pressed)}>
+  const btn = (
+    <button type="button" aria-pressed={pressed} data-active={pressed} onClick={() => onChange(!pressed)}>
       {children}
     </button>
   )
+  return title ? <Tip label={title} side="top">{btn}</Tip> : btn
 }

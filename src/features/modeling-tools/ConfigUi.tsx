@@ -1,4 +1,5 @@
 /** Configurations: a table of user-parameter sets (S / M / L) listed in the Browser, switched with a click, edited in a dialog. */
+import { Tip } from '@/ui/Tooltip'
 import { Fragment, useEffect, useState } from 'react'
 import { create } from 'zustand'
 import { CaretDown, CaretRight, Check, Pencil, Plus, Trash } from '@phosphor-icons/react'
@@ -45,7 +46,7 @@ function ConfigDialog() {
       footer={
         <>
           <button type="button" className="btn" onClick={close}>Cancel</button>
-          <button type="button" className="btn primary" disabled={dupe || broken} title={dupe ? 'Every configuration needs its own name' : broken ? 'Fix the cells marked in red first' : undefined} data-testid="config-ok" onClick={apply}>OK</button>
+          <Tip label="OK" desc={dupe ? 'Every configuration needs its own name.' : broken ? 'Fix the cells marked in red first.' : 'Keep these configurations.'} side="top"><span className="tip-wrap"><button type="button" className="btn primary" disabled={dupe || broken} data-testid="config-ok" onClick={apply}>OK</button></span></Tip>
         </>
       }
     >

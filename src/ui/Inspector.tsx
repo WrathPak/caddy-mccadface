@@ -1,3 +1,4 @@
+import { Tip } from './Tooltip'
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Crosshair, X } from '@phosphor-icons/react'
 import { useUi, type InspectorSession, type SelectionRef } from '@/store/ui'
@@ -133,7 +134,7 @@ function FileField({ def, value, name, onPick }: { def: FileParam; value: string
       <div className="inp file-pick">
         <span className="txt" title={name || undefined} style={{ color: value ? 'var(--text)' : 'var(--text-faint)' }}>{value ? name || 'File' : 'No file'}</span>
         <button type="button" className="btn small" onClick={() => input.current?.click()}>Choose file...</button>
-        {value && <button type="button" className="icon-btn" title="Clear" aria-label="Clear file" onClick={() => onPick({ [def.key]: '', [def.nameKey]: '' })}><X size={12} /></button>}
+        {value && <Tip label="Clear file" desc="Remove the chosen file from this feature." side="left"><button type="button" className="icon-btn" aria-label="Clear file" onClick={() => onPick({ [def.key]: '', [def.nameKey]: '' })}><X size={12} /></button></Tip>}
         <input
           ref={input} type="file" hidden accept={def.accept} data-testid={'file-input-' + def.key}
           onChange={async (e) => {
@@ -168,13 +169,13 @@ function SelectionRef({ def, value, onChange, active, onActivate }: { def: Selec
         <span className="txt" title={note ?? (empty ? undefined : `${value.length} selected`)} style={{ color: flag ? flagColor : empty ? 'var(--text-faint)' : 'var(--text)' }}>
           {empty ? `Select ${accepts.join(' / ')}` : note ? `${value.length} selected - ${note}` : `${value.length} selected`}
         </span>
-        <button type="button" className="icon-btn" title="Use current selection" aria-label="Use selection" onClick={(e) => { e.stopPropagation(); onChange(encodeSelection(sel, useDoc.getState().geometry)) }}>
+        <Tip label="Use selection" desc="Fill this field with whatever is selected in the viewport right now." side="left"><button type="button" className="icon-btn" aria-label="Use selection" onClick={(e) => { e.stopPropagation(); onChange(encodeSelection(sel, useDoc.getState().geometry)) }}>
           <Crosshair size={12} />
-        </button>
+        </button></Tip>
         {!empty && (
-          <button type="button" className="icon-btn" title="Clear" aria-label="Clear" onClick={(e) => { e.stopPropagation(); onChange([]); onActivate() }}>
+          <Tip label="Clear" desc="Empty this field so you can pick again." side="left"><button type="button" className="icon-btn" aria-label="Clear" onClick={(e) => { e.stopPropagation(); onChange([]); onActivate() }}>
             <X size={12} />
-          </button>
+          </button></Tip>
         )}
       </div>
     </div>
@@ -349,7 +350,7 @@ function InspectorForm({ session }: { session: InspectorSession }) {
       {blocked && <div key={nudge} className={'inspector-hint' + (nudge ? ' nudge' : '')} role="status" data-testid="inspector-hint">{hint}</div>}
       <div className="inspector-foot">
         <button type="button" className="btn" onClick={session.onCancel}>Cancel</button>
-        <button type="button" className="btn primary" disabled={blocked} title={blocked ? hint : undefined} onClick={() => !blocked && session.onOk(latest.current)}>OK</button>
+        <Tip label="OK" desc={blocked ? hint : 'Accept these settings and add the step to the timeline.'} shortcut="Enter" side="top"><span className="tip-wrap"><button type="button" className="btn primary" disabled={blocked} onClick={() => !blocked && session.onOk(latest.current)}>OK</button></span></Tip>
       </div>
     </div>
     </RefFlagsCtx.Provider>
