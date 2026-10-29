@@ -1,4 +1,5 @@
 /** Live feature previews: translucent result/tool meshes, profile picking, and the distance-arrow manipulator. */
+import { Tip } from '@/ui/Tooltip'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Html } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
@@ -271,8 +272,10 @@ export function ArrowManipulator() {
         </group>
         <Html position={[0, 0, 0]} zIndexRange={[25, 0]} style={{ pointerEvents: 'none' }}>
           {typing === null ? (
-            <div className="sk-tip" data-testid="manip-value" style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', cursor: 'text' }}
-              title="Click to type a value, Enter to accept" onClick={() => setTyping(String(+(m.tip * m.factor).toFixed(3)))}>{m.label(m.tip * m.factor)}</div>
+            <Tip label="Type a value" desc="Click to type an exact value, then press Enter to accept it." side="top">
+              <div className="sk-tip" data-testid="manip-value" style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', cursor: 'text' }}
+                onClick={() => setTyping(String(+(m.tip * m.factor).toFixed(3)))}>{m.label(m.tip * m.factor)}</div>
+            </Tip>
           ) : (
             <input className="sk-tip sk-tip-input" data-testid="manip-input" data-accept-on-enter autoFocus value={typing} spellCheck={false}
               style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', width: 84 }}

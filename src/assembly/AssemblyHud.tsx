@@ -183,7 +183,7 @@ function MotionTab() {
           <div className="asm-keys">
             {tr.frames.map((f) => (
               <span key={f.t} className="asm-key">
-                <button type="button" onClick={() => seekMotion(study, f.t)} title="Go to this keyframe">{f.t}s: {+f.v.toFixed(2)}</button>
+                <Tip label="Keyframe" desc="Jump the motion study to this moment." side="top"><button type="button" onClick={() => seekMotion(study, f.t)}>{f.t}s: {+f.v.toFixed(2)}</button></Tip>
                 <button type="button" aria-label="Delete keyframe" onClick={() => setMotionTrack({ ...tr, frames: tr.frames.filter((x) => x !== f) })}><X size={9} /></button>
               </span>
             ))}

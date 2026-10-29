@@ -13,7 +13,7 @@ test('thread: an M8 bolt gets a modeled thread with the default printing clearan
   // the clearance defaults to a value tuned for FDM
   const clearance = app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: 'Printing clearance' }) }).locator('input')
   await expect(clearance).toHaveValue('0.2')
-  await expect(app.inspector().locator('.field-label', { hasText: 'Printing clearance' })).toHaveAttribute('title', /FDM/)
+  await app.labelTip(app.inspector().locator('.field-label', { hasText: 'Printing clearance' }), /FDM/)
   await expect(page.getByTestId('detail-readout')).toContainText('M8 x 1.25 outside thread', { timeout: 120_000 })
   expect(await app.ev((c) => !!c.detail.getState().texture)).toBe(true)
   // the mesh preview is quick; the exact thread is built on OK

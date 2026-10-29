@@ -78,11 +78,11 @@ export function fromTurntable(az: number, el: number, roll: number): Quaternion 
  * Orbit by a pointer delta (pixels), turntable style about world Z, rigidly about `pivot` so the pivot keeps its screen
  * position. The elevation is clamped just short of the poles. Pure: returns the new pose.
  */
-export function orbitPose(p: NavPose, dx: number, dy: number, pivot: Vector3): NavPose {
+export function orbitPose(p: NavPose, dx: number, dy: number, pivot: Vector3, speed = 1): NavPose {
   const { az, el, roll } = turntableOf(p.q)
   const flip = Math.cos(roll) < 0 ? -1 : 1 // an upside-down view mirrors the drag
-  const az2 = az - dx * ORBIT_SPEED * flip
-  const el2 = MathUtils.clamp(el + dy * ORBIT_SPEED * flip, -EL_MAX, EL_MAX)
+  const az2 = az - dx * ORBIT_SPEED * speed * flip
+  const el2 = MathUtils.clamp(el + dy * ORBIT_SPEED * speed * flip, -EL_MAX, EL_MAX)
   const q2 = fromTurntable(az2, el2, roll)
   const delta = q2.clone().multiply(p.q.clone().invert())
   const back0 = new Vector3(0, 0, 1).applyQuaternion(p.q)
@@ -181,7 +181,7 @@ export function NavControls() {
       const decay = Math.exp(-Math.min(dt, 0.1) / 0.14)
       g.vx *= decay; g.vy *= decay
       if (g.kind === 'orbit') {
-        Object.assign(st, orbitPose(st, g.vx * dt, g.vy * dt, g.pivot))
+        Object.assign(st, orbitPose(st, g.vx * dt, g.vy * dt, g.pivot, useNavSettings.getState().orbitSpeed))
       } else if (g.world) {
         g.world.multiplyScalar(decay)
         st.target.addScaledVector(g.world, dt)
@@ -327,7 +327,7 @@ export function NavControls() {
     const orbit = (dx: number, dy: number, pivot?: Vector3) => {
       anim.current = null
       glide.current = null
-      Object.assign(s.current, orbitPose(s.current, dx, dy, pivot ?? s.current.target))
+      Object.assign(s.current, orbitPose(s.current, dx, dy, pivot ?? s.current.target, useNavSettings.getState().orbitSpeed))
       invalidate()
     }
     const offs = [
@@ -463,7 +463,8 @@ export function NavControls() {
         // one pivot per burst of events, so the point under the cursor stays under it
         const pivot = z && now - z.last < 180 ? z.pivot : (pivotAtWheel(e) ?? s.current.target)
         // pinch (ctrl) events carry small deltas: scale them up
-        const amount = e.ctrlKey ? MathUtils.clamp(dY, -40, 40) * 0.012 : MathUtils.clamp(dY, -240, 240) * 0.0015
+        const dir = useNavSettings.getState().zoomDirection === 'reverse' ? -1 : 1
+        const amount = dir * (e.ctrlKey ? MathUtils.clamp(dY, -40, 40) * 0.012 : MathUtils.clamp(dY, -240, 240) * 0.0015)
         zoom.current = { log: (z?.log ?? 0) + amount, pivot, last: now } // unspent zoom carries over into the next burst
       } else if (act === 'pan') {
         const wpp = worldPerPixel(c)

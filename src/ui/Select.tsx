@@ -1,5 +1,6 @@
 import * as S from '@radix-ui/react-select'
 import { CaretDown, Check } from '@phosphor-icons/react'
+import { FieldLabel } from './FieldLabel'
 
 export interface Option { value: string; label: string }
 
@@ -33,7 +34,7 @@ export function Select({ value, onChange, options, label, help, placeholder }: {
   )
   return label ? (
     <div className="field">
-      <span className="field-label" title={help ?? label}>{label}</span>
+      <FieldLabel label={label} help={help} />
       {ctl}
     </div>
   ) : ctl

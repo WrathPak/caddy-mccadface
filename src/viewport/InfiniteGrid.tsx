@@ -1,8 +1,9 @@
-import { useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useRef } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
 import { Color, DoubleSide, MathUtils, type OrthographicCamera, type PerspectiveCamera, type ShaderMaterial } from 'three'
 import { GRID_GLSL, gridFadeRange, gridLevels } from './gridMath'
 import { useVpColors } from './colors'
+import { useSettings } from '@/settings/settings'
 
 // The quad is positioned in the shader (centred under the camera, `uHalf` wide), so it can be as large as the far plane. It is
 // cut into cells so the interpolated world position stays precise out to the edge.
@@ -57,6 +58,10 @@ void main() {
 export function InfiniteGrid() {
   const colors = useVpColors()
   const mat = useRef<ShaderMaterial>(null)
+  // the grid density setting changes the cell size: draw again (the canvas only renders on demand)
+  const density = useSettings((s) => s.gridDensity)
+  const invalidate = useThree((s) => s.invalidate)
+  useEffect(() => invalidate(), [density, invalidate])
   const uniforms = useMemo(
     () => ({
       uStep: { value: 10 },

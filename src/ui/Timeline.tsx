@@ -67,14 +67,15 @@ export function Timeline({ onEditFeature }: TimelineProps) {
   }
 
   const marker = (
-    <div key="marker" className="marker" onPointerDown={dragMarker} title="Rollback marker" />
+    <Tip key="marker" label="Rollback marker" desc="Drag it left to see the model as it was at an earlier step. Drag it back to the end to rebuild everything." side="top"><div className="marker" onPointerDown={dragMarker} /></Tip>
   )
 
   const chipOf = (f: (typeof features)[number], i: number) => {
     const I = featureIcon(f.type)
     const comp = f.component ?? ROOT
     return [
-      <Tip key={f.id} label={f.state === 'error' && f.error ? `${f.name}: ${f.error}` : f.state === 'warning' && f.warning ? `${f.name}: ${f.warning}` : f.name}>
+      <Tip key={f.id} label={f.name} side="top"
+        desc={f.state === 'error' && f.error ? f.error : f.state === 'warning' && f.warning ? f.warning : f.suppressed ? 'Switched off. Press U with this step focused to switch it back on.' : 'A step in your model. Click to select it, double-click or press Enter to change its settings, U to switch it off.'}>
         <button
           type="button"
           className="chip"
@@ -111,7 +112,7 @@ export function Timeline({ onEditFeature }: TimelineProps) {
             const name = s.comp === ROOT ? 'Root' : assembly.components.find((c) => c.id === s.comp)?.name ?? s.comp
             return (
               <div key={n} className="tl-sec" data-testid={'tl-sec-' + s.comp} data-active={s.comp === activeDef} style={{ ['--sec' as string]: `hsl(${hue(s.comp)} 45% 55%)` }}>
-                <Tip label={s.comp === activeDef ? `${name} is the active component` : `Make ${name} the active component`}>
+                <Tip side="top" label={name} desc={s.comp === activeDef ? 'This is the active component: new features go into it.' : 'Click to make this the active component, so new features go into it.'}>
                   <button type="button" className="tl-sec-label" onClick={() => activateOcc(s.comp === ROOT ? null : nodes.find((x) => x.component === s.comp)?.id ?? null)}>{name}</button>
                 </Tip>
                 <div className="tl-sec-chips">{s.items.map(({ f, i }) => chipOf(f, i))}</div>

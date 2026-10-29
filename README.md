@@ -22,6 +22,7 @@ i got tired of fighting fusion 360 for 3d printing stuff (especially hair on fig
 - projects panel: pick a folder and browse your `.caddy` files with thumbnails, search, recent files and a trash
 - version history: every save keeps a version inside the file, you can preview, compare and restore them
 - plugins: add your own features and commands as small javascript files that run in a sandbox, plus a script panel for quick experiments (see docs/plugins.md)
+- built-in help: tooltips on every button and field, a first-run tour, a guide for each workspace, a shortcut list that is built from the commands, and a settings dialog (units, theme, navigation, display, autosave)
 - big meshes: multi million triangle stl and 3mf files import in the background and stay smooth to orbit
 
 ## running it

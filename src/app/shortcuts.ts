@@ -19,6 +19,8 @@ export function installShortcuts() {
   const onKey = (e: KeyboardEvent) => {
     if (e.defaultPrevented) return
     if (e.key === 'Enter' && useUi.getState().inspector) return // the open feature dialog owns Enter (ui/Inspector)
+    // a help or settings dialog (or the tour) is open: its own keys apply, the tool shortcuts must not fire behind it
+    if (document.querySelector('[data-help-dialog]')) return
     const t = e.target as HTMLElement | null
     if (e.key === 'Enter' && t?.closest?.('button, a, [role="button"], [role="menuitem"], [role="checkbox"], [role="radio"], [role="tab"], [role="combobox"], [role="option"], [role="dialog"], .cmdk-overlay')) return
     const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)

@@ -1,3 +1,5 @@
+import { FieldLabel } from './FieldLabel'
+
 export function Segmented({ value, onChange, options, label, help }: {
   help?: string
   value: string
@@ -16,7 +18,7 @@ export function Segmented({ value, onChange, options, label, help }: {
   )
   return label ? (
     <div className={'field' + (options.length > 2 ? ' stack' : '')}>
-      <span className="field-label" title={help ?? label}>{label}</span>
+      <FieldLabel label={label} help={help} />
       {ctl}
     </div>
   ) : ctl

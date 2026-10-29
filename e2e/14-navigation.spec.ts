@@ -61,11 +61,17 @@ async function mmbDrag(page: Page, from: { x: number; y: number }, to: { x: numb
   for (const m of mods.reverse()) await page.keyboard.up(m)
 }
 
-async function setPreset(page: Page, label: string) {
+/** Settings dialog, on its Navigation page. */
+async function openNavSettings(page: Page) {
   await page.getByTestId('settings-gear').click()
-  await page.getByTestId('settings-popover').getByRole('radio', { name: label }).click()
+  await page.getByTestId('settings-dialog-nav-navigation').click()
+}
+
+async function setPreset(page: Page, label: string) {
+  await openNavSettings(page)
+  await page.getByTestId('settings-dialog').getByRole('radio', { name: label }).click()
   await page.keyboard.press('Escape')
-  await expect(page.getByTestId('settings-popover')).toHaveCount(0)
+  await expect(page.getByTestId('settings-dialog')).toHaveCount(0)
 }
 
 test('wheel zooms toward the cursor (perspective and orthographic) with a smooth exponential step', async ({ app, page }) => {
@@ -260,8 +266,8 @@ test('navigation presets: SolidWorks, Blender and Touchpad gestures; the choice 
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('caddy.nav') ?? '{}').preset)).toBe('blender')
   await page.reload()
   await page.waitForFunction(() => !!(window as any).__caddy) // eslint-disable-line
-  await page.getByTestId('settings-gear').click()
-  await expect(page.getByTestId('settings-popover').getByRole('radio', { name: 'Blender' })).toHaveAttribute('aria-checked', 'true')
+  await openNavSettings(page)
+  await expect(page.getByTestId('settings-dialog').getByRole('radio', { name: 'Blender' })).toHaveAttribute('aria-checked', 'true')
   await page.keyboard.press('Escape')
 })
 
@@ -332,8 +338,8 @@ test('everything stays in sync with the ViewCube; orbit works from a ViewCube vi
 test('optional inertia: off by default, keeps the view gliding after a fast drag when on', async ({ app, page }) => {
   await setup(app)
   const { cx, cy } = await vp(page)
-  await page.getByTestId('settings-gear').click()
-  const pop = page.getByTestId('settings-popover')
+  await openNavSettings(page)
+  const pop = page.getByTestId('settings-dialog')
   await expect(pop.getByRole('checkbox', { name: 'Inertia' })).not.toBeChecked()
   await pop.getByRole('checkbox', { name: 'Inertia' }).click()
   await page.keyboard.press('Escape')

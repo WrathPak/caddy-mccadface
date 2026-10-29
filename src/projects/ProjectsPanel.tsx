@@ -1,3 +1,4 @@
+import { Tip } from '@/ui/Tooltip'
 import { useEffect, useMemo, useState } from 'react'
 import * as CM from '@radix-ui/react-context-menu'
 import { ArrowCounterClockwise, CaretDown, CaretRight, Copy, Cube, FilePlus, Folder, FolderOpen, FolderPlus, MagnifyingGlass, PencilSimple, Trash, ArrowsClockwise, LinkSimple, Plugs } from '@phosphor-icons/react'
@@ -201,8 +202,8 @@ export function ProjectsPanel() {
       <div className="pf-head">
         <Folder size={14} />
         <b className="grow" title={root.name}>{root.name}</b>
-        <button type="button" className="btn" aria-label="Refresh" title="Read the folder again" onClick={() => void refresh()}><ArrowsClockwise size={13} /></button>
-        <button type="button" className="btn" onClick={() => void chooseFolder()} title="Pick a different folder">Change</button>
+        <Tip label="Refresh" desc="Read the folder again to pick up files that changed." side="bottom"><button type="button" className="btn" aria-label="Refresh" onClick={() => void refresh()}><ArrowsClockwise size={13} /></button></Tip>
+        <Tip label="Change folder" desc="Pick a different folder of projects on your computer." side="bottom"><button type="button" className="btn" onClick={() => void chooseFolder()}>Change</button></Tip>
       </div>
       <div className="pf-head">
         <label className="inp pf-search"><MagnifyingGlass size={12} style={{ color: 'var(--text-faint)', marginRight: 4 }} /><input aria-label="Search projects" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} /></label>

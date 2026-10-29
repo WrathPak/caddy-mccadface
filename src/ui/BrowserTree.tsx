@@ -8,6 +8,18 @@ import { ConfigurationsGroup } from '@/features/modeling-tools/ConfigUi'
 import { ComponentsSection, JointsSection } from '@/assembly/ComponentTree'
 import { ownerOf } from '@/assembly/instances'
 import { ROOT } from '@/assembly/types'
+import { Tip } from './Tooltip'
+
+/** What a row in the Browser is, for its tooltip. */
+const KIND_HELP: Partial<Record<EntityKind, string>> = {
+  body: 'A solid or surface shape. Click to select it, double-click to rename it, right-click for more.',
+  mesh: 'A body made of triangles, usually from an STL file. Click to select it, double-click to rename it.',
+  sketch: 'A 2D drawing. Click to select it, double-click to rename it.',
+  plane: 'A flat reference plane that sketches can sit on. Planes start hidden; the eye shows them.',
+  axis: 'A reference line to revolve or pattern around.',
+  point: 'A reference point other tools can snap to.',
+  component: 'A part of an assembly. Click to select it.',
+}
 
 interface RowProps {
   id: string
@@ -66,13 +78,15 @@ function Row({ id, name, depth, kind, icon, open, onToggle, coll, eye = true, pa
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditing(false) }}
         />
       ) : (
-        <span className="name">{name}</span>
+        <Tip label={name} desc={isGroup ? 'Click to open or close this group.' : (kind && KIND_HELP[kind]) || undefined} side="right"><span className="name">{name}</span></Tip>
       )}
       {eye && !isGroup && (
-        <button type="button" className="eye" data-off={hidden} title={hidden ? 'Show' : 'Hide'}
-          onClick={(e) => { e.stopPropagation(); toggleHidden(id) }}>
-          {hidden ? <EyeSlash size={12} /> : <Eye size={12} />}
-        </button>
+        <Tip label={hidden ? 'Show' : 'Hide'} desc={hidden ? 'Bring this back into the view.' : 'Hide this from the view. It stays in the document.'} side="right">
+          <button type="button" className="eye" data-off={hidden} aria-label={hidden ? 'Show' : 'Hide'}
+            onClick={(e) => { e.stopPropagation(); toggleHidden(id) }}>
+            {hidden ? <EyeSlash size={12} /> : <Eye size={12} />}
+          </button>
+        </Tip>
       )}
     </div>
   )
@@ -149,7 +163,7 @@ export function BrowserTree() {
   }
 
   return (
-    <div className="panel">
+    <div className="panel" data-tour="browser">
 
       <div className="panel-scroll" style={{ paddingTop: 2 }}>
         <Group label={`Document: ${doc.name}`} depth={0} icon={<FileText size={13} />}>

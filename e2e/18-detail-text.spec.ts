@@ -77,7 +77,7 @@ test('text: engrave cuts into the face and the dialog explains its settings', as
   const dlg = app.inspector()
   // every label has a tooltip and the focused field a hint line
   const size = dlg.locator('.field', { has: page.locator('.field-label', { hasText: 'Text height' }) }).first()
-  await expect(size.locator('.field-label')).toHaveAttribute('title', /capital letter/)
+  await app.labelTip(size.locator('.field-label'), /capital letter/)
   await size.locator('input').focus()
   await expect(dlg.getByTestId('field-hint')).toContainText('capital letter')
   await size.locator('input').blur()
