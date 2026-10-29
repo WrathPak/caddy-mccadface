@@ -18,7 +18,17 @@ export function partNumber(parts: Component[], key: string): number | null {
   return i < 0 ? null : i + 1
 }
 
-export const PARTS_COLS = [14, 14, 70, 40]
+export const PARTS_COLS = [13, 12, 50, 34, 50]
+export const PARTS_HEAD = ['ITEM', 'QTY', 'PART NAME', 'MATERIAL', 'DESCRIPTION']
+
+/** The text cut to fit a cell (3 mm of padding), with dots where it was cut. */
+export function fitText(text: string, size: number, width: number): string {
+  const room = width - 3
+  if (textWidth(text, size) <= room) return text
+  let t = text
+  while (t.length > 1 && textWidth(t + '...', size) > room) t = t.slice(0, -1)
+  return t + '...'
+}
 export const PARTS_ROW = 7
 
 export function annotationPrims(a: Annotation, st: DrawingSettings, parts: Component[]): Prim[] {
@@ -148,10 +158,9 @@ export function annotationPrims(a: Annotation, st: DrawingSettings, parts: Compo
       const h = rows * PARTS_ROW
       const [x0, y0] = a.pos // lower left
       out.push(rect(x0, y0, w, h, owner, 'visible'))
-      const head = ['ITEM', 'QTY', 'PART NAME', 'DESCRIPTION']
       let x = x0
       PARTS_COLS.forEach((cw, i) => {
-        out.push({ k: 'text', x: x + 1.5, y: y0 + h - PARTS_ROW + 2, text: head[i], size: st.textHeight * 0.8, anchor: 'start', bold: true, owner })
+        out.push({ k: 'text', x: x + 1.5, y: y0 + h - PARTS_ROW + 2, text: PARTS_HEAD[i], size: st.textHeight * 0.8, anchor: 'start', bold: true, owner })
         x += cw
         if (i < PARTS_COLS.length - 1) out.push(seg([x, y0, x, y0 + h], owner))
       })
@@ -159,9 +168,9 @@ export function annotationPrims(a: Annotation, st: DrawingSettings, parts: Compo
       parts.forEach((p, i) => {
         const y = y0 + h - (i + 2) * PARTS_ROW + 2
         let cx = x0
-        const cells = [String(i + 1), String(p.qty), p.name, '']
+        const cells = [String(i + 1), String(p.qty), p.name, p.material, p.description]
         cells.forEach((t, k) => {
-          out.push({ k: 'text', x: cx + 1.5, y, text: t, size: st.textHeight * 0.8, anchor: 'start', owner })
+          if (t) out.push({ k: 'text', x: cx + 1.5, y, text: fitText(t, st.textHeight * 0.8, PARTS_COLS[k]), size: st.textHeight * 0.8, anchor: 'start', owner })
           cx += PARTS_COLS[k]
         })
       })

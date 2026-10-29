@@ -7,7 +7,7 @@ import {
   clipPolyToCircle, ORIENTATIONS, polyBounds, projectedOrientation, sectionPlane, type Poly2, type Side, type V2,
 } from '@/kernel/drawing-geom'
 import { cross3, dot3 } from '@/kernel/print-geom'
-import { itemMatrix } from './components'
+import { itemExists, itemMatrix } from './components'
 import type { DrawingView, Sheet } from './types'
 
 export interface ViewGeom {
@@ -55,7 +55,7 @@ function itemsKey(v: DrawingView): { keys: { key: string; matrix?: number[] }[];
   const keys: { key: string; matrix?: number[] }[] = []
   for (const it of v.items) {
     const b = bodies.find((x) => x.id === it.bodyId)
-    if (!b || b.kind !== 'brep') continue
+    if (!b || b.kind !== 'brep' || !itemExists(it)) continue
     keys.push({ key: b.key, matrix: itemMatrix(it) })
   }
   return keys.length ? { keys, sig: JSON.stringify(keys) } : null

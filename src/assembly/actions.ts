@@ -135,6 +135,24 @@ export function renameComponent(def: string, name: string) {
   edit('Rename component', (a) => ({ ...a, components: a.components.map((c) => (c.id === def ? { ...c, name: n } : c)) }))
 }
 
+/** Material and description of a component (the parts list of a drawing shows them). Empty text clears one. */
+export function setComponentInfo(def: string, info: { material?: string; description?: string }) {
+  edit('Component info', (a) => ({
+    ...a,
+    components: a.components.map((c) => {
+      if (c.id !== def) return c
+      const next = { ...c }
+      for (const k of ['material', 'description'] as const) {
+        const v = info[k]?.trim()
+        if (v === undefined) continue
+        if (v) next[k] = v
+        else delete next[k]
+      }
+      return next
+    }),
+  }))
+}
+
 /** World extent along X of everything inside an instance (for placing a new instance beside it). */
 function widthOf(path: string): number {
   const d = useDoc.getState()

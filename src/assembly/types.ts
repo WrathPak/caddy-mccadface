@@ -19,6 +19,9 @@ export interface ComponentDef {
   name: string
   /** set for a component that comes from another .caddy file (see external.ts) */
   external?: string
+  /** shown in the Material and Description columns of a drawing's parts list */
+  material?: string
+  description?: string
 }
 
 export interface Occurrence {
