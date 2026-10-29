@@ -29,7 +29,8 @@ function track<T extends object>(remote: T): T {
       return async (...args: unknown[]) => {
         if (pending++ === 0) useUi.getState().setStats({ kernelBusy: true })
         try {
-          const out = await (v as (...a: unknown[]) => unknown).apply(target, args)
+          // call it directly: going through .apply would be a remote property lookup that wraps the arguments in an array, and a transfer list only counts on a top-level argument
+          const out = await (v as (...a: unknown[]) => unknown)(...args)
           noteBodyBounds(out)
           return out
         } finally {

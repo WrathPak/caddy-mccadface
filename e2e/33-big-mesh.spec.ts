@@ -35,8 +35,6 @@ async function watchLongTasks(app: App) {
 const longTasks = (app: App) => app.page.evaluate(() => (window as unknown as { __long: number[] }).__long)
 
 test('a 3 million triangle STL imports without a long main-thread task and orbits smoothly', async ({ app, page }) => {
-  // stalls 600+ ms on the ci runners but not locally, skipped on ci until #12 is sorted
-  test.skip(!!process.env.CI, 'big stl import stalls on ci runners, see #12')
   test.setTimeout(420_000)
   const cells = Number(process.env.BIG_CELLS ?? 1225) // 1225 cells a side = 3.0 million triangles
   const stl = writeBigStl(cells)

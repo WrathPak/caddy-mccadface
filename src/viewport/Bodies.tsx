@@ -52,34 +52,44 @@ function applyKnownBounds(g: BufferGeometry, bounds: Body['mesh']['bounds']) {
 }
 
 /** Triangles per piece of a big mesh's drawn geometry. */
-const CHUNK_TRIS = 100_000
+const CHUNK_TRIS = 40_000
 /** Never drawn: the mesh that only exists for picking. */
 const HIDDEN = new MeshBasicMaterial({ visible: false })
 
-/** Own, compact geometry for the triangles t0..t1 of a body's mesh. */
-function buildChunk(b: Body, t0: number, t1: number): BufferGeometry {
+/**
+ * Makes own, compact geometries for runs of a body's triangles. The vertex remap table (one int per vertex of the whole mesh)
+ * is allocated once and only the entries a chunk touched are reset, so the cost of a chunk follows its size and not the
+ * mesh's: allocating and clearing it per chunk was most of the main-thread time of a 3 million triangle import.
+ */
+function chunker(b: Body): (t0: number, t1: number) => BufferGeometry {
   const m = b.mesh
   const remap = new Int32Array(m.positions.length / 3).fill(-1)
-  const verts: number[] = []
-  const idx = new Uint32Array((t1 - t0) * 3)
-  for (let i = 0; i < idx.length; i++) {
-    const v = m.indices[t0 * 3 + i]
-    let r = remap[v]
-    if (r < 0) { r = remap[v] = verts.length; verts.push(v) }
-    idx[i] = r
+  return (t0, t1) => {
+    const n = (t1 - t0) * 3
+    const idx = new Uint32Array(n)
+    const verts = new Uint32Array(n) // at most one new vertex per index
+    let nv = 0
+    for (let i = 0; i < n; i++) {
+      const v = m.indices[t0 * 3 + i]
+      let r = remap[v]
+      if (r < 0) { r = remap[v] = nv; verts[nv++] = v }
+      idx[i] = r
+    }
+    const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3)
+    for (let i = 0; i < nv; i++) {
+      const v = verts[i]
+      remap[v] = -1
+      const o = v * 3, d = i * 3
+      pos[d] = m.positions[o]; pos[d + 1] = m.positions[o + 1]; pos[d + 2] = m.positions[o + 2]
+      nrm[d] = m.normals[o]; nrm[d + 1] = m.normals[o + 1]; nrm[d + 2] = m.normals[o + 2]
+    }
+    const g = new BufferGeometry()
+    g.setAttribute('position', new BufferAttribute(pos, 3))
+    g.setAttribute('normal', new BufferAttribute(nrm, 3))
+    g.setIndex(new BufferAttribute(idx, 1))
+    applyKnownBounds(g, m.bounds)
+    return g
   }
-  const pos = new Float32Array(verts.length * 3), nrm = new Float32Array(verts.length * 3)
-  for (let i = 0; i < verts.length; i++) {
-    const v = verts[i] * 3
-    pos[i * 3] = m.positions[v]; pos[i * 3 + 1] = m.positions[v + 1]; pos[i * 3 + 2] = m.positions[v + 2]
-    nrm[i * 3] = m.normals[v]; nrm[i * 3 + 1] = m.normals[v + 1]; nrm[i * 3 + 2] = m.normals[v + 2]
-  }
-  const g = new BufferGeometry()
-  g.setAttribute('position', new BufferAttribute(pos, 3))
-  g.setAttribute('normal', new BufferAttribute(nrm, 3))
-  g.setIndex(new BufferAttribute(idx, 1))
-  applyKnownBounds(g, b.mesh.bounds)
-  return g
 }
 
 /** The decimated stand-in drawn while the camera moves (only bodies that came with one). */
@@ -203,24 +213,7 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
   // a big mesh is drawn from pieces of about CHUNK_TRIS triangles, one made and sent to the GPU per frame, so no single frame
   // carries the whole upload; `geo` (never drawn then) still serves picking, the highlight and sections
   const chunked = body.mesh.indices.length / 3 > CHUNK_TRIS * 1.2
-  const [chunks, setChunks] = useState<BufferGeometry[]>([])
   const [chunksDone, setChunksDone] = useState(!chunked)
-  useEffect(() => {
-    if (!chunked) return
-    let t = 0, raf = 0
-    const made: BufferGeometry[] = []
-    const total = body.mesh.indices.length / 3
-    const step = () => {
-      const g = buildChunk(body, t, Math.min(total, t + CHUNK_TRIS))
-      made.push(g)
-      t += CHUNK_TRIS
-      setChunks([...made])
-      if (t < total) raf = requestAnimationFrame(step)
-      else setChunksDone(true)
-    }
-    raf = requestAnimationFrame(step)
-    return () => { cancelAnimationFrame(raf); for (const g of made) g.dispose() }
-  }, [chunked, body])
   const fullRef = useRef<Object3D>(null)
   const lodRef = useRef<Mesh>(null)
   const swap = useRef<ReturnType<typeof registerLodSwap> | null>(null)
@@ -252,6 +245,33 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
   // an open surface always shows its edges: they are what tells a surface from a solid, and what the stitch and extend tools pick
   const showEdges = displayMode !== 'shaded' || filter === 'edge' || !!body.surface
   const bodyMat = flagged ? mats.flag : dimmed ? mats.dim : body.surface ? mats.surf : mats.base
+  // the pieces go straight into their group instead of through React state: re-rendering the body for every one of the
+  // dozens of pieces (each re-diffing all the earlier ones) cost more main-thread time than building and uploading it
+  const matRef = useRef(bodyMat)
+  useEffect(() => {
+    matRef.current = bodyMat
+    for (const m of (fullRef.current as Object3D | null)?.children ?? []) (m as Mesh).material = bodyMat
+  }, [bodyMat])
+  useEffect(() => {
+    const group = fullRef.current
+    if (!chunked || !group) return
+    let t = 0, raf = 0
+    const total = body.mesh.indices.length / 3
+    const build = chunker(body)
+    const made: Mesh[] = []
+    const step = () => {
+      const m = new Mesh(build(t, Math.min(total, t + CHUNK_TRIS)), matRef.current)
+      m.frustumCulled = false // scaled to nothing until every piece is up, but still drawn so the GPU gets it
+      m.raycast = noRaycast
+      group.add(m)
+      made.push(m)
+      t += CHUNK_TRIS
+      if (t < total) raf = requestAnimationFrame(step)
+      else { for (const x of made) x.frustumCulled = true; setChunksDone(true) }
+    }
+    raf = requestAnimationFrame(step)
+    return () => { cancelAnimationFrame(raf); for (const m of made) { group.remove(m); m.geometry.dispose() } }
+  }, [chunked, body])
   const path = inst.occ || undefined
   const refFor = (e: ThreeEvent<PointerEvent | MouseEvent>): SelectionRef =>
     byComponent ? { kind: 'component', id: inst.occ }
@@ -291,14 +311,15 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
         {lodGeo && <mesh ref={lodRef} geometry={lodGeo} material={bodyMat} visible={false} raycast={noRaycast} />}
         {chunked && (
           // squashed to nothing until every piece is uploaded: still drawn (so the GPU gets it), nothing to see, and no extra shader
-          <group ref={fullRef as never} scale={chunksDone ? 1 : 0}>
-            {chunks.map((g, i) => <mesh key={i} geometry={g} material={bodyMat} frustumCulled={chunksDone} raycast={noRaycast} />)}
-          </group>
+          <group ref={fullRef as never} scale={chunksDone ? 1 : 0} />
         )}
         <mesh
           ref={chunked ? undefined : (fullRef as never)}
           geometry={geo}
           material={chunked ? HIDDEN : bodyMat}
+          // three uploads the geometry of every mesh it walks, even one with an invisible material, so the picking mesh of a
+          // chunked body is switched off for the renderer (a Raycaster ignores `visible`): no 70 MB upload in one frame
+          visible={!chunked}
           raycast={meshRaycast}
           onPointerDown={dragging ? (e) => { if (e.button === 0) { e.stopPropagation(); beginDrag(e, inst) } } : undefined}
           onPointerMove={
