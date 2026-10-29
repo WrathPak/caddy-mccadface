@@ -1,16 +1,19 @@
 /** Options bar of the newer sketch tools: counts, radii, text and so on, shown over the viewport while the tool is active. */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { evalNumber } from '@/doc/params'
 import { FONTS } from './font'
 import { applyPatternR, editSelectedText, useSketchOpts, type SketchOpts } from './toolsUi'
 import { splineHandlesCommand } from './toolsUi'
 import { entityById } from './model'
 import { useSketch } from './store'
+import { KbdToggle, useKbd } from '@/ui/kbd'
 
 function Num({ id, label, k, min, unit }: { id: string; label: string; k: keyof SketchOpts; min?: number; unit?: string }) {
   const value = useSketchOpts((s) => s.o[k]) as number
   const set = useSketchOpts((s) => s.set)
   const [text, setText] = useState(String(value))
+  const kb = useKbd()
+  const ref = useRef<HTMLInputElement>(null)
   useEffect(() => { setText(String(value)) }, [value])
   const commit = () => {
     const v = evalNumber(text, unit)
@@ -19,8 +22,9 @@ function Num({ id, label, k, min, unit }: { id: string; label: string; k: keyof 
   }
   return (
     <label className="sk-opt"><span>{label}</span>
-      <input data-testid={'sk-opt-' + id} value={text} spellCheck={false} onChange={(e) => setText(e.target.value)} onBlur={commit}
+      <input ref={ref} data-testid={'sk-opt-' + id} value={text} spellCheck={false} inputMode={kb.inputMode} enterKeyHint="done" onChange={(e) => setText(e.target.value)} onBlur={() => { if (!kb.swapping.current) commit() }}
         onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') { commit(); (e.target as HTMLElement).blur() } }} />
+      {kb.coarse && <KbdToggle mode={kb.mode} onToggle={() => kb.toggle(ref)} />}
     </label>
   )
 }

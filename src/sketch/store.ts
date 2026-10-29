@@ -19,6 +19,7 @@ import { detectProfiles } from './profiles'
 import { snap as snapAt, gridStep, type Snap } from './snap'
 import { inferSnap, type Rel } from './infer'
 import { ensureFonts } from './curves'
+import { useDevice } from '@/app/device'
 import { useSnapFlags } from './snapSettings'
 import { analyze, ensureSolver, solveModel, solvePruned, type DragSpec, type SolveInfo } from './solver'
 import { circumcircle, cross, dist, norm, sub } from './geom'
@@ -179,7 +180,11 @@ export function commit(fn: (m: SketchModel) => string | void, opts: { strict?: b
   return true
 }
 
+/** The drafts of a polyline, one per point placed: "Undo point" (the touch layout has no Escape) steps back through them. */
+const draftStack: Draft[] = []
+
 function resetTransient(extra: Partial<SketchState> = {}) {
+  draftStack.length = 0
   woken.clear()
   lastDir = null
   set({ draft: null, typed: null, picks: [], placing: null, dimEdit: null, trimHover: null, offset: null, ...extra })
@@ -437,7 +442,8 @@ interface DragState { id: string; start: Vec2; orig: Record<string, Vec2>; start
 let drag: DragState | null = null
 let boxStart: Vec2 | null = null
 
-const tolPx = 8
+/** Pick tolerance in pixels: a fingertip needs twice what a mouse pointer does. */
+const tolPx = () => (useDevice.getState().coarse ? 16 : 8)
 const curvesOnly = (e: { type: string }) => e.type !== 'point'
 const DRAW: ToolId[] = ['line', 'rect', 'rectC', 'circle', 'arc']
 const isDraw = (t: ToolId): t is DrawTool & ToolId => DRAW.includes(t)
@@ -454,20 +460,20 @@ export function pointerMove(raw: Vec2, wpp: number, mods: Mods) {
   if (extra) { extra.move?.(raw, wpp, mods); return }
 
   if (tool === 'select' || tool === 'constraint') {
-    const h = hitTest(s.model, raw, tolPx * wpp)
+    const h = hitTest(s.model, raw, tolPx() * wpp)
     if (h !== s.hover) set({ hover: h })
     set({ cursor: null })
     invalidate()
     return
   }
   if (tool === 'dimension') {
-    const h = hitTest(s.model, raw, tolPx * wpp)
+    const h = hitTest(s.model, raw, tolPx() * wpp)
     set({ hover: h, cursor: null, placing: s.picks.length ? previewDim(s, raw, mods) : null })
     invalidate()
     return
   }
   if (tool === 'trim') {
-    const h = hitTest(s.model, raw, tolPx * wpp, curvesOnly)
+    const h = hitTest(s.model, raw, tolPx() * wpp, curvesOnly)
     const span = h ? trimSpan(s.model, h, raw) : null
     set({ hover: h, cursor: null, trimHover: span ? span.poly : null })
     invalidate()
@@ -475,7 +481,7 @@ export function pointerMove(raw: Vec2, wpp: number, mods: Mods) {
   }
   if (tool === 'offset') {
     if (!s.offset) {
-      set({ hover: hitTest(s.model, raw, tolPx * wpp, curvesOnly), cursor: null })
+      set({ hover: hitTest(s.model, raw, tolPx() * wpp, curvesOnly), cursor: null })
     } else {
       const { side, distance } = sideOf(s.model, s.offset.chain, raw)
       const typedV = valuesOf(s.typed).dist
@@ -536,7 +542,7 @@ export function doubleClick(raw: Vec2, wpp: number) {
   if (extra?.dbl) { extra.dbl(raw, wpp); return }
   if (s.tool === 'line' && s.draft) { resetTransient(); invalidate(); return }
   if (s.tool === 'select') {
-    const h = hitTest(s.model, raw, tolPx * wpp)
+    const h = hitTest(s.model, raw, tolPx() * wpp)
     const c = s.model.constraints.find((k) => k.id === h)
     if (c) editDim(c.id)
   }
@@ -553,7 +559,7 @@ export function rightClick() {
 
 function downSelect(raw: Vec2, mods: Mods, px: Vec2) {
   const s = get()
-  const h = hitTest(s.model, raw, tolPx * wppNow)
+  const h = hitTest(s.model, raw, tolPx() * wppNow)
   if (!h) { boxStart = raw; set({ box: [raw, raw] }); return }
   if (mods.shift) select([h], true)
   else if (!s.sel.includes(h)) select([h])
@@ -637,7 +643,7 @@ function refreshed(m: SketchModel): SketchModel {
 function downConstraint(raw: Vec2, mods: Mods) {
   const s = get()
   if (!s.ckind) return
-  const h = hitTest(s.model, raw, tolPx * wppNow)
+  const h = hitTest(s.model, raw, tolPx() * wppNow)
   if (!h) return
   const picks = [...s.picks, h]
   if (ready(s.model, s.ckind, picks) || (s.ckind === 'fix')) {
@@ -718,7 +724,7 @@ function previewDim(s: SketchState, raw: Vec2, mods: Mods): Constraint | null {
 
 function downDimension(raw: Vec2, mods: Mods) {
   const s = get()
-  const h = hitTest(s.model, raw, tolPx * wppNow)
+  const h = hitTest(s.model, raw, tolPx() * wppNow)
   const t = (id: string) => (id === ORIGIN ? 'point' : entityById(s.model, id)?.type)
   if (!s.picks.length) {
     if (h && t(h) !== undefined) set({ picks: [h] })
@@ -753,7 +759,7 @@ function place(at: Vec2, mods: Mods) {
 
 function downTrim(raw: Vec2) {
   const s = get()
-  const h = hitTest(s.model, raw, tolPx * wppNow, curvesOnly)
+  const h = hitTest(s.model, raw, tolPx() * wppNow, curvesOnly)
   if (!h) return
   const ok = commit((m) => {
     const target = prepareTrim(m, h, raw)
@@ -777,7 +783,7 @@ const fieldsTyped = (tool: string, stage: number): Typed => ({ fields: fieldsFor
 function downOffset(raw: Vec2) {
   const s = get()
   if (!s.offset) {
-    const h = hitTest(s.model, raw, tolPx * wppNow, curvesOnly)
+    const h = hitTest(s.model, raw, tolPx() * wppNow, curvesOnly)
     if (h) startOffset(h)
     return
   }
@@ -972,6 +978,7 @@ function downDraw(raw: Vec2, mods: Mods) {
         endId = p2
       })
       if (!ok || !endId) return
+      draftStack.push(d)
       const chainStart = d.chainStart ?? startId
       const model = get().model
       const e = entityById(model, endId)
@@ -1060,6 +1067,62 @@ function downDraw(raw: Vec2, mods: Mods) {
       return
     }
   }
+}
+
+// -------- the touch layout's stand-ins for Escape, Enter and the keyboard
+
+/**
+ * Undo point: the last point of what is being drawn (a polyline steps back one segment, an arc one point), else the draft itself,
+ * else the last thing drawn. Same job as Escape / Ctrl+Z, for screens without a keyboard.
+ */
+export function undoPoint() {
+  const s = get()
+  if (!s.active || s.dimEdit) return
+  if (extraTools[s.tool]?.cancel?.()) { invalidate(); return }
+  const d = s.draft
+  if (s.tool === 'line' && d && draftStack.length) {
+    const rest = draftStack.slice(0, -1)
+    const prev = draftStack[draftStack.length - 1]
+    undoSketch()
+    draftStack.push(...rest)
+    set({ draft: prev })
+    invalidate()
+    return
+  }
+  if (s.tool === 'arc' && d && d.pts.length > 1) {
+    set({ draft: { ...d, pts: d.pts.slice(0, -1), snaps: d.snaps.slice(0, -1), pend: undefined }, typed: null })
+    invalidate()
+    return
+  }
+  if (d || s.picks.length || s.placing || s.offset) { resetTransient(); invalidate(); return }
+  undoSketch()
+}
+
+/** The value box being typed into while a draft or offset is open (null when there is none). */
+export function typedInfo(): { label: string; unit: 'mm' | 'deg'; text: string; index: number; count: number } | null {
+  const t = typedFor()
+  if (!t || !t.fields.length) return null
+  const f = t.fields[t.active]
+  return { label: f.label, unit: f.unit, text: f.text, index: t.active, count: t.fields.length }
+}
+/** Put text into the active value box (the on-screen number field). */
+export function setTypedText(text: string) {
+  const t = typedFor()
+  if (!t) return
+  set({ typed: { ...t, fields: t.fields.map((x, i) => (i === t.active ? { ...x, text } : x)) } })
+  if (get().tool === 'offset') refreshOffsetDistance()
+  invalidate()
+}
+/** Tab: the next value box. */
+export function nextTypedField() {
+  const t = typedFor()
+  if (!t || t.fields.length < 2) return
+  set({ typed: { ...t, active: (t.active + 1) % t.fields.length } })
+  invalidate()
+}
+/** Enter on a value box: place the point (or finish the offset). */
+export function acceptTyped() {
+  typedKey({ key: 'Enter', shiftKey: false, ctrlKey: false, metaKey: false, altKey: false })
 }
 
 /** Update the cached world-per-pixel from the overlay (for status / hit tolerance outside pointer events). */

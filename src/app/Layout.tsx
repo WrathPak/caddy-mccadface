@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IDockviewPanelProps } from 'dockview-react'
 import 'dockview-react/dist/styles/dockview.css'
 import { SquaresFour } from '@phosphor-icons/react'
@@ -78,14 +78,17 @@ export function resetLayout() {
 
 registerCommand({ id: 'view.resetLayout', label: 'Reset Layout', icon: SquaresFour, category: 'View', run: resetLayout })
 
+let saveTimer: ReturnType<typeof setTimeout> | undefined
+
 function onReady(e: DockviewReadyEvent) {
   dock = e.api
   setPanelDock(e.api)
   if (!restore(e.api)) buildDefault(e.api)
-  let t: ReturnType<typeof setTimeout> | undefined
   e.api.onDidLayoutChange(() => {
-    clearTimeout(t)
-    t = setTimeout(() => {
+    clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      // (the dock may have been taken down by then: the phone layout replaces it)
+      if (dock !== e.api) return
       try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(e.api.toJSON())) } catch { /* storage unavailable */ }
     }, 300)
   })
@@ -93,5 +96,7 @@ function onReady(e: DockviewReadyEvent) {
 
 export function Layout() {
   const components = useMemo(() => ({ ...baseComponents, ...panelComponents() }), [])
+  // switching to the phone layout takes the dock down: forget it, and the layout it saved last stays for the way back
+  useEffect(() => () => { clearTimeout(saveTimer); dock = null; setPanelDock(null) }, [])
   return <DockviewReact className="dockview-theme-caddy" components={components} onReady={onReady} />
 }

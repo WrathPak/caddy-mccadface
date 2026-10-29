@@ -5,6 +5,7 @@
  * on, the hair therefore lives on its own camera layer, stays out of the composer's depth / normal / AO passes and is drawn
  * afterwards by `HairOverlayPass`, depth-tested against a depth-only copy of the bodies.
  */
+import { markGrab } from '@/viewport/touchGrab'
 import { useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { BufferAttribute, BufferGeometry, DoubleSide, MeshBasicMaterial, Plane, Raycaster, Vector2, Vector3, type Light, type Object3D } from 'three'
@@ -144,6 +145,7 @@ export function HairDirectionOverlay() {
 
   const drag = (e: { stopPropagation(): void }) => {
     e.stopPropagation()
+    markGrab()
     if (!glyphs || !fixed) return
     const rc = new Raycaster()
     const centre = new Vector3(...glyphs.centre)

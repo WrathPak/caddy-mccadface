@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { evalNumber } from '@/doc/params'
 import { useUi } from '@/store/ui'
 import { Tip } from './Tooltip'
+import { KbdToggle, useKbd } from './kbd'
 
 export interface NumberFieldProps {
   label?: string
@@ -46,6 +47,7 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
   const [bad, setBad] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const escaped = useRef(false)
+  const kb = useKbd(expr || /[a-zA-Z_]/.test(text) ? 'text' : 'decimal')
 
   useEffect(() => {
     if (!editing) setText(expr ?? shown(value))
@@ -121,7 +123,10 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
           setEditing(true)
           e.currentTarget.select()
         }}
+        inputMode={kb.inputMode}
+        enterKeyHint="done"
         onBlur={() => {
+          if (kb.swapping.current) return
           if (editing && !escaped.current) commit()
           escaped.current = false
           setEditing(false)
@@ -130,6 +135,7 @@ export function NumberField({ label, value, onChange, expr, unit, min, max, step
         onKeyDown={onKey}
       />
       {unit && <span className="unit">{inch ? 'in' : unit}</span>}
+      {kb.coarse && editing && <KbdToggle mode={kb.mode} onToggle={() => kb.toggle(inputRef)} />}
     </div>
   )
   if (!label) return input

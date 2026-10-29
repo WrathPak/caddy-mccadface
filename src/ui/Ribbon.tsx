@@ -1,7 +1,7 @@
 import * as D from '@radix-ui/react-dropdown-menu'
 import { CaretDown, Moon, SidebarSimple, Sun } from '@phosphor-icons/react'
 import { useMemo } from 'react'
-import { RIBBON_TABS, type RibbonItem } from '@/app/ribbon'
+import { RIBBON_TABS, type RibbonGroup, type RibbonItem } from '@/app/ribbon'
 import { useRibbonExtras, withExtras } from '@/app/ribbonExtras'
 import { getCommand, runCommand } from '@/app/commands'
 import { useUi } from '@/store/ui'
@@ -10,7 +10,7 @@ import { useSettings } from '@/settings/settings'
 import { HelpMenu } from '@/help/HelpMenu'
 import { CmdTip, Tip } from './Tooltip'
 
-function Btn({ id, small }: { id: string; small?: boolean }) {
+export function Btn({ id, small }: { id: string; small?: boolean }) {
   const c = getCommand(id)
   const active = useUi((s) => s.activeTool === id)
   if (!c) return null
@@ -65,9 +65,9 @@ function Large({ item }: { item: RibbonItem }) {
 }
 
 /** The dockable panels (History, Projects, Plugins, Script): one compact menu at the right of the tab strip. */
-const PANEL_ITEMS = ['view.projects', 'view.history', 'view.plugins', 'view.script']
+export const PANEL_ITEMS = ['view.projects', 'view.history', 'view.plugins', 'view.script']
 
-function PanelsMenu() {
+export function PanelsMenu() {
   return (
     <D.Root>
       <Tip label="Panels" desc="Open History, Projects, Plugins or the Script editor as panels beside the Browser." side="bottom">
@@ -93,9 +93,9 @@ function PanelsMenu() {
   )
 }
 
-const FILE_ITEMS = ['file.new', 'file.open', 'file.save', 'file.saveNote', 'file.saveAs', '-', 'file.import', 'file.export']
+export const FILE_ITEMS = ['file.new', 'file.open', 'file.save', 'file.saveNote', 'file.saveAs', '-', 'file.import', 'file.export']
 
-function FileMenu() {
+export function FileMenu() {
   return (
     <D.Root>
       <Tip label="File" desc="New, open, save, import and export. Your files stay on your computer." side="bottom">
@@ -121,16 +121,47 @@ function FileMenu() {
   )
 }
 
-export function Ribbon() {
+/** The groups of tool buttons of one tab (also the phone layout's scrolling tool strip). */
+export function RibbonGroups({ groups }: { groups: RibbonGroup[] }) {
+  return (
+    <div className="ribbon-body">
+      {groups.map((g) => (
+        <div className="rgroup" key={g.label}>
+          <div className="rgroup-tools">
+            {g.items.map((it, i) =>
+              it.stack ? (
+                <div className="rstack" key={i}>
+                  {it.stack.map((id) => <Btn key={id} id={id} small />)}
+                </div>
+              ) : (
+                <Large key={i} item={it} />
+              ),
+            )}
+          </div>
+          <div className="rgroup-label">{g.label}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** The tab (workspace) the ribbon shows right now, and the groups it lists. */
+export function useRibbonTab() {
   const workspace = useUi((s) => s.workspace)
   const sketchMode = useUi((s) => s.sketchMode)
-  const theme = useUi((s) => s.theme)
-  const toggleTheme = useSettings((s) => s.toggleTheme)
-  const setWorkspace = useUi((s) => s.setWorkspace)
   const selected = sketchMode ? 'sketch' : workspace
   const tab = RIBBON_TABS.find((t) => t.id === selected)!
   const extras = useRibbonExtras((s) => s.items)
   const groups = useMemo(() => withExtras(tab, extras), [tab, extras])
+  return { selected, tab, groups }
+}
+
+export function Ribbon() {
+  const sketchMode = useUi((s) => s.sketchMode)
+  const theme = useUi((s) => s.theme)
+  const toggleTheme = useSettings((s) => s.toggleTheme)
+  const setWorkspace = useUi((s) => s.setWorkspace)
+  const { selected, groups } = useRibbonTab()
 
   return (
     <div className="ribbon">
@@ -161,24 +192,7 @@ export function Ribbon() {
           <HelpMenu />
         </div>
       </div>
-      <div className="ribbon-body">
-        {groups.map((g) => (
-          <div className="rgroup" key={g.label}>
-            <div className="rgroup-tools">
-              {g.items.map((it, i) =>
-                it.stack ? (
-                  <div className="rstack" key={i}>
-                    {it.stack.map((id) => <Btn key={id} id={id} small />)}
-                  </div>
-                ) : (
-                  <Large key={i} item={it} />
-                ),
-              )}
-            </div>
-            <div className="rgroup-label">{g.label}</div>
-          </div>
-        ))}
-      </div>
+      <RibbonGroups groups={groups} />
     </div>
   )
 }

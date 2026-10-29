@@ -8,6 +8,7 @@
 import { create } from 'zustand'
 import { useUi, type DisplayMode, type Theme, type Workspace } from '@/store/ui'
 import { setGridDensity, type GridDensity } from '@/viewport/gridMath'
+import { isCoarse } from '@/app/device'
 
 const KEY = 'caddy.settings'
 
@@ -24,6 +25,15 @@ export const WORKSPACES: { id: string; label: string }[] = [
   { id: 'render', label: 'Render' },
 ]
 export const AUTOSAVE_CHOICES = [15, 30, 60, 120, 300]
+/** How sharp the viewport is drawn: the cap on the device pixel ratio. Auto keeps phones and tablets at 1.5 so they stay smooth. */
+export type PixelRatio = 'auto' | '1' | '1.5' | '2' | 'native'
+export const PIXEL_RATIOS: { value: PixelRatio; label: string }[] = [
+  { value: 'auto', label: 'Auto' }, { value: '1', label: '1x (fastest)' }, { value: '1.5', label: '1.5x' }, { value: '2', label: '2x' }, { value: 'native', label: 'Full (sharpest)' },
+]
+/** Ambient occlusion costs three extra passes: it starts off on touch screens, where the GPU is the weak part. */
+const defaultSsao = () => !isCoarse()
+/** The pixel-ratio range the canvas may use. */
+export const dprRange = (p: PixelRatio, coarse: boolean): [number, number] => (p === 'auto' ? [1, coarse ? 1.5 : 2] : p === 'native' ? [1, 4] : [1, Number(p)])
 
 interface Persisted {
   units: 'mm' | 'in'
@@ -33,6 +43,7 @@ interface Persisted {
   ssao: boolean
   displayMode: DisplayMode
   gridDensity: GridDensity
+  pixelRatio: PixelRatio
   autosave: boolean
   autosaveSeconds: number
   tooltips: boolean
@@ -48,6 +59,7 @@ const DEFAULTS: Persisted = {
   ssao: true,
   displayMode: 'shadedEdges',
   gridDensity: 'normal',
+  pixelRatio: 'auto',
   autosave: true,
   autosaveSeconds: 30,
   tooltips: true,
@@ -60,16 +72,17 @@ const oneOf = <T extends string>(v: unknown, list: readonly T[], d: T): T => (li
 function load(): Persisted {
   try {
     const raw = localStorage.getItem(KEY)
-    if (!raw) return { ...DEFAULTS }
+    if (!raw) return { ...DEFAULTS, ssao: defaultSsao() }
     const v = JSON.parse(raw) as Partial<Persisted>
     return {
       units: oneOf(v.units, ['mm', 'in'], DEFAULTS.units),
       defaultWorkspace: oneOf(v.defaultWorkspace, WORKSPACES.map((w) => w.id), DEFAULTS.defaultWorkspace),
       themeMode: oneOf(v.themeMode, ['dark', 'light', 'system'], DEFAULTS.themeMode),
       showGrid: v.showGrid !== false,
-      ssao: v.ssao !== false,
+      ssao: typeof v.ssao === 'boolean' ? v.ssao : defaultSsao(),
       displayMode: oneOf(v.displayMode, ['shaded', 'shadedEdges', 'wireframe', 'xray'], DEFAULTS.displayMode),
       gridDensity: oneOf(v.gridDensity, ['fine', 'normal', 'coarse'], DEFAULTS.gridDensity),
+      pixelRatio: oneOf(v.pixelRatio, ['auto', '1', '1.5', '2', 'native'], DEFAULTS.pixelRatio),
       autosave: v.autosave !== false,
       autosaveSeconds: AUTOSAVE_CHOICES.includes(v.autosaveSeconds as number) ? (v.autosaveSeconds as number) : DEFAULTS.autosaveSeconds,
       tooltips: v.tooltips !== false,
@@ -77,7 +90,7 @@ function load(): Persisted {
       tourSeen: v.tourSeen === true,
     }
   } catch {
-    return { ...DEFAULTS }
+    return { ...DEFAULTS, ssao: defaultSsao() }
   }
 }
 
@@ -85,11 +98,13 @@ interface SettingsState {
   defaultWorkspace: string
   themeMode: ThemeMode
   gridDensity: GridDensity
+  pixelRatio: PixelRatio
   autosave: boolean
   autosaveSeconds: number
   tooltips: boolean
   beginnerTips: boolean
   tourSeen: boolean
+  setPixelRatio: (p: PixelRatio) => void
   setDefaultWorkspace: (w: string) => void
   setThemeMode: (m: ThemeMode) => void
   /** Flip between dark and light (the ribbon button, the palette command). */
@@ -115,11 +130,13 @@ export const useSettings = create<SettingsState>((set, get) => {
     defaultWorkspace: init.defaultWorkspace,
     themeMode: init.themeMode,
     gridDensity: init.gridDensity,
+    pixelRatio: init.pixelRatio,
     autosave: init.autosave,
     autosaveSeconds: init.autosaveSeconds,
     tooltips: init.tooltips,
     beginnerTips: init.beginnerTips,
     tourSeen: init.tourSeen,
+    setPixelRatio: (pixelRatio) => set({ pixelRatio }),
     setDefaultWorkspace: (defaultWorkspace) => set({ defaultWorkspace }),
     setThemeMode: (themeMode) => {
       set({ themeMode })
@@ -142,8 +159,8 @@ export const useSettings = create<SettingsState>((set, get) => {
       const s = get()
       s.setThemeMode(d.themeMode)
       s.setGridDensity(d.gridDensity)
-      set({ defaultWorkspace: d.defaultWorkspace, autosave: d.autosave, autosaveSeconds: d.autosaveSeconds, tooltips: d.tooltips, beginnerTips: d.beginnerTips })
-      useUi.setState({ units: d.units, showGrid: d.showGrid, ssao: d.ssao, displayMode: d.displayMode })
+      set({ pixelRatio: d.pixelRatio, defaultWorkspace: d.defaultWorkspace, autosave: d.autosave, autosaveSeconds: d.autosaveSeconds, tooltips: d.tooltips, beginnerTips: d.beginnerTips })
+      useUi.setState({ units: d.units, showGrid: d.showGrid, ssao: defaultSsao(), displayMode: d.displayMode })
     },
   }
 })
@@ -159,6 +176,7 @@ function save() {
     ssao: u.ssao,
     displayMode: u.displayMode,
     gridDensity: s.gridDensity,
+    pixelRatio: s.pixelRatio,
     autosave: s.autosave,
     autosaveSeconds: s.autosaveSeconds,
     tooltips: s.tooltips,
