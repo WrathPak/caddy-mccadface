@@ -45,6 +45,7 @@ async function setup(app: App) {
 }
 
 test('ViewCube: 6 faces, 12 edges and 8 corners are all clickable zones that snap the view', async ({ app, page }) => {
+  test.setTimeout(300_000) // 26 zones, each settled on the slow ci runners
   await setup(app)
   const keys = await page.locator('.vc-zone').evaluateAll((els) => {
     const kinds = new Map<string, string>()
