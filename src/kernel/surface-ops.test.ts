@@ -354,6 +354,52 @@ describe('surface extend', () => {
     near(band, 2 * Math.PI * r * r * (Math.cos(a) - Math.cos(a + 3 / r)), 5e-3)
     expect(areaOf(tan)).toBeGreaterThan(capArea)
   })
+  const freeOf = (b: Body) => openEdges(getBrep(b.key) as unknown as AnyShape).length
+  it('two adjacent edges extended together get their corner filled', async () => {
+    const p = await flat('p', 10, 10)
+    // the x = 10 edge and the y = 10 edge meet at (10, 10)
+    const e = edgeIdx(p, (s, t) => (Math.abs(s[0] - 10) < 1e-6 && Math.abs(t[0] - 10) < 1e-6) || (Math.abs(s[1] - 10) < 1e-6 && Math.abs(t[1] - 10) < 1e-6))
+    expect(e.length).toBe(2)
+    for (const mode of ['tangent', 'natural'] as const) {
+      const x = await run('surfaceExtend', { id: 'x', name: 'x', key: p.key, edges: e, distance: 4, mode })
+      // 100 + two 10 x 4 strips + the 4 x 4 corner square
+      near(areaOf(x), 196, 1e-3)
+      expect(faceCount(x)).toBe(4)
+      const bb = bbox(x.mesh.positions)
+      expect(bb.max[0]).toBeCloseTo(14, 3)
+      expect(bb.max[1]).toBeCloseTo(14, 3)
+      // one connected shell: its only open edges are the outer rim, nothing is left open at the corner
+      expect(x.freeEdges).toBe(freeOf(x))
+      const rim = openEdges(getBrep(x.key) as unknown as AnyShape)
+      const corner = rim.filter((r) => [r.startPoint, r.endPoint].some((q) => Math.abs(q.x - 14) < 1e-6 && Math.abs(q.y - 14) < 1e-6))
+      expect(corner.length).toBe(2)
+      // two far edges, two corner rims, the two strip ends and the two untouched square edges
+      expect(rim.length).toBe(8)
+    }
+  })
+  it('extending every edge of a square closes all four corners', async () => {
+    const p = await flat('p', 10, 10)
+    const e = edgeIdx(p, () => true)
+    const x = await run('surfaceExtend', { id: 'x', name: 'x', key: p.key, edges: e, distance: 2, mode: 'tangent' })
+    near(areaOf(x), 14 * 14, 1e-3)
+    expect(faceCount(x)).toBe(9)
+    // the rim is one closed loop: four far edges and two rim edges at each corner
+    expect(freeOf(x)).toBe(12)
+    expect(isSolidBody(x)).toBe(false)
+  })
+  it('a corner on a sphere cap stays on the sphere when extended naturally', async () => {
+    // a quarter-ish patch of a sphere: a lat-long window made by revolving an arc 90 degrees, with two straight meridian edges and two arcs
+    const r = 10, a1 = Math.PI / 6, a2 = Math.PI / 3
+    const arc: PathSeg = { k: 'a', a: [r * Math.sin(a1), 0, r * Math.cos(a1)], m: [r * Math.sin((a1 + a2) / 2), 0, r * Math.cos((a1 + a2) / 2)], b: [r * Math.sin(a2), 0, r * Math.cos(a2)], id: 'arc' }
+    const win = await run('surfaceRevolve', { id: 'c', name: 'c', curves: [chain([arc])], axisOrigin: [0, 0, 0], axisDir: [0, 0, 1], angle: 90 })
+    const all = edgeIdx(win, () => true)
+    const nat = await run('surfaceExtend', { id: 'n', name: 'n', key: win.key, edges: all, distance: 1, mode: 'natural' })
+    // every vertex of the result sits on the sphere (or on the cone-free natural continuation of it)
+    const m = nat.mesh.positions
+    for (let i = 0; i < m.length; i += 3) expect(Math.abs(Math.hypot(m[i], m[i + 1], m[i + 2]) - r)).toBeLessThan(0.05)
+    expect(faceCount(nat)).toBe(9)
+    expect(freeOf(nat)).toBe(12)
+  })
   it('only open edges extend', async () => {
     const b = mkBox('b', [10, 10, 10])
     const p = await run('surfaceDeleteFace', { id: 'd', name: 'd', key: b.key, faces: faceIdx(b, (_c, n) => n[2] > 0.9) })
@@ -480,6 +526,65 @@ describe('surface thicken', () => {
     // a tube 1 mm thick: pi (R^2 - r^2) h with R and r being 6 and 5, or 5 and 4
     const v = volOf(t)
     expect(Math.min(Math.abs(v - Math.PI * 11 * 10), Math.abs(v - Math.PI * 9 * 10))).toBeLessThan(0.01 * v)
+  })
+  describe('closed shells', () => {
+    const closedBox = async (size = 10) => {
+      const b = mkBox('b', [size, size, size])
+      const parts = await run<Body[]>('surfaceUnstitch', { id: 'u', name: 'u', key: b.key })
+      const s = await run('surfaceStitch', { id: 's', name: 's', keys: parts.map((p) => p.key), tolerance: 1e-3, solid: false })
+      expect(s.surface).toBe(true)
+      expect(s.freeEdges).toBe(0)
+      return s
+    }
+    const sound = (b: Body) => {
+      const shape = getBrep(b.key) as unknown as AnyShape
+      expect(b.surface).toBeUndefined()
+      expect(isSolidBody(b)).toBe(true)
+      expect(openEdges(shape).length).toBe(0)
+      expect(shape.solids.length).toBe(1)
+      expect(topoOf(shape).faces.length).toBe(12)
+    }
+    it('thickens a closed box surface outward into a hollow solid', async () => {
+      const s = await closedBox()
+      const t = await run('surfaceThicken', { id: 't', name: 't', key: s.key, distance: 2, sym: false })
+      sound(t)
+      // 14^3 outer, 10^3 cavity
+      near(volOf(t), 14 ** 3 - 1000, 5e-3)
+      const bb = bbox(t.mesh.positions)
+      expect(bb.max[0]).toBeCloseTo(7, 2)
+      expect(bb.min[2]).toBeCloseTo(-2, 2)
+      expect(bb.max[2]).toBeCloseTo(12, 2)
+    })
+    it('inward and symmetric', async () => {
+      const s = await closedBox()
+      const inward = await run('surfaceThicken', { id: 'i', name: 'i', key: s.key, distance: -2, sym: false })
+      sound(inward)
+      near(volOf(inward), 1000 - 6 ** 3, 5e-3)
+      expect(bbox(inward.mesh.positions).max[0]).toBeCloseTo(5, 2)
+      expect(bbox(inward.mesh.positions).min[2]).toBeCloseTo(0, 2)
+      const sym = await run('surfaceThicken', { id: 'y', name: 'y', key: s.key, distance: 2, sym: true })
+      sound(sym)
+      near(volOf(sym), 12 ** 3 - 8 ** 3, 5e-3)
+      expect(bbox(sym.mesh.positions).max[0]).toBeCloseTo(6, 2)
+    })
+    it('thickens a sphere surface into a hollow ball', async () => {
+      const r = 10
+      const arc: PathSeg = { k: 'a', a: [0, 0, r], m: [r * Math.SQRT1_2, 0, r * Math.SQRT1_2], b: [r, 0, 0], id: 'arc' }
+      const half: PathSeg = { k: 'a', a: [r, 0, 0], m: [r * Math.SQRT1_2, 0, -r * Math.SQRT1_2], b: [0, 0, -r], id: 'arc2' }
+      const ball = await run('surfaceRevolve', { id: 'w', name: 'w', curves: [chain([arc, half])], axisOrigin: [0, 0, 0], axisDir: [0, 0, 1], angle: 360 })
+      expect(ball.freeEdges).toBe(0)
+      const t = await run('surfaceThicken', { id: 't', name: 't', key: ball.key, distance: 1, sym: false })
+      expect(t.surface).toBeUndefined()
+      expect(openEdges(getBrep(t.key) as unknown as AnyShape).length).toBe(0)
+      const v = volOf(t)
+      // a shell 1 mm thick, either outside (R 11) or inside (r 9) the sphere
+      const shell = (R: number, q: number) => (4 / 3) * Math.PI * (R ** 3 - q ** 3)
+      expect(Math.min(Math.abs(v - shell(11, 10)), Math.abs(v - shell(10, 9)))).toBeLessThan(0.01 * v)
+    })
+    it('a thickness the shape cannot take is refused with a clear message', async () => {
+      const s = await closedBox()
+      await expect(run('surfaceThicken', { id: 't', name: 't', key: s.key, distance: -6, sym: false })).rejects.toThrow(/closed surface.*not possible/)
+    })
   })
   it('refuses a solid and a zero thickness', async () => {
     const b = mkBox('b', [10, 10, 10])
