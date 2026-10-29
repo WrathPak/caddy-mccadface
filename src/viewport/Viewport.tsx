@@ -28,7 +28,9 @@ const MODES: { id: DisplayMode; label: string; icon: typeof Cube; desc: string }
 
 export function Viewport() {
   const ref = useRef<HTMLDivElement>(null)
-  const { displayMode, setDisplayMode, projection, ssao, showGrid, showOrigin } = useUi()
+  const displayMode = useUi((s) => s.displayMode), setDisplayMode = useUi((s) => s.setDisplayMode)
+  const projection = useUi((s) => s.projection), ssao = useUi((s) => s.ssao)
+  const showGrid = useUi((s) => s.showGrid), showOrigin = useUi((s) => s.showOrigin)
   const clear = useUi((s) => s.clearSelection)
   const pixelRatio = useSettings((s) => s.pixelRatio)
   const coarse = useDevice((s) => s.coarse)

@@ -10,7 +10,10 @@ import { useDevice } from '@/app/device'
 const FILTERS: SelectionFilter[] = ['body', 'face', 'edge']
 
 export function StatusBar() {
-  const { units, setUnits, snap, toggleSnap, selectionFilter, setSelectionFilter, triangles, kernelBusy, selection } = useUi()
+  const units = useUi((s) => s.units), setUnits = useUi((s) => s.setUnits)
+  const snap = useUi((s) => s.snap), toggleSnap = useUi((s) => s.toggleSnap)
+  const selectionFilter = useUi((s) => s.selectionFilter), setSelectionFilter = useUi((s) => s.setSelectionFilter)
+  const selected = useUi((s) => s.selection.length)
   const hair = useHairView()
   const hasComponents = useDoc((s) => s.assembly.occurrences.length > 0)
   const section = useUi((s) => s.section)
@@ -51,21 +54,35 @@ export function StatusBar() {
           Section: <span className="num" style={{ color: 'var(--accent)' }}>{section.axis} = {+section.offset.toFixed(3)} mm</span> ×
         </button></Tip>
       )}
-      <Tip label="Selection" desc="How many things you have picked. Press Esc to clear the selection." side="top"><span className="cell">{selection.length ? `${selection.length} selected` : compact ? 'None' : 'Nothing selected'}</span></Tip>
+      <Tip label="Selection" desc="How many things you have picked. Press Esc to clear the selection." side="top"><span className="cell">{selected ? `${selected} selected` : compact ? 'None' : 'Nothing selected'}</span></Tip>
       {(hs || hair.error || hair.busy) && (
         <span className="cell" title={hair.error ?? undefined} style={hair.error ? { color: 'var(--danger, #d9625a)' } : undefined}>
           {hair.error ? `Hair: ${hair.error}` : hs ? `Hair: ${hs.strands.toLocaleString()} strands${hs.dropped ? ` (${hs.dropped} skipped)` : ''}${hs.edgeRejected ? ` (${hs.edgeRejected} kept off edges)` : ''}${hs.bent ? ` (${hs.bent} bent)` : ''}${hs.collided ? ` (${hs.collided} removed: collision)` : ''}${hs.capped ? ' (capped)' : ''} | ${Math.round(hs.triangles / 1000).toLocaleString()}k tris | ${hs.ms} ms${hair.busy ? ' ...' : ''}` : 'Hair: generating ...'}
         </span>
       )}
       <span className="grow" />
-      <Tip label="Triangles" desc="How many small triangles are drawn to show your model. Very high numbers can make the view slower." side="top"><span className="cell hide-compact">Tris: <span className="num">{triangles.toLocaleString()}</span></span></Tip>
-      <Tip label={kernelBusy ? 'Kernel busy' : 'Kernel idle'} desc="The kernel is the part that does the geometry math. It shows Busy while it is rebuilding your model; edits wait until it is done." side="top">
-        <span className="cell">
-          <span className={'dot ' + (kernelBusy ? 'busy' : 'idle')} />
-          {compact ? (kernelBusy ? 'Busy' : null) : <>Kernel: {kernelBusy ? 'Busy' : 'Idle'}</>}
-        </span>
-      </Tip>
+      <TrisCell />
+      <KernelCell />
       <SettingsButton />
     </div>
+  )
+}
+
+// own components so a count that changes on every import does not re-render the whole bar and its tooltips
+function TrisCell() {
+  const triangles = useUi((s) => s.triangles)
+  return <Tip label="Triangles" desc="How many small triangles are drawn to show your model. Very high numbers can make the view slower." side="top"><span className="cell hide-compact">Tris: <span className="num">{triangles.toLocaleString()}</span></span></Tip>
+}
+
+function KernelCell() {
+  const kernelBusy = useUi((s) => s.kernelBusy)
+  const compact = useDevice((s) => s.compact)
+  return (
+    <Tip label={kernelBusy ? 'Kernel busy' : 'Kernel idle'} desc="The kernel is the part that does the geometry math. It shows Busy while it is rebuilding your model; edits wait until it is done." side="top">
+      <span className="cell">
+        <span className={'dot ' + (kernelBusy ? 'busy' : 'idle')} />
+        {compact ? (kernelBusy ? 'Busy' : null) : <>Kernel: {kernelBusy ? 'Busy' : 'Idle'}</>}
+      </span>
+    </Tip>
   )
 }
