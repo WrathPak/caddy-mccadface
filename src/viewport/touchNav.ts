@@ -155,11 +155,11 @@ export function installTouchNav(ctx: TouchCtx): () => void {
 
   const down = (e: PointerEvent) => {
     if (e.pointerType !== 'touch') return
-    ptrs.set(e.pointerId, { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() })
+    ptrs.set(e.pointerId, { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: e.timeStamp })
     ctx.cancelMotion()
     if (ptrs.size === 1) {
       mode = 'pending'
-      tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t0: performance.now() }
+      tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t0: e.timeStamp }
     } else {
       tap = null
       endOrbit(false)
@@ -211,7 +211,7 @@ export function installTouchNav(ctx: TouchCtx): () => void {
     const p = ptrs.get(e.pointerId)
     if (!p) return
     p.x = e.clientX; p.y = e.clientY
-    const wasTap = mode === 'pending' && ptrs.size === 1 && !!tap && tap.id === e.pointerId && e.type === 'pointerup' && performance.now() - tap.t0 <= TAP_MS && Math.hypot(p.x - p.x0, p.y - p.y0) <= TAP_SLOP
+    const wasTap = mode === 'pending' && ptrs.size === 1 && !!tap && tap.id === e.pointerId && e.type === 'pointerup' && e.timeStamp - tap.t0 <= TAP_MS && Math.hypot(p.x - p.x0, p.y - p.y0) <= TAP_SLOP
     if (mode === 'orbit') endOrbit(e.type === 'pointerup')
     ptrs.delete(e.pointerId)
     if (ptrs.size === 0) { mode = 'none'; multi = null; tap = null } else if (mode === 'multi') {
@@ -221,7 +221,8 @@ export function installTouchNav(ctx: TouchCtx): () => void {
     }
     useUi.getState().setHover(null)
     if (!wasTap || fingerOwned()) return
-    const now = performance.now()
+    // input times, not handler times: a busy frame must not turn a quick double tap into two single taps
+    const now = e.timeStamp
     // double tap: fit everything
     if (lastTap && now - lastTap.t < 320 && Math.hypot(p.x0 - lastTap.x, p.y0 - lastTap.y) < 32) {
       lastTap = null
@@ -234,7 +235,7 @@ export function installTouchNav(ctx: TouchCtx): () => void {
   }
 
   const click = (e: MouseEvent) => {
-    if (!e.isTrusted || !clickFix || performance.now() > clickFix.until) return
+    if (!e.isTrusted || !clickFix || e.timeStamp > clickFix.until) return
     e.stopImmediatePropagation()
     e.preventDefault()
     fireClick()
