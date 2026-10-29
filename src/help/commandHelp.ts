@@ -124,7 +124,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
   'surface.patch': h('Fill a closed outline of curves or surface edges with a surface. It can follow the neighbouring faces so the join stays smooth.', 'A closed loop of sketch curves or surface edges'),
   'surface.offset': h('Copy surfaces or faces to a new surface at a distance.', 'Surfaces or faces'),
   'surface.trim': h('Cut a surface with a plane, another surface, a face or a solid, and keep the side you want.', 'The surface to trim, then the cutting plane, face, surface or solid'),
-  'surface.extend': h('Stretch the open edges of a surface outward, following its curve or going straight along its tangent. Edges that meet at a corner get the corner filled in, so the result stays one sheet.', 'The open edges to extend'),
+  'surface.extend': h('Stretch the open edges of a surface outward, following its curve or going straight along its tangent. Edges that meet at a corner get the corner filled in (or mitred, at an inside corner), so the result stays one sheet.', 'The open edges to extend'),
   'surface.stitch': h('Sew surfaces together along the edges they share. When the result is fully closed it becomes a solid.', 'Two or more surfaces that touch along edges'),
   'surface.unstitch': h('Split a body into one surface per face, or pull chosen faces off as separate surfaces.', 'A body, or the faces to pull off'),
   'surface.thicken': h('Give a surface a thickness on one side or both, which turns it into a solid. A closed surface becomes a hollow solid with an outer and an inner wall.', 'The surface to thicken'),

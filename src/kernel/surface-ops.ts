@@ -592,7 +592,6 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
     if (j >= 0 && !(owners.get(j) ?? []).includes(fi)) owners.set(j, [...(owners.get(j) ?? []), fi])
   }))
   const o = oc()
-  const strips: NShape[] = []
   /** what a corner needs to know about each strip: the edge's two ends, where they end up, and the way out */
   const info: StripInfo[] = []
   for (const ei of a.edges) {
@@ -615,8 +614,10 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
     }
     // which way is out? the side of the edge that is not on the face
     const eps = Math.max(1e-3, Math.min(a.distance, edge.length) * 0.05)
-    const mid = count >> 1
-    const away = (s: number) => measureDistanceBetween(face as never, makeVertex(add3(pts[mid], mul3(dirs[mid], s * eps))) as never)
+    // (tested at the middle of the edge: its ends can touch other faces of the surface)
+    const pm = v3(edge.pointAt(0.5))
+    const dm = norm3(cross3(v3(face.normalAt(pm)), norm3(v3(edge.tangentAt(0.5)))))
+    const away = (s: number) => measureDistanceBetween(face as never, makeVertex(add3(pm, mul3(dm, s * eps))) as never)
     const sign = away(1) >= away(-1) ? 1 : -1
     const out = dirs.map((d) => mul3(d, sign))
     const sections: Wire[] = [assembleWire([edge.clone() as Edge])]
@@ -662,18 +663,22 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
       sections.forEach((w) => mk.AddWire(w.wrapped))
       mk.Build()
       const shape = nonEmpty(cast(mk.Shape()) as unknown as Sh, 'Could not extend this edge')
-      strips.push({ shape, faces: topoOf(shape as unknown as AnyShape).faces.map(() => [`${a.id}:ext:${names.edges[ei]?.[0] ?? ei}`]) })
       info.push({ shape, face, ends: [pts[0], pts[count - 1]], far: [far[0], far[count - 1]], out: [out[0], out[count - 1]], label: String(names.edges[ei]?.[0] ?? ei) })
     } finally { mk.delete() }
   }
   const tol = 1e-4 * Math.max(1, a.distance)
-  const parts = [src, ...strips.map((s) => ({ shape: s.shape, faces: finalize(any(s), s.faces, a.id, 'x') }))]
-  parts.push(...cornerFills(info, a, tol))
+  const fills = cornerFills(info, a, tol)
+  const strips = info.map((i) => {
+    const faces = topoOf(i.shape as unknown as AnyShape).faces.map(() => [`${a.id}:ext:${i.label}`])
+    return { shape: i.shape, faces: finalize(i.shape as unknown as AnyShape, faces, a.id, 'x') }
+  })
+  const parts = [src, ...strips, ...fills]
   const { out } = sewNamed(parts, tol, a.id)
   return send(h, a, out)
 })
 
 interface StripInfo {
+  /** the strip; a reflex corner replaces it with the mitred strip */
   shape: Sh
   face: Face
   /** the edge's walked start and end, the far corners of the strip at each, and the way out at each */
@@ -690,6 +695,29 @@ function edgeBetween(shape: Sh, p: Vec3, q: Vec3): Edge | null {
     if ((dist3(s, p) < SNAP && dist3(t, q) < SNAP) || (dist3(s, q) < SNAP && dist3(t, p) < SNAP)) return e
   }
   return null
+}
+
+/**
+ * A reflex corner (the surface wraps round it, as at the inside of an L): the two strips overlap there, so each is cut
+ * along the mitre plane through the corner (the bisector of the two ways out, standing on the surface) and they meet on
+ * one shared edge, like a picture frame. The planes' sides are picked from where each strip's other end is.
+ */
+function mitre(A: StripInfo, B: StripInfo, ea: 0 | 1, eb: 0 | 1, P: Vec3, a: SurfaceExtendArgs, o: ReturnType<typeof oc>) {
+  const m = norm3(sub3(A.out[ea], B.out[eb]))
+  const bis = norm3(add3(A.out[ea], B.out[eb]))
+  const n = norm3(cross3(m, bis))
+  const reach = 50 * (a.distance + Math.max(dist3(A.ends[0], A.ends[1]), dist3(B.ends[0], B.ends[1])))
+  const corners = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([x, y]) => add3(P, add3(mul3(bis, x * reach), mul3(n, y * reach))))
+  const cut = (S: StripInfo, dir: Vec3) => {
+    const slab = prismNamed(makePolygon(corners) as unknown as Sh, mul3(dir, reach))
+    const com = new o.BRepAlgoAPI_Common(S.shape.wrapped, any(slab).wrapped)
+    try {
+      com.Build()
+      S.shape = nonEmpty(cast(com.Shape()) as unknown as Sh, 'Could not mitre the corner between the extended edges')
+    } finally { com.delete() }
+  }
+  cut(A, mul3(m, -1))
+  cut(B, m)
 }
 
 /**
@@ -714,7 +742,10 @@ function cornerFills(info: StripInfo[], a: SurfaceExtendArgs, tol: number): NSha
           if (dist3(PA, PB) < reach) continue
           // convex only: A's way out has to point away from B's edge and the other way round, or the strips overlap
           const toA = sub3(A.ends[1 - ea], P), toB = sub3(B.ends[1 - eb], P)
-          if (dot3(A.out[ea], toB) >= 0 || dot3(B.out[eb], toA) >= 0) continue
+          const dA = dot3(A.out[ea], toB), dB = dot3(B.out[eb], toA)
+          const eps = 1e-6 * Math.max(1, a.distance)
+          if (dA > eps && dB > eps) { mitre(A, B, ea, eb, P, a, o); continue }
+          if (dA >= 0 || dB >= 0) continue
           const sideA = edgeBetween(A.shape, P, PA), sideB = edgeBetween(B.shape, P, PB)
           if (!sideA || !sideB) throw new Error('Could not close the corner between the extended edges')
           // the corner point a parallelogram completes, and the rim curves out to it

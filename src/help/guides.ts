@@ -278,7 +278,7 @@ export const GUIDES: Guide[] = [
         title: 'Trim, Extend, Delete Face and Fit to Surface',
         steps: [
           'Trim: pick the surface, then the plane, face, surface or solid to cut it with, and choose which side to keep.',
-          'Extend: pick open edges and set how far to push them. Pick edges that meet at a corner together and the corner is filled in, so you get one connected sheet with no gap.',
+          'Extend: pick open edges and set how far to push them. Pick edges that meet at a corner together and the corner is filled in (an inside corner is mitred where the two strips meet), so you get one connected sheet with no gap or overlap.',
           'Delete Face: remove faces from a solid or a surface, leaving an open skin.',
           'Fit to Surface: pick faces of a solid, then a surface, plane or face. The solid grows or gets cut back so those faces sit on it, and flat walls next to them carry on to meet it.',
         ],

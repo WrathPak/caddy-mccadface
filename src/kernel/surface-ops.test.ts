@@ -1,6 +1,6 @@
 /** Surface worker ops, run on real OpenCascade in Node. */
 import { beforeAll, describe, expect, it } from 'vitest'
-import { measureArea, measureVolume, type AnyShape } from 'replicad'
+import { iterTopo, measureArea, measureVolume, type AnyShape } from 'replicad'
 import { box, initOcc, topoOf } from './occ'
 import { bodyFromShape, getBrep, getOp, helpers } from './store'
 import { boxNames, openEdges } from './naming'
@@ -399,6 +399,29 @@ describe('surface extend', () => {
     for (let i = 0; i < m.length; i += 3) expect(Math.abs(Math.hypot(m[i], m[i + 1], m[i + 2]) - r)).toBeLessThan(0.05)
     expect(faceCount(nat)).toBe(9)
     expect(freeOf(nat)).toBe(12)
+  })
+  it('a reflex corner is mitred: the two strips meet on one edge instead of overlapping', async () => {
+    // an L: the corner at (10, 10) wraps round, so the strips of the two edges meeting there would overlap
+    const pts: [number, number][] = [[0, 0], [20, 0], [20, 10], [10, 10], [10, 20], [0, 20]]
+    const outline = chain(pts.map((q, i) => line([q[0], q[1], 0], [pts[(i + 1) % 6][0], pts[(i + 1) % 6][1], 0], 'l' + i)), true)
+    const ell6 = await run('surfacePatch', { id: 'L', name: 'L', boundary: [outline], continuity: 'g0' })
+    near(areaOf(ell6), 300)
+    const e = edgeIdx(ell6, (s, t) => (Math.abs(s[1] - 10) < 1e-6 && Math.abs(t[1] - 10) < 1e-6 && s[0] > 9 && t[0] > 9) || (Math.abs(s[0] - 10) < 1e-6 && Math.abs(t[0] - 10) < 1e-6 && s[1] > 9 && t[1] > 9))
+    expect(e.length).toBe(2)
+    for (const mode of ['tangent', 'natural'] as const) {
+      const d = 3
+      const x = await run('surfaceExtend', { id: 'x', name: 'x', key: ell6.key, edges: e, distance: d, mode })
+      // the union of the two strips: 10 x 3 each, minus the 3 x 3 square they share
+      near(areaOf(x), 300 + 2 * 10 * d - d * d, 1e-4)
+      // no overlap: the mesh area agrees with the B-rep area, and the sheet is one shell
+      expect(Array.from(iterTopo((getBrep(x.key) as unknown as AnyShape).wrapped as never, 'shell')).length).toBe(1)
+      expect(faceCount(x)).toBe(3)
+      // free edges: four untouched outline edges, two strip ends, and the two far edges that meet at the mitre point
+      expect(x.freeEdges).toBe(8)
+      const rim = openEdges(getBrep(x.key) as unknown as AnyShape)
+      const at = (q: { x: number; y: number }) => Math.abs(q.x - 13) < 1e-6 && Math.abs(q.y - 13) < 1e-6
+      expect(rim.filter((r) => at(r.startPoint) || at(r.endPoint)).length).toBe(2)
+    }
   })
   it('only open edges extend', async () => {
     const b = mkBox('b', [10, 10, 10])
