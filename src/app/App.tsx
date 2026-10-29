@@ -4,6 +4,8 @@ import { StatusBar } from '@/ui/StatusBar'
 import { CommandPalette } from '@/ui/CommandPalette'
 import { TooltipProvider } from '@/ui/Tooltip'
 import { Layout } from './Layout'
+import { MobileLayout } from './Mobile'
+import { useDevice } from './device'
 import { installShortcuts } from './shortcuts'
 import { DocUi } from '@/ui/DocUi'
 import { Toast } from '@/ui/Modal'
@@ -19,7 +21,8 @@ import { useSettings } from '@/settings/settings'
 /** The intro tour runs once, on a first visit. Returning users (a saved layout exists) and the e2e fixture never see it by themselves. */
 function useFirstRunTour() {
   useEffect(() => {
-    if ((window as unknown as { __e2eNoTour?: boolean }).__e2eNoTour || useSettings.getState().tourSeen) return
+    // (the tour points at the desktop panels: the phone layout skips it)
+    if ((window as unknown as { __e2eNoTour?: boolean }).__e2eNoTour || useSettings.getState().tourSeen || useDevice.getState().compact) return
     let returning = false
     try { returning = !!localStorage.getItem('caddy-layout-v1') } catch { /* storage unavailable */ }
     if (returning) return useSettings.getState().setTourSeen(true)
@@ -33,15 +36,23 @@ export function App() {
   useEffect(() => watchExternals(), [])
   useEffect(() => { void initPlugins() }, [])
   useFirstRunTour()
+  // the phone layout replaces the dock; crossing the line (rotate, resize) swaps one for the other, the document lives in the stores
+  const compact = useDevice((s) => s.compact)
   return (
     <TooltipProvider>
-      <div className="app">
-        <Ribbon />
-        <div style={{ minHeight: 0, position: 'relative' }}>
-          <Layout />
-          <PreviewBanner />
-        </div>
-        <StatusBar />
+      <div className={'app' + (compact ? ' m-app' : '')}>
+        {compact ? (
+          <MobileLayout />
+        ) : (
+          <>
+            <Ribbon />
+            <div style={{ minHeight: 0, position: 'relative' }}>
+              <Layout />
+              <PreviewBanner />
+            </div>
+            <StatusBar />
+          </>
+        )}
         <CommandPalette />
         <DocUi />
         <NoteDialog />

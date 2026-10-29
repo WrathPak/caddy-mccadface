@@ -5,6 +5,12 @@ import { navClock } from './navClock'
 import { viewportBus, type StepKind, type ViewDir } from './bus'
 import { dragAction, useNavSettings, wheelAction } from './navSettings'
 import { DEBUG_HANDLE } from '@/app/flags'
+import { installTouchNav } from './touchNav'
+import { registerFingerOwner } from './touchGrab'
+import { isCoarse } from '@/app/device'
+import { useSketch } from '@/sketch/store'
+import { useHairPaint } from '@/features/hair/paint'
+import { useAssemblyRuntime } from '@/assembly/runtime'
 
 export const FOV = 40
 const Z = new Vector3(0, 0, 1)
@@ -125,9 +131,14 @@ export const navDebug: { pose: NavPose | null; pivot: Vector3 | null; bounds: Bo
  *  - Trackpad: pinch zooms, two-finger scroll pans, Shift + two-finger scroll orbits. Middle double-click fits all.
  *  - The button gestures follow the chosen preset (Settings); optional inertia.
  */
+/** The view as it was when the viewport last went away (the phone layout and the dock swap the viewport out when the screen turns). */
+let savedPose: NavPose | null = null
+
 export function NavControls() {
   const { gl, size, invalidate, scene } = useThree()
-  const s = useRef<NavPose>({ target: new Vector3(0, 0, 10), q: lookQuat(HOME_DIR), dist: 190 })
+  const s = useRef<NavPose>(savedPose ? { target: savedPose.target.clone(), q: savedPose.q.clone(), dist: savedPose.dist } : { target: new Vector3(0, 0, 10), q: lookQuat(HOME_DIR), dist: 190 })
+  useEffect(() => registerFingerOwner(() => useSketch.getState().active || useHairPaint.getState().mode !== 'off' || useAssemblyRuntime.getState().tool === 'drag'), [])
+  useEffect(() => () => { savedPose = { target: s.current.target.clone(), q: s.current.q.clone(), dist: s.current.dist } }, [])
   const anim = useRef<Anim | null>(null)
   const sizeRef = useRef(size)
   sizeRef.current = size
@@ -212,6 +223,13 @@ export function NavControls() {
       p.updateProjectionMatrix()
     }
     cam.updateMatrixWorld()
+    // a fingertip covers a few millimetres of screen: edges and points are picked from further away (world units, so it follows the zoom)
+    if (isCoarse()) {
+      const wpp = (cam as OrthographicCamera).isOrthographicCamera ? 1 / (cam as OrthographicCamera).zoom : (2 * st.dist * Math.tan(MathUtils.degToRad(FOV) / 2)) / state.size.height
+      const params = state.raycaster.params
+      if (params.Line) params.Line.threshold = Math.max(1.2, wpp * 13)
+      if (params.Points) params.Points.threshold = Math.max(1, wpp * 15)
+    }
     state.scene.userData.cam = cam
     navDebug.pose = st
     navDebug.bounds = box
@@ -499,6 +517,24 @@ export function NavControls() {
     el.addEventListener('pointercancel', up)
     el.addEventListener('wheel', wheel, { passive: false })
     el.addEventListener('auxclick', block)
+    // fingers: orbit, pan, pinch, tap, double tap (touchNav.ts)
+    const offTouch = installTouchNav({
+      el, fov: FOV, zoomPose,
+      pose: () => s.current,
+      ortho: () => !!(cameraOf() as OrthographicCamera | undefined)?.isOrthographicCamera,
+      radius: () => {
+        const box = sceneBox(scene)
+        return box.isEmpty() ? 60 : Math.max(box.getBoundingSphere(new Sphere()).radius, 1)
+      },
+      cancelMotion: () => { anim.current = null; glide.current = null; zoom.current = null },
+      pivotAt,
+      pivotAtView: (e) => pivotAtWheel(e as WheelEvent) ?? s.current.target.clone(),
+      orbit,
+      setPivot,
+      startGlide: (vx, vy, pivot) => { glide.current = { kind: 'orbit', vx, vy, pivot }; invalidate() },
+      frame,
+      invalidate,
+    })
     if (DEBUG_HANDLE) {
       ;(window as unknown as { __nav?: unknown }).__nav = {
         pose: () => ({ target: s.current.target.toArray(), dist: s.current.dist, q: s.current.q.toArray() }),
@@ -514,6 +550,7 @@ export function NavControls() {
     }
     return () => {
       offs.forEach((o) => o())
+      offTouch()
       el.removeEventListener('pointerdown', down, true)
       el.removeEventListener('pointermove', move)
       el.removeEventListener('pointerup', up)

@@ -39,7 +39,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'CADdy McCADFace',
         short_name: 'CADFace',
@@ -47,10 +47,21 @@ export default defineConfig({
         theme_color: '#1b1d21',
         background_color: '#1b1d21',
         display: 'standalone',
-        icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+        // phones and tablets: either way up, the app lays itself out for the shape
+        orientation: 'any',
+        start_url: '.',
+        scope: '.',
+        id: '.',
+        categories: ['productivity', 'graphics'],
+        icons: [
+          { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,woff,woff2,wasm}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2,wasm}'],
         maximumFileSizeToCacheInBytes: 64 * 1024 * 1024,
       },
     }),

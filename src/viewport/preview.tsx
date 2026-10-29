@@ -1,4 +1,6 @@
 /** Live feature previews: translucent result/tool meshes, profile picking, and the distance-arrow manipulator. */
+import { markGrab } from './touchGrab'
+import { useDevice } from '@/app/device'
 import { Tip } from '@/ui/Tooltip'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Html } from '@react-three/drei'
@@ -190,6 +192,7 @@ export function ArrowManipulator() {
   const drag = useRef<{ t0: number; tip0: number } | null>(null)
   const quat = useMemo(() => new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3(...m.dir).normalize()), [m.dir])
   const [hot, setHot] = useState(false)
+  const coarse = useDevice((d) => d.coarse)
   const [typing, setTyping] = useState<string | null>(null)
   useEffect(() => { if (!m.active) setTyping(null) }, [m.active])
   /** Enter in the value box: take the typed distance, then accept the dialog like OK does. */
@@ -220,6 +223,7 @@ export function ArrowManipulator() {
   }
   const onDown = (e: { stopPropagation(): void; nativeEvent: PointerEvent }) => {
     e.stopPropagation()
+    markGrab()
     const o = new Vector3(...m.origin), d = new Vector3(...m.dir).normalize()
     const t0 = axisParam(rayAt(e.nativeEvent), o, d)
     if (t0 === null) return
@@ -266,7 +270,8 @@ export function ArrowManipulator() {
             onPointerOver={() => { setHot(true); gl.domElement.style.cursor = 'grab' }}
             onPointerOut={() => { setHot(false); gl.domElement.style.cursor = '' }}
           >
-            <cylinderGeometry args={[0.32, 0.32, 1.6, 8]} />
+            {/* (a fingertip needs a much fatter target than a mouse pointer) */}
+            <cylinderGeometry args={coarse ? [0.95, 0.95, 2.4, 8] : [0.32, 0.32, 1.6, 8]} />
             <meshBasicMaterial visible={false} />
           </mesh>
         </group>
@@ -277,7 +282,7 @@ export function ArrowManipulator() {
                 onClick={() => setTyping(String(+(m.tip * m.factor).toFixed(3)))}>{m.label(m.tip * m.factor)}</div>
             </Tip>
           ) : (
-            <input className="sk-tip sk-tip-input" data-testid="manip-input" data-accept-on-enter autoFocus value={typing} spellCheck={false}
+            <input className="sk-tip sk-tip-input" data-testid="manip-input" data-accept-on-enter autoFocus value={typing} spellCheck={false} inputMode={coarse ? 'decimal' : undefined} enterKeyHint="done"
               style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', width: 84 }}
               onFocus={(e) => e.currentTarget.select()}
               onChange={(e) => setTyping(e.target.value)}

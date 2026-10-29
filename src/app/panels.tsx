@@ -2,6 +2,8 @@
 import type { DockviewApi, IDockviewPanelProps } from 'dockview-react'
 import type { FC, ReactNode } from 'react'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
+import { isCompact } from './device'
+import { useMobile } from './mobileStore'
 
 export interface PanelDef {
   id: string
@@ -29,7 +31,9 @@ export function panelComponents(): Record<string, FC<IDockviewPanelProps>> {
 /** Show the panel: bring it forward when it is open, otherwise add it. */
 export function openPanel(id: string) {
   const def = defs.get(id)
-  if (!dock || !def) return
+  if (!def) return
+  // the phone layout has no dock: the panel opens in the left sheet beside the Browser
+  if (isCompact() || !dock) return useMobile.getState().openLeft(id)
   const existing = dock.getPanel(id)
   if (existing) {
     existing.api.setActive()
@@ -44,4 +48,11 @@ export function openPanel(id: string) {
   }
 }
 
-export const isPanelOpen = (id: string) => !!dock?.getPanel(id)
+export const isPanelOpen = (id: string) => (dock ? !!dock.getPanel(id) : useMobile.getState().left === id)
+
+/** The registered extra panels, for the phone layout's left sheet. */
+export const panelDefs = () => [...defs.values()]
+export const renderPanel = (id: string) => {
+  const d = defs.get(id)
+  return d ? <ErrorBoundary name={d.title}>{d.render()}</ErrorBoundary> : null
+}

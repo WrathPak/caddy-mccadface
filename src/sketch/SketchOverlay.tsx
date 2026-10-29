@@ -8,6 +8,8 @@ import {
   Vector2, Vector3, type Mesh, type ShaderMaterial,
 } from 'three'
 import { useVpColors } from '@/viewport/colors'
+import { touchCount, TAP_SLOP } from '@/viewport/touchGrab'
+import { KbdToggle, useKbd } from '@/ui/kbd'
 import { viewportBus } from '@/viewport/bus'
 import { dimText, layoutDim } from './dims'
 import { curvePoints, entityPolylines, profileGeometry } from './draw'
@@ -27,6 +29,11 @@ import {
 import { isDim, type Constraint, type SketchModel, type Vec2 } from './types'
 
 const Z = 0.02
+
+/** Tools that place points by clicking in empty space: with a finger they get the offset aiming reticle. */
+const AIM_TOOLS = new Set<string>(['line', 'rect', 'rectC', 'circle', 'arc', 'spline', 'splineC', 'ellipse', 'slotCC', 'slotOv', 'slotArc', 'polygon', 'arcT', 'text'])
+/** How far above the fingertip the reticle sits (px). */
+const AIM_OFFSET = 76
 
 // ---------------------------------------------------------------- colors
 
@@ -480,6 +487,7 @@ function Glyphs() {
 
 function DimInput({ c }: { c: Constraint }) {
   const ref = useRef<HTMLInputElement>(null)
+  const kb = useKbd()
   const done = useRef(false)
   const [bad, setBad] = useState(false)
   useEffect(() => { ref.current?.focus(); ref.current?.select() }, [])
@@ -490,19 +498,24 @@ function DimInput({ c }: { c: Constraint }) {
     else { setBad(true); setTimeout(() => setBad(false), 500); ref.current?.focus() }
   }
   return (
-    <input
-      ref={ref}
-      className={'sk-dim-input' + (bad ? ' err' : '')}
-      defaultValue={c.expr ?? String(c.value ?? 0)}
-      spellCheck={false}
-      onPointerDown={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        e.stopPropagation()
-        if (e.key === 'Enter') commit()
-        else if (e.key === 'Escape') { done.current = true; cancelDimEdit() }
-      }}
-      onBlur={() => { if (!done.current) commit() }}
-    />
+    <span className="sk-dim-wrap" onPointerDown={(e) => e.stopPropagation()}>
+      <input
+        ref={ref}
+        className={'sk-dim-input' + (bad ? ' err' : '')}
+        defaultValue={c.expr ?? String(c.value ?? 0)}
+        spellCheck={false}
+        inputMode={kb.inputMode}
+        enterKeyHint="done"
+        onPointerDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation()
+          if (e.key === 'Enter') commit()
+          else if (e.key === 'Escape') { done.current = true; cancelDimEdit() }
+        }}
+        onBlur={() => { if (!done.current && !kb.swapping.current) commit() }}
+      />
+      {kb.coarse && <KbdToggle mode={kb.mode} onToggle={() => kb.toggle(ref)} />}
+    </span>
   )
 }
 
@@ -545,7 +558,7 @@ function Dimensions({ wpp }: { wpp: number }) {
                   data-sel={selected}
                   data-bad={col === c.danger}
                   data-preview={k.id === '~preview'}
-                  onPointerDown={(e) => { e.stopPropagation(); if (k.id !== '~preview') select([k.id], e.shiftKey) }}
+                  onPointerDown={(e) => { e.stopPropagation(); if (k.id === '~preview') return; if (e.pointerType === 'touch' && selected) editDim(k.id); else select([k.id], e.shiftKey) }}
                   onDoubleClick={(e) => { e.stopPropagation(); if (k.id !== '~preview') editDim(k.id) }}
                 >
                   {dimText(k)}
@@ -581,7 +594,79 @@ function InputController() {
       return { p: toLocal(plane, [hit.x, hit.y, hit.z]), wpp: wppFor(camera as PerspectiveCamera, r.height, plane) }
     }
     const mods = (e: PointerEvent | MouseEvent) => ({ shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+
+    // ---- fingers. A tap puts the point under the fingertip. Resting the finger and dragging aims an offset reticle that sits above
+    // it (the finger would hide the spot), with the usual snapping and guides; lifting places the point there. Tools that pick
+    // things on screen (select, dimension, trim...) take the finger as it is, like a mouse. A second finger is the camera's.
+    let aim: { id: number; sx: number; sy: number; offY: number; active: boolean; dead: boolean } | null = null
+    let direct: number | null = null
+    const host = el.parentElement
+    const reticle = document.createElement('div')
+    reticle.className = 'm-aim'
+    reticle.innerHTML = '<span class="ring"></span><i class="h"></i><i class="v"></i>'
+    const leash = document.createElement('div')
+    leash.className = 'm-aim-line'
+    for (const d of [reticle, leash]) { d.style.display = 'none'; host?.appendChild(d) }
+    const hideAim = () => { reticle.style.display = 'none'; leash.style.display = 'none' }
+    const showAim = (fx: number, fy: number, ax: number, ay: number) => {
+      const r = (host ?? el).getBoundingClientRect()
+      reticle.style.display = 'block'
+      reticle.style.left = `${ax - r.left}px`
+      reticle.style.top = `${ay - r.top}px`
+      const len = Math.hypot(ax - fx, ay - fy)
+      leash.style.display = 'block'
+      leash.style.left = `${fx - r.left}px`
+      leash.style.top = `${fy - r.top}px`
+      leash.style.height = `${len}px`
+      leash.style.transform = `rotate(${Math.atan2(fx - ax, ay - fy)}rad)`
+    }
+    const at = (e: PointerEvent, offY = 0) => ({ clientX: e.clientX, clientY: e.clientY + offY })
+    const touchDown = (e: PointerEvent) => {
+      if (touchCount() > 1) { if (aim) aim.dead = true; hideAim(); return }
+      const l = locate(e)
+      if (!l) return
+      const tool = useSketch.getState().tool
+      if (!AIM_TOOLS.has(tool)) {
+        direct = e.pointerId
+        pointerMove(l.p, l.wpp, mods(e))
+        pointerDown(l.p, l.wpp, mods(e), [e.clientX, e.clientY])
+        return
+      }
+      const r = el.getBoundingClientRect()
+      aim = { id: e.pointerId, sx: e.clientX, sy: e.clientY, offY: e.clientY - AIM_OFFSET < r.top + 14 ? AIM_OFFSET : -AIM_OFFSET, active: false, dead: false }
+      pointerMove(l.p, l.wpp, mods(e))
+    }
+    const touchMove = (e: PointerEvent) => {
+      if (touchCount() > 1) { if (aim) aim.dead = true; direct = null; hideAim(); return }
+      if (direct === e.pointerId) { const l = locate(e); if (l) pointerMove(l.p, l.wpp, mods(e)); return }
+      if (!aim || aim.dead || aim.id !== e.pointerId) return
+      if (!aim.active && Math.hypot(e.clientX - aim.sx, e.clientY - aim.sy) > TAP_SLOP) aim.active = true
+      const p = aim.active ? at(e, aim.offY) : e
+      const l = locate(p as PointerEvent)
+      if (l) pointerMove(l.p, l.wpp, mods(e))
+      if (aim.active) showAim(e.clientX, e.clientY, p.clientX, p.clientY)
+    }
+    const touchUp = (e: PointerEvent) => {
+      if (direct === e.pointerId) {
+        direct = null
+        const l = locate(e)
+        if (l) pointerUp(l.p, l.wpp, mods(e))
+        return
+      }
+      const a = aim
+      if (!a || a.id !== e.pointerId) return
+      aim = null
+      hideAim()
+      if (a.dead || e.type === 'pointercancel') return
+      const p = a.active ? at(e, a.offY) : e
+      const l = locate(p as PointerEvent)
+      if (!l) return
+      pointerMove(l.p, l.wpp, mods(e))
+      pointerDown(l.p, l.wpp, mods(e), [p.clientX, p.clientY])
+      pointerUp(l.p, l.wpp, mods(e))
+    }
     const down = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') { if (useSketch.getState().active) touchDown(e); return }
       if (e.button !== 0 || !useSketch.getState().active) return
       const l = locate(e)
       if (!l) return
@@ -590,10 +675,12 @@ function InputController() {
     }
     const move = (e: PointerEvent) => {
       if (!useSketch.getState().active) return
+      if (e.pointerType === 'touch') return touchMove(e)
       const l = locate(e)
       if (l) pointerMove(l.p, l.wpp, mods(e))
     }
     const up = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') { if (useSketch.getState().active) touchUp(e); return }
       if (e.button !== 0 || !useSketch.getState().active) return
       const l = locate(e)
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
@@ -616,13 +703,17 @@ function InputController() {
     el.addEventListener('pointerdown', down)
     el.addEventListener('pointermove', move)
     el.addEventListener('pointerup', up)
+    el.addEventListener('pointercancel', up)
     el.addEventListener('dblclick', dbl)
     const off = viewportBus.on('redraw', () => invalidate())
     return () => {
       el.removeEventListener('pointerdown', down)
       el.removeEventListener('pointermove', move)
       el.removeEventListener('pointerup', up)
+      el.removeEventListener('pointercancel', up)
       el.removeEventListener('dblclick', dbl)
+      reticle.remove()
+      leash.remove()
       window.removeEventListener('keydown', key, true)
       off()
     }

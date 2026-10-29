@@ -3,6 +3,7 @@ import { useSketch } from '@/sketch/store'
 import { useSketchPick } from '@/sketch/create'
 import { useSettings } from '@/settings/settings'
 import { useUi } from '@/store/ui'
+import { useDevice } from '@/app/device'
 
 /** What to do first, per workspace, while the document is empty. */
 export const EMPTY_HINTS: Record<string, string> = {
@@ -26,12 +27,13 @@ export function EmptyHint() {
   const workspace = useUi((s) => s.workspace)
   const tool = useUi((s) => s.activeTool)
   const inspector = useUi((s) => !!s.inspector)
+  const coarse = useDevice((s) => s.coarse)
   if (!on || !empty || sketching || picking || inspector || tool) return null
   const text = EMPTY_HINTS[workspace] ?? EMPTY_HINTS.solid
   return (
     <div className="empty-hint" data-testid="empty-hint" role="note">
       <div className="empty-hint-text">{text}</div>
-      <div className="empty-hint-sub">Press S to search every command, or open the ? menu for help.</div>
+      <div className="empty-hint-sub">{coarse ? 'Tap a tool above to begin. The ... menu has search and help.' : 'Press S to search every command, or open the ? menu for help.'}</div>
     </div>
   )
 }

@@ -16,6 +16,8 @@ import { DrawingWorkspace } from '@/drawing/DrawingWorkspace'
 import { RenderHud } from '@/render/RenderHud'
 import { AssemblyHud } from '@/assembly/AssemblyHud'
 import { EmptyHint } from '@/help/EmptyHint'
+import { useSettings, dprRange } from '@/settings/settings'
+import { useDevice } from '@/app/device'
 
 const MODES: { id: DisplayMode; label: string; icon: typeof Cube; desc: string }[] = [
   { id: 'shaded', label: 'Shaded', icon: Cube, desc: 'Solid colored surfaces without edge lines.' },
@@ -28,13 +30,15 @@ export function Viewport() {
   const ref = useRef<HTMLDivElement>(null)
   const { displayMode, setDisplayMode, projection, ssao, showGrid, showOrigin } = useUi()
   const clear = useUi((s) => s.clearSelection)
+  const pixelRatio = useSettings((s) => s.pixelRatio)
+  const coarse = useDevice((s) => s.coarse)
 
   return (
     <div className="vp" ref={ref}>
       <EmptyHint />
       <Canvas
         frameloop="demand"
-        dpr={[1, 2]}
+        dpr={dprRange(pixelRatio, coarse)}
         gl={{ antialias: true, stencil: true, powerPreference: 'high-performance' }}
         raycaster={{ params: { Line: { threshold: 1.2 }, Mesh: {}, Points: { threshold: 1 }, LOD: {}, Sprite: {} } }}
         onCreated={({ gl }) => { gl.localClippingEnabled = true }}

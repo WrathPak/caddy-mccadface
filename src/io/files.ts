@@ -14,26 +14,58 @@ export const MODEL_EXTS = ['.stl', '.3mf', '.step', '.stp']
 
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError'
 
-export function downloadFile(name: string, bytes: Uint8Array | ArrayBuffer, mime = 'application/octet-stream') {
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mime }))
+const ua = () => (typeof navigator === 'undefined' ? '' : navigator.userAgent)
+/** iPhone, iPad (which says it is a Mac) and iPod: their file picker greys out file types it does not know, so it gets no filter. */
+export const isIos = () => /iPad|iPhone|iPod/.test(ua()) || (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+const isMobileOs = () => isIos() || /Android/i.test(ua())
+const coarsePointer = () => { try { return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches } catch { return false } }
+
+/**
+ * On a phone or tablet the share sheet is the way to put a file somewhere useful (Save to Files, Drive, AirDrop), and a plain
+ * download often lands in a folder you never find. Used where the browser can share files; refused or unavailable, the download runs.
+ */
+function shareFile(file: File): boolean {
+  try {
+    if (!coarsePointer() || !isMobileOs() || typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function' || !navigator.canShare({ files: [file] })) return false
+  } catch { return false }
+  navigator.share({ files: [file], title: file.name }).catch((e: unknown) => {
+    if (e instanceof DOMException && e.name === 'AbortError') return // the person closed the sheet
+    anchorDownload(file) // not allowed after a long wait (the browser wants a fresh tap), or the type is refused
+  })
+  return true
+}
+
+function anchorDownload(file: File) {
+  const url = URL.createObjectURL(file)
   const a = document.createElement('a')
   a.href = url
-  a.download = name
+  a.download = file.name
   document.body.appendChild(a)
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 5000)
 }
 
+export function downloadFile(name: string, bytes: Uint8Array | ArrayBuffer, mime = 'application/octet-stream') {
+  const file = new File([bytes as BlobPart], name, { type: mime })
+  if (shareFile(file)) return
+  anchorDownload(file)
+}
+
+
 /** Ask for files via a hidden <input>. Resolves [] on cancel. */
 export function pickFiles(accept: string, multiple = false): Promise<File[]> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = accept
+    if (!isIos()) input.accept = accept
     input.multiple = multiple
-    input.onchange = () => resolve([...(input.files ?? [])])
-    input.oncancel = () => resolve([])
+    // (in the page, hidden: some mobile browsers drop a picker opened from an input that was never attached)
+    input.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0'
+    const done = (files: File[]) => { input.remove(); resolve(files) }
+    input.onchange = () => done([...(input.files ?? [])])
+    input.oncancel = () => done([])
+    document.body.appendChild(input)
     input.click()
   })
 }
@@ -51,6 +83,7 @@ export async function pickProject(): Promise<{ bytes: Uint8Array; name: string; 
     }
   }
   const [f] = await pickFiles('.caddy')
+  if (f && !/\.caddy$/i.test(f.name)) throw new Error(`${f.name} is not a CADdy project (.caddy)`)
   return f ? { bytes: new Uint8Array(await f.arrayBuffer()), name: f.name, handle: null, stamp: f.lastModified } : null
 }
 

@@ -4,6 +4,8 @@ import { useThree } from '@react-three/fiber'
 import { Euler, type Group } from 'three'
 import { useMove } from '@/features/move'
 import { setCapture } from './capture'
+import { markGrab } from './touchGrab'
+import { useDevice } from '@/app/device'
 
 const R2D = 180 / Math.PI
 
@@ -11,6 +13,7 @@ const R2D = 180 / Math.PI
 export function MoveGizmo() {
   const m = useMove()
   const ref = useRef<Group>(null)
+  const coarse = useDevice((d) => d.coarse)
   if (!m.active || !m.bodyIds.length) return null
   const pos: [number, number, number] = [m.pivot[0] + m.translate[0], m.pivot[1] + m.translate[1], m.pivot[2] + m.translate[2]]
   const rot = new Euler(m.rotate[0] / R2D, m.rotate[1] / R2D, m.rotate[2] / R2D, 'ZYX')
@@ -29,7 +32,7 @@ export function MoveGizmo() {
     }
   }
   return (
-    <TransformControls mode={m.mode} space="world" size={0.9} onObjectChange={onChange}>
+    <TransformControls mode={m.mode} space="world" size={coarse ? 1.4 : 0.9} onObjectChange={onChange} onMouseDown={markGrab}>
       <group ref={ref} position={pos} rotation={m.mode === 'rotate' ? rot : undefined} scale={m.mode === 'scale' ? m.scale : 1} />
     </TransformControls>
   )

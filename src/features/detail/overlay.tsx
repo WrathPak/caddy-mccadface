@@ -1,4 +1,5 @@
 /** Viewport layer of the DETAIL tools: emboss / engrave solid, textured model preview, the on-surface text handle and the readout. */
+import { markGrab } from '@/viewport/touchGrab'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Html } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
@@ -100,6 +101,7 @@ function EmbossHandle({ view }: { view: EmbossView }) {
   }
   const drag = (kind: 'move' | 'turn') => (e: { stopPropagation(): void; nativeEvent: PointerEvent }) => {
     e.stopPropagation()
+    markGrab()
     const base = baseFrame(view.point, view.normal)
     const plane = new Plane().setFromNormalAndCoplanarPoint(new Vector3(...view.normal), new Vector3(...view.point))
     const move = (ev: PointerEvent) => {

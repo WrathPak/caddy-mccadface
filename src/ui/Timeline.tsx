@@ -9,6 +9,7 @@ import { getFeature } from '@/doc/registry'
 import { editFeature } from '@/doc/editor'
 import { useUi } from '@/store/ui'
 import { Tip } from './Tooltip'
+import { useDevice } from '@/app/device'
 
 const ICONS: Record<string, Icon> = {
   sketch: PencilSimpleLine,
@@ -32,6 +33,7 @@ export interface TimelineProps {
 export function Timeline({ onEditFeature }: TimelineProps) {
   const { features, rollback, selectedFeatureId, selectFeature, setRollback, toggleSuppress } = useDoc()
   const setActiveTool = useUi((s) => s.setActiveTool)
+  const coarse = useDevice((s) => s.coarse)
   const trackRef = useRef<HTMLDivElement>(null)
   const assembly = useDoc((s) => s.assembly)
   const activeOcc = useDoc((s) => s.activeOcc)
@@ -83,7 +85,8 @@ export function Timeline({ onEditFeature }: TimelineProps) {
           data-selected={selectedFeatureId === f.id}
           data-rolled={i >= rollback}
           data-dim={sectioned && comp !== activeDef}
-          onClick={() => selectFeature(f.id)}
+          // (no double click with a finger: a second tap on the selected step opens it)
+          onClick={() => (coarse && selectedFeatureId === f.id ? edit(f.id) : selectFeature(f.id))}
           onDoubleClick={() => edit(f.id)}
           onKeyDown={(e) => { if (e.key === 'Enter') edit(f.id); if (e.key === 'u') toggleSuppress(f.id) }}
         >

@@ -1,5 +1,7 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { getCommand, runCommand } from '@/app/commands'
+import { fingerOwned, LONG_PRESS_MS, TAP_SLOP, touchCount } from '@/viewport/touchGrab'
+import { useSketch } from '@/sketch/store'
 
 /** Eight slots clockwise from top. */
 const SLOTS = ['solid.extrude', 'solid.fillet', 'sketch.create', 'solid.move', 'inspect.measure', 'view.frame', 'edit.delete', 'app.palette']
@@ -9,6 +11,12 @@ const SHORT: Record<string, string> = { 'sketch.create': 'Sketch', 'view.frame':
 const RX = 118
 const RY = 92
 const DEAD = 22
+
+/** Keep the whole ring on screen: a long press near an edge opens the menu a little inward. */
+function clampToScreen(x: number, y: number) {
+  const w = window.innerWidth, h = window.innerHeight
+  return { x: Math.min(Math.max(x, RX + 48), Math.max(RX + 48, w - RX - 48)), y: Math.min(Math.max(y, RY + 22), Math.max(RY + 22, h - RY - 70)) }
+}
 
 /** Radial right-click menu. Hold + drag + release to pick, or tap and click an item. */
 export function MarkingMenu({ target }: { target: RefObject<HTMLElement | null> }) {
@@ -26,16 +34,36 @@ export function MarkingMenu({ target }: { target: RefObject<HTMLElement | null> 
       const a = (Math.atan2(dx, -dy) + Math.PI * 2) % (Math.PI * 2)
       return Math.round(a / (Math.PI / 4)) % 8
     }
+    // a finger resting on the viewport opens the menu, like a right click (the sketcher and handles keep their own long press)
+    let press: { id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null
+    const cancelPress = () => { if (press) clearTimeout(press.timer); press = null }
+    const touchDown = (e: PointerEvent) => {
+      cancelPress()
+      if ((e.target as HTMLElement).tagName !== 'CANVAS' || touchCount() > 1 || useSketch.getState().active || fingerOwned()) return
+      const p = { id: e.pointerId, x: e.clientX, y: e.clientY }
+      press = { ...p, timer: setTimeout(() => {
+        if (!press || touchCount() !== 1) return
+        press = null
+        setPos(clampToScreen(p.x, p.y))
+        setHot(null)
+      }, LONG_PRESS_MS) }
+    }
+    const touchMove = (e: PointerEvent) => {
+      if (press && (touchCount() > 1 || Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP)) cancelPress()
+    }
     const onDown = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return touchDown(e)
       if (e.button !== 2) return
       down = { x: e.clientX, y: e.clientY, t: performance.now() }
       setPos({ x: e.clientX, y: e.clientY })
       setHot(null)
     }
     const onMove = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return touchMove(e)
       if (down) setHot(slotAt(e.clientX, e.clientY, down))
     }
     const onUp = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return cancelPress()
       if (!down || e.button !== 2) return
       const s = slotAt(e.clientX, e.clientY, down)
       const c = down
@@ -51,7 +79,10 @@ export function MarkingMenu({ target }: { target: RefObject<HTMLElement | null> 
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     el.addEventListener('contextmenu', ctx)
+    window.addEventListener('pointercancel', cancelPress)
     return () => {
+      cancelPress()
+      window.removeEventListener('pointercancel', cancelPress)
       el.removeEventListener('pointerdown', onDown)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)

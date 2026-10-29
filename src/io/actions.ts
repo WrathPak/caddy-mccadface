@@ -291,14 +291,23 @@ export async function initPersistence() {
   } catch { /* IndexedDB unavailable */ }
   // Settings > General sets whether to autosave and how often; it is read again on every check, so a change applies at once
   let last = Date.now()
-  setInterval(async () => {
+  const writeCopy = async () => {
     const st = useSettings.getState()
-    if (Date.now() - last < st.autosaveSeconds * 1000) return
-    last = Date.now()
     const d = useDoc.getState()
     if (!st.autosave || !shouldAutosave(d) || useRecovery.getState().record) return
     try {
       await set(AUTOSAVE_KEY, { bytes: await serializeProject(false), name: d.name, savedAt: Date.now() } satisfies AutosaveRecord)
     } catch { /* quota or private mode */ }
+  }
+  setInterval(() => {
+    if (Date.now() - last < useSettings.getState().autosaveSeconds * 1000) return
+    last = Date.now()
+    void writeCopy()
   }, 2000)
+  // a phone puts a page to sleep (and may throw it away) the moment you switch apps, long before the next timer: save as it goes
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden') return
+    last = Date.now()
+    void writeCopy()
+  })
 }

@@ -1,4 +1,5 @@
 import { Tip } from './Tooltip'
+import { tapProps } from './tapProps'
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Crosshair, X } from '@phosphor-icons/react'
 import { useUi, type InspectorSession, type SelectionRef } from '@/store/ui'
@@ -284,6 +285,13 @@ function InspectorForm({ session }: { session: InspectorSession }) {
   let invalid: string | null = null
   try { resolveParams(session.schema, values) } catch (e) { invalid = e instanceof Error ? e.message : String(e) }
   const blocked = missing.length > 0 || invalid !== null
+  // (the same test on the values as they are this instant: a touch tap leaves the number box first, which commits its text)
+  const blockedNow = () => {
+    const v = { ...schemaDefaults(session.schema), ...latest.current }
+    if (missingRequired(session.schema, v).length > 0) return true
+    try { resolveParams(session.schema, v) } catch { return true }
+    return false
+  }
   const hint = missing.length ? `Select ${missing.map((m) => m.toLowerCase()).join(' and ')} to continue` : (invalid ?? '')
   const warnings = session.schema.warnings ? session.schema.warnings(values) : []
   const notice = useUi((s) => s.inspectorNotice)
@@ -349,8 +357,8 @@ function InspectorForm({ session }: { session: InspectorSession }) {
       {warnings.map((w, i) => <div key={i} className="inspector-warn" role="note" data-testid="inspector-warning">{w}</div>)}
       {blocked && <div key={nudge} className={'inspector-hint' + (nudge ? ' nudge' : '')} role="status" data-testid="inspector-hint">{hint}</div>}
       <div className="inspector-foot">
-        <button type="button" className="btn" onClick={session.onCancel}>Cancel</button>
-        <Tip label="OK" desc={blocked ? hint : 'Accept these settings and add the step to the timeline.'} shortcut="Enter" side="top"><span className="tip-wrap"><button type="button" className="btn primary" disabled={blocked} onClick={() => !blocked && session.onOk(latest.current)}>OK</button></span></Tip>
+        <button type="button" className="btn" {...tapProps(() => session.onCancel())}>Cancel</button>
+        <Tip label="OK" desc={blocked ? hint : 'Accept these settings and add the step to the timeline.'} shortcut="Enter" side="top"><span className="tip-wrap"><button type="button" className="btn primary" disabled={blocked} {...tapProps(() => { if (!blockedNow()) session.onOk(latest.current) })}>OK</button></span></Tip>
       </div>
     </div>
     </RefFlagsCtx.Provider>

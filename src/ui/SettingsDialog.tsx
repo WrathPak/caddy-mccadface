@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { GearSix } from '@phosphor-icons/react'
 import { create } from 'zustand'
 import { useUi, type DisplayMode } from '@/store/ui'
-import { AUTOSAVE_CHOICES, WORKSPACES, useSettings, type ThemeMode } from '@/settings/settings'
+import { AUTOSAVE_CHOICES, PIXEL_RATIOS, WORKSPACES, useSettings, type PixelRatio, type ThemeMode } from '@/settings/settings'
 import { useHelp } from '@/help/helpStore'
 import { NAV_PRESETS, ORBIT_SPEEDS, useNavSettings } from '@/viewport/navSettings'
 import type { GridDensity } from '@/viewport/gridMath'
@@ -112,6 +112,8 @@ function Display() {
   const setMode = useUi((s) => s.setDisplayMode)
   const density = useSettings((s) => s.gridDensity)
   const setDensity = useSettings((s) => s.setGridDensity)
+  const pixelRatio = useSettings((s) => s.pixelRatio)
+  const setPixelRatio = useSettings((s) => s.setPixelRatio)
   return (
     <>
       <Row id="grid" label="Ground grid" help="Show the grid on the floor. It also has a button in the viewport toolbar.">
@@ -125,6 +127,9 @@ function Display() {
       </Row>
       <Row id="ao" label="Ambient occlusion" help="Soft shadows in creases and corners that make shapes easier to read. Turn it off if the view feels slow.">
         <Checkbox checked={ssao} onChange={(v) => useUi.setState({ ssao: v })} ariaLabel="Ambient occlusion" />
+      </Row>
+      <Row id="sharpness" label="Sharpness" help="How many pixels the 3D view draws. Auto keeps phones and tablets at 1.5x so orbiting stays smooth; pick a higher one for a crisper picture, or 1x to go faster.">
+        <Select value={pixelRatio} onChange={(v) => setPixelRatio(v as PixelRatio)} options={PIXEL_RATIOS} />
       </Row>
     </>
   )
