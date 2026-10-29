@@ -2,14 +2,16 @@
  * Touch navigation for the viewport (pointer events with pointerType "touch"):
  *
  *  - one finger drags to orbit about the point under it (the same turntable as the mouse, with inertia when it is on in Settings);
- *  - two fingers pan and pinch together: the point between them stays between them, and the zoom goes toward it;
+ *  - two fingers pan, pinch and twist together: the point between them stays between them, the zoom goes toward it, and turning
+ *    the pair rolls the view about the line of sight (after a small dead zone, so a pinch does not roll by accident; Settings can
+ *    turn the twist off);
  *  - a quick tap selects (a small slop is allowed, a finger is never still), a double tap fits everything;
  *  - a finger that went down on a handle (extrude arrow, move gizmo) or in a tool that owns one finger (sketching, painting) is
  *    left alone, and a second finger always makes it a camera gesture.
  *
  * The camera maths is the same pure poses as NavControls (orbitPose / zoomPose); this file only turns fingers into calls.
  */
-import { MathUtils, Vector3 } from 'three'
+import { MathUtils, Quaternion, Vector3 } from 'three'
 import { navClock } from './navClock'
 import { useNavSettings } from './navSettings'
 import { fingerOwned, TAP_MS, TAP_SLOP, touchGrab } from './touchGrab'
@@ -34,6 +36,16 @@ export interface TouchCtx {
   invalidate: () => void
   /** scale the view about a pivot (< 1 zooms in) */
   zoomPose: (p: NavPose, k: number, pivot: Vector3) => NavPose
+}
+
+/** A twist smaller than this (radians, about 7 degrees) is ignored, so a pinch or a pan never rolls the view; past it the roll follows the fingers with the dead zone taken off. */
+export const TWIST_DEAD = MathUtils.degToRad(7)
+const AZ = new Vector3(0, 0, 1)
+
+/** The roll that follows a total finger twist (radians, clockwise on screen positive): nothing inside the dead zone, then continuous. */
+export function twistRoll(total: number): number {
+  const m = Math.abs(total)
+  return m <= TWIST_DEAD ? 0 : Math.sign(total) * (m - TWIST_DEAD)
 }
 
 interface Ptr { id: number; x: number; y: number; x0: number; y0: number; t0: number }
@@ -69,7 +81,7 @@ export function installTouchNav(ctx: TouchCtx): () => void {
   const ptrs = new Map<number, Ptr>()
   let mode: 'none' | 'pending' | 'orbit' | 'multi' | 'ignore' = 'none'
   let orbitS: { pivot: Vector3; lx: number; ly: number; vx: number; vy: number; t: number; moved: number } | null = null
-  let multi: { a: number; b: number; pose0: NavPose; P: Vector3; mx: number; my: number; d0: number } | null = null
+  let multi: { a: number; b: number; pose0: NavPose; P: Vector3; mx: number; my: number; d0: number; ang: number; last: number; total: number } | null = null
   let tap: { id: number; x: number; y: number; t0: number } | null = null
   let lastTap: { t: number; x: number; y: number } | null = null
   let clickFix: { x: number; y: number; until: number } | null = null
@@ -96,6 +108,7 @@ export function installTouchNav(ctx: TouchCtx): () => void {
     multi = {
       a: a.id, b: b.id, mx, my,
       d0: Math.max(24, Math.hypot(a.x - b.x, a.y - b.y)),
+      ang: Math.atan2(b.y - a.y, b.x - a.x), last: Math.atan2(b.y - a.y, b.x - a.x), total: 0,
       pose0: { target: pose.target.clone(), q: pose.q.clone(), dist: pose.dist },
       P: ctx.pivotAtView({ clientX: mx, clientY: my }),
     }
@@ -118,7 +131,17 @@ export function installTouchNav(ctx: TouchCtx): () => void {
     let k = m.d0 / d
     k = Math.max(k, minApproach / Math.max(toPivot, 1e-9), dMin / m.pose0.dist)
     k = Math.min(k, dMax / m.pose0.dist)
+    // twist: the change of the angle between the fingers, unwrapped step by step, rolls the view about the line of sight
+    const ang = Math.atan2(b.y - a.y, b.x - a.x)
+    let dA = ang - m.last
+    if (dA > Math.PI) dA -= 2 * Math.PI
+    else if (dA < -Math.PI) dA += 2 * Math.PI
+    m.last = ang
+    m.total += dA
+    const roll = useNavSettings.getState().touchTwist ? twistRoll(m.total) : 0
     const z = ctx.zoomPose(m.pose0, k, m.P)
+    // fingers turning clockwise carry the model with them: the camera rolls the other way about its own view axis
+    if (roll) z.q = m.pose0.q.clone().multiply(new Quaternion().setFromAxisAngle(AZ, roll))
     // then slide the view so the point that was between the fingers is between them now
     const w = hitPlane(ctx, z, mx, my, m.P)
     z.target.add(m.P.clone().sub(w))
@@ -126,6 +149,7 @@ export function installTouchNav(ctx: TouchCtx): () => void {
     const live = ctx.pose()
     live.target.copy(z.target)
     live.dist = z.dist
+    live.q.copy(z.q)
     ctx.invalidate()
   }
 

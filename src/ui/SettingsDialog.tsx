@@ -83,13 +83,16 @@ function Navigation() {
             </button>
           ))}
         </div>
-        <div className="set-help">{current.help} Middle-click twice fits everything. F6 fits all, F fits the selection. The wheel (or a pinch) zooms toward the cursor.</div>
+        <div className="set-help">{current.help} Middle-click twice fits everything. F6 fits all, F fits the selection. The wheel (or a pinch) zooms toward the cursor. On a touch screen one finger orbits, two fingers pan, pinch and twist, a double tap fits everything and a long press opens the menu.</div>
       </div>
       <Row id="inertia" label="Inertia" help="Keeps the view gliding briefly after you let go of an orbit or pan drag.">
         <Checkbox checked={nav.inertia} onChange={nav.setInertia} ariaLabel="Inertia" />
       </Row>
       <Row id="zoom" label="Zoom direction" help="Normal: scroll down zooms out, scroll up zooms in. Reverse flips it.">
         <Segmented value={nav.zoomDirection} onChange={(v) => nav.setZoomDirection(v as 'normal' | 'reverse')} options={[{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }]} />
+      </Row>
+      <Row id="twist" label="Two-finger twist" help="On a touch screen, turning two fingers around each other rolls the view about your line of sight, at the same time as they pan and pinch. A small turn is ignored so a pinch never rolls by accident. Turn it off if you keep rolling the view by mistake.">
+        <Checkbox checked={nav.touchTwist} onChange={nav.setTouchTwist} ariaLabel="Two-finger twist" />
       </Row>
       <Row id="orbit" label="Orbit speed" help="How far the view turns for each bit of mouse movement.">
         <Segmented value={String(nav.orbitSpeed)} onChange={(v) => nav.setOrbitSpeed(Number(v))} options={ORBIT_SPEEDS.map((n) => ({ value: String(n), label: n === 1 ? 'Normal' : `${n}x` }))} />
@@ -105,7 +108,12 @@ const MODES: { value: DisplayMode; label: string }[] = [
   { value: 'xray', label: 'X-ray' },
 ]
 
+const SELECTION_SWATCHES = ['#4fa3b8', '#e8b84a', '#e0684f', '#6cc06c', '#b07cd8', '#ffffff']
+
 function Display() {
+  const showOrigin = useUi((s) => s.showOrigin)
+  const selColor = useSettings((s) => s.selectionColor)
+  const setSelColor = useSettings((s) => s.setSelectionColor)
   const showGrid = useUi((s) => s.showGrid)
   const ssao = useUi((s) => s.ssao)
   const mode = useUi((s) => s.displayMode)
@@ -119,8 +127,21 @@ function Display() {
       <Row id="grid" label="Ground grid" help="Show the grid on the floor. It also has a button in the viewport toolbar.">
         <Checkbox checked={showGrid} onChange={(v) => useUi.setState({ showGrid: v })} ariaLabel="Ground grid" />
       </Row>
+      <Row id="origin" label="Origin axes" help="Show the origin: the red, green and blue axes and the three planes through it. It also has a button in the viewport toolbar.">
+        <Checkbox checked={showOrigin} onChange={(v) => useUi.setState({ showOrigin: v })} ariaLabel="Origin axes" />
+      </Row>
       <Row id="grid-spacing" label="Grid spacing" help="How close together grid lines may get. Fine shows more lines, Coarse fewer. The grid still adapts as you zoom, and the sketch grid and snapping follow it.">
         <Segmented value={density} onChange={(v) => setDensity(v as GridDensity)} options={[{ value: 'fine', label: 'Fine' }, { value: 'normal', label: 'Normal' }, { value: 'coarse', label: 'Coarse' }]} />
+      </Row>
+      <Row id="selection-color" label="Selection color" help="The color of selected bodies, faces, edges and sketch lines. What the pointer is over (before you click) is drawn in a lighter shade of it. Default uses the accent color of the theme.">
+        <div className="swatches" role="radiogroup" aria-label="Selection color" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button type="button" role="radio" aria-checked={selColor === ''} aria-label="Default" data-testid="sel-color-default" className="btn" onClick={() => setSelColor('')}>Default</button>
+          {SELECTION_SWATCHES.map((c) => (
+            <button key={c} type="button" role="radio" aria-checked={selColor === c} aria-label={c} data-testid={'sel-color-' + c.slice(1)} onClick={() => setSelColor(c)}
+              style={{ width: 20, height: 20, borderRadius: 4, background: c, border: selColor === c ? '2px solid var(--text)' : '1px solid var(--border)', cursor: 'pointer', padding: 0 }} />
+          ))}
+          <input type="color" aria-label="Custom selection color" data-testid="sel-color-custom" value={selColor || '#4fa3b8'} onChange={(e) => setSelColor(e.target.value)} style={{ width: 28, height: 22, padding: 0, border: 'none', background: 'none' }} />
+        </div>
       </Row>
       <Row id="display" label="Display style" help="How solids are drawn. Shaded + edges draws dark outlines on the edges.">
         <Select value={mode} onChange={(v) => setMode(v as DisplayMode)} options={MODES} />
@@ -151,7 +172,7 @@ function Help() {
         <button type="button" className="btn" data-testid="replay-tour" onClick={() => { useSettingsDialog.getState().setOpen(false); useHelp.getState().startTour() }}>Play it now</button>
       </Row>
       <Row id="reset" label="Reset all settings" help="Put every setting in this window back to its default, including the mouse style.">
-        <button type="button" className="btn" data-testid="reset-settings" onClick={() => { s.resetAll(); const n = useNavSettings.getState(); n.setPreset('fusion'); n.setInertia(false); n.setZoomDirection('normal'); n.setOrbitSpeed(1) }}>Reset</button>
+        <button type="button" className="btn" data-testid="reset-settings" onClick={() => { s.resetAll(); const n = useNavSettings.getState(); n.setPreset('fusion'); n.setInertia(false); n.setZoomDirection('normal'); n.setOrbitSpeed(1); n.setTouchTwist(true) }}>Reset</button>
       </Row>
     </>
   )

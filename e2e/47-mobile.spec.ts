@@ -217,6 +217,109 @@ test.describe('phone, portrait', () => {
     await app.shot('mobile-nav')
   })
 
+  /** Two fingers a radius from `mid`, turned by `deg` degrees (clockwise on screen when positive) while staying the same distance apart. */
+  async function twist(f: Fingers, mid: P, r: number, deg: number, steps = 12, shift: P = { x: 0, y: 0 }) {
+    const pts = (a: number, t: number): [P, P] => {
+      const rad = (a * Math.PI) / 180
+      const o = { x: shift.x * t, y: shift.y * t }
+      return [{ x: mid.x + o.x - r * Math.cos(rad), y: mid.y + o.y - r * Math.sin(rad) }, { x: mid.x + o.x + r * Math.cos(rad), y: mid.y + o.y + r * Math.sin(rad) }]
+    }
+    await f.down(...pts(0, 0))
+    for (let i = 1; i <= steps; i++) await f.move(...pts((deg * i) / steps, i / steps))
+    await f.up()
+  }
+  const upOf = (q: number[]) => {
+    const [x, y, z, w] = q
+    // the camera's screen-up axis in the world: q * (0, 1, 0)
+    return [2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x)]
+  }
+  const turned = async (app: App) => { await app.ev((c) => { c.runCommand('view.home'); c.runCommand('view.frame') }); await app.cameraStable() }
+
+  test('two-finger twist rolls the view about the line of sight, with a dead zone, combined with pinch and pan', async ({ app, page }) => {
+    await boxScene(app)
+    const f = await Fingers.on(page)
+    const mid = await at(page, 0.5, 0.6)
+    const base = await nav(app)
+    expect((await turn(app)).roll).toBeCloseTo(0, 3)
+
+    // a small turn (5 degrees) is inside the dead zone: nothing rolls
+    await twist(f, mid, 60, 5)
+    expect(Math.abs((await turn(app)).roll)).toBeLessThan(0.01)
+
+    // fingers turning clockwise roll the view clockwise by about the turn minus the dead zone (7 degrees)
+    await turned(app)
+    await twist(f, mid, 60, 50)
+    const cw = await nav(app)
+    const rollCw = (await turn(app)).roll
+    expect(rollCw).toBeGreaterThan((38 * Math.PI) / 180)
+    expect(rollCw).toBeLessThan((48 * Math.PI) / 180)
+    // only the roll: the distance is the same, and the direction we look in did not change
+    const back = (q: number[]) => { const [x, y, z, w] = q; return [2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)] }
+    expect(cw.dist).toBeCloseTo(base.dist, 0)
+    back(cw.q).forEach((v, i) => expect(v).toBeCloseTo(back(base.q)[i], 3))
+    // the screen-up axis really tilted out of the upright plane
+    const u = upOf(cw.q), u0 = upOf(base.q)
+    expect(u[0] * u0[0] + u[1] * u0[1] + u[2] * u0[2]).toBeLessThan(Math.cos((30 * Math.PI) / 180))
+
+    // counter-clockwise rolls the other way
+    await turned(app)
+    await twist(f, mid, 60, -50)
+    expect((await turn(app)).roll).toBeLessThan((-38 * Math.PI) / 180)
+
+    // the point between the fingers stays under them: the target moves so a world point there is still there
+    await turned(app)
+    const t0 = await nav(app)
+    await twist(f, mid, 60, 60)
+    const t1 = await nav(app)
+    // rolling about the line of sight through the point between the fingers (not the view centre) shifts the target a bit
+    expect(Math.hypot(t1.target[0] - t0.target[0], t1.target[1] - t0.target[1], t1.target[2] - t0.target[2])).toBeGreaterThan(0.5)
+
+    // twist, pinch and pan in one gesture: it rolls, zooms and pans together
+    await turned(app)
+    const c0 = await nav(app)
+    const ang = (deg: number, r: number, c: P): [P, P] => { const a = (deg * Math.PI) / 180; return [{ x: c.x - r * Math.cos(a), y: c.y - r * Math.sin(a) }, { x: c.x + r * Math.cos(a), y: c.y + r * Math.sin(a) }] }
+    await f.down(...ang(0, 40, mid))
+    for (let i = 1; i <= 12; i++) { const t = i / 12; await f.move(...ang(45 * t, 40 + 60 * t, { x: mid.x + 30 * t, y: mid.y - 90 * t })) }
+    await f.up()
+    const c1 = await nav(app)
+    expect(c1.dist).toBeLessThan(c0.dist * 0.7)
+    expect((await turn(app)).roll).toBeGreaterThan((30 * Math.PI) / 180)
+    expect(Math.hypot(c1.target[0] - c0.target[0], c1.target[1] - c0.target[1], c1.target[2] - c0.target[2])).toBeGreaterThan(2)
+    await app.shot('mobile-twist')
+
+    // a plain pinch and a plain pan never roll
+    await turned(app)
+    await f.drag2({ x: mid.x - 30, y: mid.y }, { x: mid.x + 30, y: mid.y }, { x: mid.x - 100, y: mid.y }, { x: mid.x + 100, y: mid.y })
+    await f.drag2({ x: mid.x - 40, y: mid.y }, { x: mid.x + 40, y: mid.y }, { x: mid.x + 20, y: mid.y - 120 }, { x: mid.x + 100, y: mid.y - 120 })
+    expect(Math.abs((await turn(app)).roll)).toBeLessThan(0.005)
+  })
+
+  test('the twist can be turned off in Settings, and stays off after a reload', async ({ app, page }) => {
+    await boxScene(app)
+    const f = await Fingers.on(page)
+    // Settings > Navigation > Two-finger twist
+    await app.ev((c) => c.runCommand('app.settings'))
+    await page.getByTestId('settings-dialog-nav-navigation').tap()
+    const cb = page.getByTestId('set-twist').getByRole('checkbox')
+    await expect(cb).toBeChecked()
+    await cb.tap()
+    await expect(cb).not.toBeChecked()
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('caddy.nav')!).touchTwist)).toBe(false)
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('settings-dialog')).toHaveCount(0)
+    await turned(app)
+    const mid = await at(page, 0.5, 0.6)
+    await twist(f, mid, 60, 60)
+    expect(Math.abs((await turn(app)).roll)).toBeLessThan(0.005)
+
+    // it survives a reload, and still does not roll
+    await page.reload()
+    await boxScene(app)
+    const f2 = await Fingers.on(page)
+    await twist(f2, mid, 60, 60)
+    expect(Math.abs((await turn(app)).roll)).toBeLessThan(0.005)
+  })
+
   test('tap selects (a little finger wobble is still a tap), tapping nothing clears, a long press opens the marking menu', async ({ app, page }) => {
     await boxScene(app)
     const f = await Fingers.on(page)

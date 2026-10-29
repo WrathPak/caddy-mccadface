@@ -34,7 +34,7 @@ export const GETTING_STARTED: InfoSection[] = [
   {
     title: 'Coming from Fusion 360?',
     paragraphs: [
-      'The layout will feel familiar: a ribbon of tools, a Browser, a parametric timeline with a rollback marker, sketches with constraints and joints for assemblies. The default mouse style is Fusion\'s (see Settings > Navigation, which also has SolidWorks, Blender and touchpad styles).',
+      'The layout will feel familiar: a ribbon of tools, a Browser, a parametric timeline with a rollback marker, sketches with constraints and joints for assemblies. The default mouse style is Fusion\'s (see Settings > Navigation, which also has SolidWorks, Blender and touchpad styles). On a phone or tablet one finger orbits, two fingers pan, pinch to zoom and twist to roll the view (Settings can turn the twist off), a double tap fits everything and a long press opens the menu.',
     ],
     rows: [
       ['Workspaces', 'The Design, Surface and Mesh workspaces from Fusion map to the Solid, Surface and Mesh tabs. Print, Drawing and Render have tabs too.'],
