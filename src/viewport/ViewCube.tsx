@@ -109,7 +109,7 @@ export function ViewCube() {
 
   return (
     <div className="viewcube" data-testid="viewcube">
-      <Tip label="ViewCube" desc="Click a face, edge or corner to look from there, or drag to orbit." side="left"><div className="vc-stage" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={() => !drag.current && setHot(null)}>
+      <div className="vc-stage" aria-label="ViewCube: click a face, edge or corner to look from there, or drag to orbit" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={() => !drag.current && setHot(null)}>
         <div className="vc-scene">
           {FACES.map((f, fi) => (
             <div key={f.label} className="vc-face" data-face={f.label} style={{ transform: faceMatrix(f), gridTemplateColumns: `${BEVEL}px 1fr ${BEVEL}px`, gridTemplateRows: `${BEVEL}px 1fr ${BEVEL}px` }}>
@@ -121,7 +121,7 @@ export function ViewCube() {
             </div>
           ))}
         </div>
-      </div></Tip>
+      </div>
       <Tip label="Home view" desc="Go back to the default angled view." side="left">
         <button type="button" className="vc-btn home" aria-label="Home view" onClick={() => viewportBus.emit('view', 'home')}>
           <House size={14} weight="fill" />

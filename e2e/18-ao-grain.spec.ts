@@ -28,6 +28,8 @@ async function blockStats(app: App, box: { x: number; y: number; w: number; h: n
 
 async function setup(app: App, ao: boolean) {
   await app.open()
+  // these sample canvas pixels, so the empty-scene hint drawn over it stays out of the way
+  await app.page.addStyleTag({ content: '.empty-hint { display: none !important }' })
   await app.ev((c, on) => {
     c.ui.getState().setTheme('light')
     if (c.ui.getState().ssao !== on) c.ui.getState().toggleSsao()
