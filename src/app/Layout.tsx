@@ -79,6 +79,7 @@ export function resetLayout() {
 registerCommand({ id: 'view.resetLayout', label: 'Reset Layout', icon: SquaresFour, category: 'View', run: resetLayout })
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined
+let leaving = false
 
 function onReady(e: DockviewReadyEvent) {
   dock = e.api
@@ -97,6 +98,13 @@ function onReady(e: DockviewReadyEvent) {
 export function Layout() {
   const components = useMemo(() => ({ ...baseComponents, ...panelComponents() }), [])
   // switching to the phone layout takes the dock down: forget it, and the layout it saved last stays for the way back
-  useEffect(() => () => { clearTimeout(saveTimer); dock = null; setPanelDock(null) }, [])
+  // (development's StrictMode takes an effect down and sets it up again at once: only a take-down that stays counts)
+  useEffect(() => {
+    leaving = false
+    return () => {
+      leaving = true
+      setTimeout(() => { if (leaving) { clearTimeout(saveTimer); dock = null; setPanelDock(null) } }, 0)
+    }
+  }, [])
   return <DockviewReact className="dockview-theme-caddy" components={components} onReady={onReady} />
 }

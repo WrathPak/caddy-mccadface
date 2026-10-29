@@ -7,7 +7,7 @@
  */
 const down = new Set<number>()
 
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
   const add = (e: PointerEvent) => { if (e.pointerType === 'touch') down.add(e.pointerId) }
   const del = (e: PointerEvent) => { if (e.pointerType === 'touch') down.delete(e.pointerId) }
   window.addEventListener('pointerdown', add, true)

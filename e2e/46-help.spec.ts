@@ -333,17 +333,17 @@ test.describe('on a phone', () => {
     await page.keyboard.press('Escape')
     await expect(dlg).toHaveCount(0)
 
-    // long press on a ribbon button
-    const save = app.ribbon('Save')
+    // long press on a tool of the phone layout's strip
+    const save = page.getByTestId('m-strip').getByRole('button', { name: 'Extrude' })
     const r = (await save.boundingBox())!
     const pt = { x: r.x + r.width / 2, y: r.y + r.height / 2 }
     const cdp = await page.context().newCDPSession(page)
     const touch = (type: 'touchStart' | 'touchEnd', p = pt) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: p.x, y: p.y }] })
     await touch('touchStart')
-    await expect(page.locator('.tip')).toContainText('Save the project', { timeout: 3000 })
+    await expect(page.locator('.tip')).toContainText('Extrude', { timeout: 3000 })
     await touch('touchEnd')
     await page.waitForTimeout(300)
-    await expect(page.locator('.tip')).toContainText('Save the project') // stays after the finger lifts
+    await expect(page.locator('.tip')).toContainText('Extrude') // stays after the finger lifts
     await app.shot('help-tooltip-phone')
     // a tap elsewhere puts it away
     const other = { x: 195, y: 500 }

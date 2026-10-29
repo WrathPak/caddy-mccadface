@@ -374,7 +374,7 @@ function SketchActions() {
         {hasSel && <Act className="m-act danger" data-testid="m-sk-delete" onClick={deleteSelection}><Trash size={16} /> Delete</Act>}
         <span className="grow" />
         <Act data-testid="m-sk-cancel" onClick={cancelSketch}><X size={16} /> Cancel</Act>
-        <Act className="m-act primary" data-testid="m-sk-finish" onClick={finishSketch}><Check size={16} /> Finish sketch</Act>
+        <Act className="m-act primary" data-testid="m-sk-finish" onClick={finishSketch}><Check size={16} /> Finish</Act>
       </div>
     </div>
   )

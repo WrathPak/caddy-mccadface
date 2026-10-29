@@ -96,7 +96,7 @@ html[data-coarse='true'] body { position: fixed; inset: 0; width: 100%; }
 .m-actions { position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 6; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px; background: var(--bg-1); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: var(--shadow-float); }
 .m-actions .grow { flex: 1; }
 .m-count { padding: 0 6px; color: var(--text-dim); font-size: var(--fs-md); }
-.m-act { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 12px; background: var(--bg-3); border: 1px solid var(--line-strong); border-radius: var(--radius); color: var(--text); font-size: var(--fs-md); white-space: nowrap; }
+.m-act { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 38px; padding: 0 9px; background: var(--bg-3); border: 1px solid var(--line-strong); border-radius: var(--radius); color: var(--text); font-size: var(--fs-md); white-space: nowrap; }
 .m-act:active:not(:disabled) { background: var(--bg-active); }
 .m-act.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); font-weight: 500; }
 .m-act.danger { color: var(--danger); }
@@ -124,9 +124,11 @@ html[data-coarse='true'] body { position: fixed; inset: 0; width: 100%; }
   .m-strip .rgroup-label { display: none; }
   .m-strip .rgroup-tools { padding-top: 2px; }
   .m-strip .rbtn { min-height: 44px; }
-  .m-sheet-insp { animation-name: m-in-right; left: auto; top: 0; width: min(50vw, 400px); height: auto; max-height: none; border-top: none; border-left: 1px solid var(--line-strong); padding-top: var(--safe-t); }
+  .m-sheet-insp { animation-name: m-in-right; left: auto; right: 0; top: 0; width: min(50vw, 400px); height: auto; max-height: none; border-top: none; border-left: 1px solid var(--line-strong); padding-top: var(--safe-t); }
   .m-sheet-insp .m-grab { display: none; }
   .m-sheet-bottom .m-tl { height: 52px; }
+  /* the page makes room for the side sheet instead of going under it, so the model stays in view */
+  .m-app:has(.m-sheet-insp) { padding-right: calc(var(--safe-r) + min(50vw, 400px)); }
   .m-app .viewcube { transform: scale(0.6); }
   .m-app .empty-hint { top: 40%; }
 }
