@@ -170,6 +170,36 @@ test('an L bracket: sketch with loose clicks, typed dimensions, extrude, hole, f
   expect((await app.bodies()).length).toBe(2)
 })
 
+test('an L clicked at plain pixel offsets from the origin (small features, a constraint glyph under the cursor): every segment constrained, corners stay square', async ({ app, page }) => {
+  await app.open()
+  await startSketch(app)
+  const o = await app.project(0, 0, 0)
+  // right 120 px, up 17, left 103, up 83, left 17, down to the origin: clicks only, a single move to each
+  for (const [dx, dy] of [[0, 0], [120, 0], [120, -17], [17, -17], [17, -100], [0, -100], [0, 0]]) {
+    await page.mouse.move(o.x + dx, o.y + dy)
+    await page.mouse.click(o.x + dx, o.y + dy)
+  }
+  let m = await sketchModel(app)
+  const ids = await app.ev((c) => c.sketch.getState().model.entities.filter((e: any) => e.type === 'line').map((e: any) => e.id as string)) // eslint-disable-line
+  expect(ids).toHaveLength(6)
+  for (const id of ids) {
+    expect(m.constraints.some((c) => ['horizontal', 'vertical', 'perpendicular'].includes(c.type) && c.refs.includes(id)), id).toBe(true)
+  }
+  for (const [a, b] of m.lines) for (const q of [a, b]) for (const v of q) expect(Math.abs(v - Math.round(v)), String(q)).toBeLessThan(1e-6)
+  // a 60 mm dimension on the bottom edge, typed right after placing it
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('d')
+  await dimension(app, [m.lines[0][1][0] / 2, 0], [m.lines[0][1][0] / 2, -8], '60')
+  m = await sketchModel(app)
+  expect(m.ok).toBe(true)
+  expect(m.lines[0][1][0]).toBeCloseTo(60, 6)
+  m.lines.forEach(([a, b], i) => {
+    const [c, d] = m.lines[(i + 1) % 6]
+    const u = [b[0] - a[0], b[1] - a[1]], v = [d[0] - c[0], d[1] - c[1]]
+    expect(Math.abs(u[0] * v[0] + u[1] * v[1]) / (Math.hypot(...u) * Math.hypot(...v)), `corner ${i}`).toBeLessThan(1e-6)
+  })
+})
+
 test('Split Body: an offset that misses the part keeps its arrow and says why nothing is cut', async ({ app, page }) => {
   await app.open()
   await addBox(app, 40, 30, 20)

@@ -454,6 +454,8 @@ function anchorOf(m: SketchModel, id: string): Vec2 | null {
 function Glyphs() {
   const model = useSketch((s) => s.model)
   const sel = useSketch((s) => s.sel)
+  // the glyphs can be clicked to select a constraint; while a drawing tool is active a click on one is a click on the sketch under it
+  const glyphsLive = useSketch((s) => s.tool === 'select' || s.tool === 'constraint')
   const clusters = useMemo(() => {
     const map = new Map<string, { at: Vec2; items: Constraint[] }>()
     for (const c of model.constraints) {
@@ -474,7 +476,7 @@ function Glyphs() {
         <Html key={id} position={v3(k.at)} zIndexRange={[15, 0]} style={{ pointerEvents: 'none' }}>
           <div className="sk-glyphs">
             {k.items.map((c) => (
-              <span key={c.id} className="sk-glyph" data-sel={sel.includes(c.id)} onPointerDown={(e) => { e.stopPropagation(); select([c.id], e.shiftKey) }}>{GLYPH[c.type]}</span>
+              <span key={c.id} className="sk-glyph" data-sel={sel.includes(c.id)} style={glyphsLive ? undefined : { pointerEvents: 'none' }} onPointerDown={(e) => { e.stopPropagation(); select([c.id], e.shiftKey) }}>{GLYPH[c.type]}</span>
             ))}
           </div>
         </Html>

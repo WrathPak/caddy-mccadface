@@ -8,7 +8,7 @@
  */
 import { closestOnSegment, cross, dist, dot, intersectCircleCircle, intersectLineCircle, intersectLineLine, norm, sub, add, mul, perp, polar } from './geom'
 import { circleOf, entityById, lineEnds, pos, tangentOf } from './model'
-import { gridStep, snap as baseSnap, type Guide, type Snap, type SnapCtx } from './snap'
+import { gridStep, gridValue, snap as baseSnap, type Guide, type Snap, type SnapCtx } from './snap'
 import type { SnapFlags } from './snapSettings'
 import type { SketchModel, Vec2 } from './types'
 
@@ -273,7 +273,7 @@ function place(raw: Vec2, A: Vec2, c: Cand, ctx: InferCtx): Snap {
   if (gridOn) {
     // along a horizontal / vertical ray the end lands on the grid lines themselves, along any other the length is rounded
     const axis = Math.abs(c.dir[1]) < 1e-9 ? 0 : Math.abs(c.dir[0]) < 1e-9 ? 1 : null
-    const snapped = axis === null ? Math.round(rawT / g) * g : (Math.round((A[axis] + c.dir[axis] * rawT) / g) * g - A[axis]) / c.dir[axis]
+    const snapped = axis === null ? gridValue(rawT, g, 6 * wpp) : (gridValue(A[axis] + c.dir[axis] * rawT, g, 6 * wpp) - A[axis]) / c.dir[axis]
     if (Math.abs(snapped) > 1e-9) t = snapped
   }
   let p = add(A, mul(c.dir, t))

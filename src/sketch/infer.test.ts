@@ -179,7 +179,7 @@ describe('round values with snapping on', () => {
 
   it('zoomed out the steps are coarser: lengths come out round at the current zoom', () => {
     const m = emptyModel()
-    const s = inferSnap([37.542, 0.3], grid(m, [0, 0], [], { wpp: 0.3 }))
+    const s = inferSnap([39.2, 0.3], grid(m, [0, 0], [], { wpp: 0.3 }))
     expect(s.pos[0] % 10).toBeCloseTo(0, 9)
   })
 })
@@ -253,5 +253,21 @@ describe('closing a loop on an existing point', () => {
     const flags = { ...defaultSnapFlags, grid: false, perpendicular: false, parallel: false, horizontalVertical: false }
     const s = inferSnap([0.1, 0.2], ctx(m, [0, 40], [], { flags }))
     expect(s.rel ?? []).toEqual([])
+  })
+})
+
+describe('small features at a coarse grid step', () => {
+  it('a segment shorter than a cell is rounded to the next finer step, never rounded away', () => {
+    const m = emptyModel()
+    // 0.25 mm per pixel: the grid step is 10 mm, the segment about 4 mm
+    const s = inferSnap([30, 4.25], ctx(m, [30, 0], [], { grid: true, wpp: 0.25, flags: { ...defaultSnapFlags, grid: true } }))
+    expect(s.rel?.[0]).toEqual({ type: 'vertical' })
+    expect(s.pos[1]).toBeCloseTo(4, 9)
+  })
+
+  it('a cursor close to a grid line of the step goes to that line', () => {
+    const m = emptyModel()
+    const s = inferSnap([30, 9.2], ctx(m, [30, 0], [], { grid: true, wpp: 0.25, flags: { ...defaultSnapFlags, grid: true } }))
+    expect(s.pos[1]).toBeCloseTo(10, 9)
   })
 })
