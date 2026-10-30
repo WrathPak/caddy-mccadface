@@ -84,12 +84,13 @@ test('a 3 million triangle STL imports without a long main-thread task and orbit
   const b = (await page.locator('.vp canvas').boundingBox())!
   const cx = b.x + b.width / 2, cy = b.y + b.height / 2
   await page.evaluate(() => {
-    const w = window as unknown as { __frames: [number, number][]; __stop: boolean }
+    const w = window as unknown as { __frames: [number, number, boolean][]; __stop: boolean; __caddy: { lodState: () => boolean[][] } }
     w.__frames = []
     w.__stop = false
     let last = performance.now()
     const tick = (t: number) => {
-      w.__frames.push([t, t - last])
+      // the frame time, and whether the low-res copy was up for it
+      w.__frames.push([t, t - last, !!w.__caddy.lodState()[0]?.[1]])
       last = t
       if (!w.__stop) requestAnimationFrame(tick)
     }
@@ -112,8 +113,11 @@ test('a 3 million triangle STL imports without a long main-thread task and orbit
   expect(await app.ev((c) => c.lodState())).toEqual([[false, true]])
   await page.mouse.up({ button: 'middle' })
   await page.keyboard.up('Shift')
-  const all = await page.evaluate(() => { const w = window as unknown as { __frames: [number, number][]; __stop: boolean }; w.__stop = true; return w.__frames })
-  const frames = all.filter(([t]) => t >= from && t <= to).map(([, d]) => d).sort((a, c) => a - c)
+  const all = await page.evaluate(() => { const w = window as unknown as { __frames: [number, number, boolean][]; __stop: boolean }; w.__stop = true; return w.__frames })
+  const inOrbit = all.filter(([t]) => t >= from && t <= to)
+  const slow = inOrbit.filter(([, d]) => d > 50).map(([t, d, lod]) => `${Math.round(t - from)}:${Math.round(d)}${lod ? '' : 'F'}`)
+  console.log(`slow orbit frames (ms into the drag:frame ms, F = full mesh up): ${slow.join(' ') || 'none'}`)
+  const frames = inOrbit.map(([, d]) => d).sort((a, c) => a - c)
   const median = frames[Math.floor(frames.length / 2)]
   const p90 = frames[Math.floor(frames.length * 0.9)]
   const orbitLong = await longTasks(app)
