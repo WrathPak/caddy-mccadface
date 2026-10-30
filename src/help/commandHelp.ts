@@ -247,7 +247,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
   'help.open': h('Open the help: getting started, keyboard shortcuts and a guide for every workspace.'),
   'help.shortcuts': h('See every keyboard shortcut in one list.'),
   'help.tour': h('Replay the short tour of the screen.'),
-  'app.settings': h('Open the settings: units, theme, navigation, display, autosave and help options.'),
+  'app.settings': h('Open the settings: units, theme, navigation (including touch twist), display (origin axes, selection color), autosave and help options.'),
 }
 
 /** The help for a command: this table first, then the command's own `tip`. */

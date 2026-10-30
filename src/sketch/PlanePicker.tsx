@@ -40,7 +40,7 @@ export function PlanePicker() {
             onClick={(e) => { e.stopPropagation(); useUi.getState().setSelection([{ kind: 'plane', id }]) }}
           >
             <planeGeometry args={[S * 2, S * 2]} />
-            <meshBasicMaterial color={colors.accent} transparent opacity={hot ? 0.38 : 0.14} side={DoubleSide} depthWrite={false} />
+            <meshBasicMaterial color={hot ? colors.sel : colors.accent} transparent opacity={hot ? 0.38 : 0.14} side={DoubleSide} depthWrite={false} />
           </mesh>
         )
       })}

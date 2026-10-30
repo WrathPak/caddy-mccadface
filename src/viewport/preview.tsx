@@ -98,7 +98,7 @@ export function ProfilePicker() {
             onPointerOut={() => setHover(null)}
             onClick={(e) => { e.stopPropagation(); pick.toggle?.(it.ref) }}
           >
-            <meshBasicMaterial color={colors.accent} transparent opacity={sel ? 0.5 : hot ? 0.36 : 0.14} side={DoubleSide} depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
+            <meshBasicMaterial color={sel || hot ? colors.sel : colors.accent} transparent opacity={sel ? 0.5 : hot ? 0.36 : 0.14} side={DoubleSide} depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
           </mesh>
         )
       })}
@@ -144,7 +144,7 @@ export function CurvePicker() {
         const hot = hover === it.ref
         return (
           <group key={it.ref}>
-            <Line points={it.pts} color={sel ? '#ffffff' : hot ? '#e8b84a' : colors.accent} lineWidth={sel ? 4 : hot ? 3.5 : 2.5} renderOrder={8} depthTest={false} raycast={() => null} />
+            <Line points={it.pts} color={sel ? (colors.custom ? colors.sel : '#ffffff') : hot ? (colors.custom ? colors.hover : '#e8b84a') : colors.accent} lineWidth={sel ? 4 : hot ? 3.5 : 2.5} renderOrder={8} depthTest={false} raycast={() => null} />
             <Line
               points={it.pts} color={colors.accent} lineWidth={14} transparent opacity={0} depthWrite={false} renderOrder={8}
               onPointerMove={(e) => { e.stopPropagation(); if (hover !== it.ref) setHover(it.ref) }}
@@ -249,7 +249,7 @@ export function ArrowManipulator() {
   }
 
   if (!m.active) return null
-  const color = hot ? colors.accent : '#e8b84a'
+  const color = hot ? colors.sel : '#e8b84a'
   return (
     <group position={m.origin} quaternion={quat}>
       <group position={[0, 0, m.tip]}>

@@ -44,6 +44,8 @@ interface Persisted {
   displayMode: DisplayMode
   gridDensity: GridDensity
   pixelRatio: PixelRatio
+  showOrigin: boolean
+  selectionColor: string
   autosave: boolean
   autosaveSeconds: number
   tooltips: boolean
@@ -60,12 +62,17 @@ const DEFAULTS: Persisted = {
   displayMode: 'shadedEdges',
   gridDensity: 'normal',
   pixelRatio: 'auto',
+  showOrigin: true,
+  selectionColor: '',
   autosave: true,
   autosaveSeconds: 30,
   tooltips: true,
   beginnerTips: true,
   tourSeen: false,
 }
+
+/** A selection colour is '#rrggbb', or empty for the theme's accent. */
+export const validSelectionColor = (v: unknown): string => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : '')
 
 const oneOf = <T extends string>(v: unknown, list: readonly T[], d: T): T => (list.includes(v as T) ? (v as T) : d)
 
@@ -83,6 +90,8 @@ function load(): Persisted {
       displayMode: oneOf(v.displayMode, ['shaded', 'shadedEdges', 'wireframe', 'xray'], DEFAULTS.displayMode),
       gridDensity: oneOf(v.gridDensity, ['fine', 'normal', 'coarse'], DEFAULTS.gridDensity),
       pixelRatio: oneOf(v.pixelRatio, ['auto', '1', '1.5', '2', 'native'], DEFAULTS.pixelRatio),
+      showOrigin: v.showOrigin !== false,
+      selectionColor: validSelectionColor(v.selectionColor),
       autosave: v.autosave !== false,
       autosaveSeconds: AUTOSAVE_CHOICES.includes(v.autosaveSeconds as number) ? (v.autosaveSeconds as number) : DEFAULTS.autosaveSeconds,
       tooltips: v.tooltips !== false,
@@ -99,11 +108,14 @@ interface SettingsState {
   themeMode: ThemeMode
   gridDensity: GridDensity
   pixelRatio: PixelRatio
+  /** Colour of selected and pre-selected (hovered) things in the viewport; empty means the accent. */
+  selectionColor: string
   autosave: boolean
   autosaveSeconds: number
   tooltips: boolean
   beginnerTips: boolean
   tourSeen: boolean
+  setSelectionColor: (c: string) => void
   setPixelRatio: (p: PixelRatio) => void
   setDefaultWorkspace: (w: string) => void
   setThemeMode: (m: ThemeMode) => void
@@ -131,12 +143,14 @@ export const useSettings = create<SettingsState>((set, get) => {
     themeMode: init.themeMode,
     gridDensity: init.gridDensity,
     pixelRatio: init.pixelRatio,
+    selectionColor: init.selectionColor,
     autosave: init.autosave,
     autosaveSeconds: init.autosaveSeconds,
     tooltips: init.tooltips,
     beginnerTips: init.beginnerTips,
     tourSeen: init.tourSeen,
     setPixelRatio: (pixelRatio) => set({ pixelRatio }),
+    setSelectionColor: (c) => set({ selectionColor: validSelectionColor(c) }),
     setDefaultWorkspace: (defaultWorkspace) => set({ defaultWorkspace }),
     setThemeMode: (themeMode) => {
       set({ themeMode })
@@ -159,8 +173,8 @@ export const useSettings = create<SettingsState>((set, get) => {
       const s = get()
       s.setThemeMode(d.themeMode)
       s.setGridDensity(d.gridDensity)
-      set({ pixelRatio: d.pixelRatio, defaultWorkspace: d.defaultWorkspace, autosave: d.autosave, autosaveSeconds: d.autosaveSeconds, tooltips: d.tooltips, beginnerTips: d.beginnerTips })
-      useUi.setState({ units: d.units, showGrid: d.showGrid, ssao: defaultSsao(), displayMode: d.displayMode })
+      set({ pixelRatio: d.pixelRatio, selectionColor: d.selectionColor, defaultWorkspace: d.defaultWorkspace, autosave: d.autosave, autosaveSeconds: d.autosaveSeconds, tooltips: d.tooltips, beginnerTips: d.beginnerTips })
+      useUi.setState({ units: d.units, showGrid: d.showGrid, showOrigin: d.showOrigin, ssao: defaultSsao(), displayMode: d.displayMode })
     },
   }
 })
@@ -177,6 +191,8 @@ function save() {
     displayMode: u.displayMode,
     gridDensity: s.gridDensity,
     pixelRatio: s.pixelRatio,
+    showOrigin: u.showOrigin,
+    selectionColor: s.selectionColor,
     autosave: s.autosave,
     autosaveSeconds: s.autosaveSeconds,
     tooltips: s.tooltips,
@@ -194,13 +210,13 @@ export function startSettings() {
   const init = load()
   setGridDensity(init.gridDensity)
   const ui = useUi.getState()
-  useUi.setState({ units: init.units, showGrid: init.showGrid, ssao: init.ssao, displayMode: init.displayMode })
+  useUi.setState({ units: init.units, showGrid: init.showGrid, showOrigin: init.showOrigin, ssao: init.ssao, displayMode: init.displayMode })
   ui.setTheme(resolveTheme(init.themeMode))
   const ws = init.defaultWorkspace
   if (ws !== 'solid') ui.setWorkspace(ws as Workspace)
   useSettings.subscribe(save)
   useUi.subscribe((s, p) => {
-    if (s.units !== p.units || s.showGrid !== p.showGrid || s.ssao !== p.ssao || s.displayMode !== p.displayMode) save()
+    if (s.units !== p.units || s.showGrid !== p.showGrid || s.showOrigin !== p.showOrigin || s.ssao !== p.ssao || s.displayMode !== p.displayMode) save()
     // a theme change from anywhere that is not the setting itself (a plugin, a test) becomes the explicit choice
     if (s.theme !== p.theme && resolveTheme(useSettings.getState().themeMode) !== s.theme) useSettings.setState({ themeMode: s.theme })
   })
