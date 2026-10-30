@@ -42,7 +42,7 @@ function useSketchColors() {
   const c = useVpColors()
   return useMemo(
     () => ({
-      free: c.accent, fixed: read('--text', '#d4d7dc'), sel: read('--warn', '#d2a24a'), hover: read('--accent-hover', '#78c4d3'),
+      free: c.accent, fixed: read('--text', '#d4d7dc'), sel: c.custom ? c.sel : read('--warn', '#d2a24a'), hover: c.hover,
       cons: read('--text-faint', '#636973'), dim: read('--text-dim', '#9096a0'), ref: read('--text-dim', '#9096a0'), danger: read('--danger', '#d9625a'), grid: c.grid, major: c.gridMajor,
       axisX: c.axisX, axisY: c.axisY,
     }),

@@ -57,6 +57,7 @@ function CosmeticThreads({ r }: { r: number }) {
 
 export function ConstructLayer() {
   const colors = useVpColors()
+  const selWhite = colors.custom ? colors.sel : '#ffffff'
   const half = useSceneHalfSize()
   const r = half * 0.012
   const features = useDoc((s) => s.features)
@@ -89,11 +90,11 @@ export function ConstructLayer() {
     <group name="construct-layer">
       {axisList.map(({ id, a }) => (
         <group key={id}>
-          <Line points={axisLine(a)} color={isSel('axis', id) ? '#ffffff' : colors.accent} lineWidth={id === 'preview' ? 2.5 : 1.6} dashed dashSize={half * 0.03} gapSize={half * 0.015} raycast={noRay} />
+          <Line points={axisLine(a)} color={isSel('axis', id) ? selWhite : colors.accent} lineWidth={id === 'preview' ? 2.5 : 1.6} dashed dashSize={half * 0.03} gapSize={half * 0.015} raycast={noRay} />
         </group>
       ))}
       {pointList.map(({ id, p }) => (
-        <Dot key={id} at={p} r={r} color={isSel('point', id) ? '#ffffff' : colors.accent} hot={hot === 'pt' + id}
+        <Dot key={id} at={p} r={r} color={isSel('point', id) ? selWhite : colors.accent} hot={hot === 'pt' + id}
           onClick={pickKind('point') ? () => select('point', id) : undefined} onHover={pickKind('point') ? (on) => setHot(on ? 'pt' + id : null) : undefined} />
       ))}
       <CosmeticThreads r={r} />
@@ -107,7 +108,7 @@ export function ConstructLayer() {
           <mesh key={'pa' + id} position={a.origin.length ? mid : mid} quaternion={q} renderOrder={30}
             onClick={(e) => { e.stopPropagation(); select('axis', id) }} onPointerOver={(e) => { e.stopPropagation(); setHot('ax' + id) }} onPointerOut={() => setHot(null)}>
             <cylinderGeometry args={[r * 0.9, r * 0.9, L * 2, 8]} />
-            <meshBasicMaterial color={colors.accent} transparent opacity={hot === 'ax' + id ? 0.55 : 0.12} depthTest={false} />
+            <meshBasicMaterial color={hot === 'ax' + id ? colors.sel : colors.accent} transparent opacity={hot === 'ax' + id ? 0.55 : 0.12} depthTest={false} />
           </mesh>
         )
       })}
@@ -115,7 +116,7 @@ export function ConstructLayer() {
         <mesh key={'pp' + id} position={plane.origin} quaternion={planeQuaternion(plane)} renderOrder={5}
           onClick={(e) => { e.stopPropagation(); select('plane', id) }} onPointerMove={(e) => { e.stopPropagation(); if (hot !== 'pl' + id) setHot('pl' + id) }} onPointerOut={() => setHot(null)}>
           <planeGeometry args={[half * 2, half * 2]} />
-          <meshBasicMaterial color={colors.accent} transparent opacity={isSel('plane', id) ? 0.4 : hot === 'pl' + id ? 0.35 : 0.1} side={DoubleSide} depthWrite={false} />
+          <meshBasicMaterial color={isSel('plane', id) || hot === 'pl' + id ? colors.sel : colors.accent} transparent opacity={isSel('plane', id) ? 0.4 : hot === 'pl' + id ? 0.35 : 0.1} side={DoubleSide} depthWrite={false} />
         </mesh>
       ))}
       {pickKind('vertex') && geometry.flatMap((b) => {
@@ -123,7 +124,7 @@ export function ConstructLayer() {
         const vp = b.mesh.vertexPos
         return Array.from({ length: vp.length / 3 }, (_, i) => {
           const k = `v${b.id}.${i}`
-          return <Dot key={k} at={[vp[i * 3], vp[i * 3 + 1], vp[i * 3 + 2]]} r={r * 0.8} color={isSel('vertex', b.id, i) ? '#ffffff' : colors.accent} hot={hot === k}
+          return <Dot key={k} at={[vp[i * 3], vp[i * 3 + 1], vp[i * 3 + 2]]} r={r * 0.8} color={isSel('vertex', b.id, i) ? selWhite : colors.accent} hot={hot === k}
             onClick={() => select('vertex', b.id, i)} onHover={(on) => setHot(on ? k : null)} />
         })
       })}
