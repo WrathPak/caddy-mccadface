@@ -518,3 +518,69 @@ test('surface workspace: Fit to Surface moves the top of a box onto a surface, w
   await expect(page.locator('.inspector-foot')).toBeHidden()
   near(await app.volume(box), 600)
 })
+
+test('surface workspace: extending two neighbouring edges fills the corner, and a closed surface thickens into a hollow solid', async ({ app }) => {
+  test.setTimeout(120_000)
+  await app.open()
+  await app.tab('Surface')
+  const add = async (type: string, params: Record<string, unknown>) => {
+    const id = await app.ev((c, a) => c.doc.getState().addFeature(a.type, a.params), { type, params })
+    await app.idle()
+    return id as string
+  }
+
+  // a 20 x 10 patch: pick the edge on x = 20 and the one on y = 10 (they meet at a corner) and extend them by 3
+  const sk = await addSketch(app, XY, [
+    { k: 'line', a: [0, 0], b: [20, 0] }, { k: 'line', a: [20, 0], b: [20, 10] }, { k: 'line', a: [20, 10], b: [0, 10] }, { k: 'line', a: [0, 10], b: [0, 0] },
+  ])
+  const [rect] = await chainsOf(app, sk)
+  const patch = await add('surfacePatch', { boundary: [rect.ref], continuity: 'g0' })
+  const edgeOn = (axis: number, v: number): Promise<number[]> => app.ev((c, a) => {
+    const b = c.doc.getState().geometry.find((x: any) => x.id === a.id) // eslint-disable-line
+    const e = b.mesh.edges, ids = b.mesh.edgeIds
+    const out = new Set<number>()
+    for (let s = 0; s < e.length / 6; s++) if (Math.abs(e[s * 6 + a.axis] - a.v) < 1e-4 && Math.abs(e[s * 6 + 3 + a.axis] - a.v) < 1e-4) out.add(ids[s])
+    return [...out]
+  }, { id: patch, axis, v })
+  const [ex] = await edgeOn(0, 20), [ey] = await edgeOn(1, 10)
+  await select(app, [{ kind: 'edge', id: patch, index: ex }, { kind: 'edge', id: patch, index: ey }])
+  await app.ribbon('Extend').first().click()
+  await expect(title(app)).toHaveText('Extend')
+  await app.field('Distance', '3')
+  await app.ok()
+  expect((await app.features()).at(-1)!.state).toBe('ok')
+  const ext = await info(app, patch)
+  near(ext.area, 200 + 30 + 60 + 9, 0.01) // two strips and the 3 x 3 corner
+  expect(ext.faces).toBe(4)
+  expect(ext.free).toBe(8) // two far edges, two corner rims, two strip ends, two untouched edges
+
+  // a closed box surface (a box taken apart and stitched back without making a solid) thickens into a hollow solid
+  const boxId = await app.ev((c) => c.doc.getState().addFeature('box', { width: 10, depth: 10, height: 10, position: [100, 0, 0] }, 'Box'))
+  await app.idle()
+  const un = await add('surfaceUnstitch', { source: [boxId] })
+  const pieces = (await infos(app)).filter((b) => b.id === un || b.id.startsWith(un + '.')).map((b) => b.id)
+  expect(pieces.length).toBe(6)
+  await add('surfaceStitch', { surfaces: pieces, tolerance: 0.01, solid: false })
+  const closed = await info(app, pieces[0])
+  expect(closed.surface).toBe(true)
+  expect(closed.free).toBe(0)
+
+  await select(app, [{ kind: 'body', id: pieces[0] }])
+  await app.ribbon('Thicken').first().click()
+  await expect(title(app)).toHaveText('Thicken')
+  await app.field('Thickness', '2')
+  await app.ok()
+  const last = (await app.features()).at(-1)!
+  expect(last.state, last.error).toBe('ok')
+  const hollow = await info(app, pieces[0])
+  expect(hollow.surface).toBe(false)
+  expect(hollow.faces).toBe(12) // outer and inner wall
+  const across = await app.ev((c, id) => {
+    const b = c.doc.getState().geometry.find((x: any) => x.id === id) // eslint-disable-line
+    const p = b.mesh.positions
+    let lo = Infinity, hi = -Infinity
+    for (let i = 0; i < p.length; i += 3) { lo = Math.min(lo, p[i]); hi = Math.max(hi, p[i]) }
+    return hi - lo
+  }, pieces[0])
+  expect(Math.abs(across - 14) < 0.01 || Math.abs(across - 10) < 0.01).toBe(true) // 2 mm outward makes 14 across, inward keeps the 10
+})

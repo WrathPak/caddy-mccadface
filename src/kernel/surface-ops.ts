@@ -592,7 +592,8 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
     if (j >= 0 && !(owners.get(j) ?? []).includes(fi)) owners.set(j, [...(owners.get(j) ?? []), fi])
   }))
   const o = oc()
-  const strips: NShape[] = []
+  /** what a corner needs to know about each strip: the edge's two ends, where they end up, and the way out */
+  const info: StripInfo[] = []
   for (const ei of a.edges) {
     const edge = topo.edges[ei]
     if (!edge) throw new Error('An edge you picked no longer exists')
@@ -613,14 +614,18 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
     }
     // which way is out? the side of the edge that is not on the face
     const eps = Math.max(1e-3, Math.min(a.distance, edge.length) * 0.05)
-    const mid = count >> 1
-    const away = (s: number) => measureDistanceBetween(face as never, makeVertex(add3(pts[mid], mul3(dirs[mid], s * eps))) as never)
+    // (tested at the middle of the edge: its ends can touch other faces of the surface)
+    const pm = v3(edge.pointAt(0.5))
+    const dm = norm3(cross3(v3(face.normalAt(pm)), norm3(v3(edge.tangentAt(0.5)))))
+    const away = (s: number) => measureDistanceBetween(face as never, makeVertex(add3(pm, mul3(dm, s * eps))) as never)
     const sign = away(1) >= away(-1) ? 1 : -1
     const out = dirs.map((d) => mul3(d, sign))
     const sections: Wire[] = [assembleWire([edge.clone() as Edge])]
+    let far: Vec3[] = []
     const through = (q: Vec3[]): Edge => (line && q.every((_, k) => dist3(sub3(q[k], pts[k]), sub3(q[0], pts[0])) < 1e-9) ? makeLine(q[0], q[q.length - 1]) : makeBSplineApproximation(q, { tolerance: 1e-5, smoothing: null, degMax: 8 } as never))
     if (a.mode === 'tangent') {
-      sections.push(assembleWire([through(pts.map((p, k) => add3(p, mul3(out[k], a.distance))))]))
+      far = pts.map((p, k) => add3(p, mul3(out[k], a.distance)))
+      sections.push(assembleWire([through(far)]))
     } else {
       // natural: walk out over the surface the face sits on, a few steps, so the extension keeps its curvature
       const surf = o.BRep_Tool.Surface(face.wrapped)
@@ -650,6 +655,7 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
         return path
       })
       for (let s = 0; s < steps; s++) sections.push(assembleWire([through(walk.map((w) => w[s]))]))
+      far = walk.map((w) => w[steps - 1])
     }
     const mk = new o.BRepOffsetAPI_ThruSections(false, a.mode === 'tangent', 1e-6)
     try {
@@ -657,13 +663,126 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
       sections.forEach((w) => mk.AddWire(w.wrapped))
       mk.Build()
       const shape = nonEmpty(cast(mk.Shape()) as unknown as Sh, 'Could not extend this edge')
-      strips.push({ shape, faces: topoOf(shape as unknown as AnyShape).faces.map(() => [`${a.id}:ext:${names.edges[ei]?.[0] ?? ei}`]) })
+      info.push({ shape, face, ends: [pts[0], pts[count - 1]], far: [far[0], far[count - 1]], out: [out[0], out[count - 1]], label: String(names.edges[ei]?.[0] ?? ei) })
     } finally { mk.delete() }
   }
   const tol = 1e-4 * Math.max(1, a.distance)
-  const { out } = sewNamed([src, ...strips.map((s) => ({ shape: s.shape, faces: finalize(any(s), s.faces, a.id, 'x') }))], tol, a.id)
+  const fills = cornerFills(info, a, tol)
+  const strips = info.map((i) => {
+    const faces = topoOf(i.shape as unknown as AnyShape).faces.map(() => [`${a.id}:ext:${i.label}`])
+    return { shape: i.shape, faces: finalize(i.shape as unknown as AnyShape, faces, a.id, 'x') }
+  })
+  const parts = [src, ...strips, ...fills]
+  const { out } = sewNamed(parts, tol, a.id)
   return send(h, a, out)
 })
+
+interface StripInfo {
+  /** the strip; a reflex corner replaces it with the mitred strip */
+  shape: Sh
+  face: Face
+  /** the edge's walked start and end, the far corners of the strip at each, and the way out at each */
+  ends: [Vec3, Vec3]
+  far: [Vec3, Vec3]
+  out: [Vec3, Vec3]
+  label: string
+}
+
+/** The edge of `shape` that runs between the two points (either way round), if any. */
+function edgeBetween(shape: Sh, p: Vec3, q: Vec3): Edge | null {
+  for (const e of topoOf(shape as unknown as AnyShape).edges) {
+    const s = v3(e.startPoint), t = v3(e.endPoint)
+    if ((dist3(s, p) < SNAP && dist3(t, q) < SNAP) || (dist3(s, q) < SNAP && dist3(t, p) < SNAP)) return e
+  }
+  return null
+}
+
+/**
+ * A reflex corner (the surface wraps round it, as at the inside of an L): the two strips overlap there, so each is cut
+ * along the mitre plane through the corner (the bisector of the two ways out, standing on the surface) and they meet on
+ * one shared edge, like a picture frame. The planes' sides are picked from where each strip's other end is.
+ */
+function mitre(A: StripInfo, B: StripInfo, ea: 0 | 1, eb: 0 | 1, P: Vec3, a: SurfaceExtendArgs, o: ReturnType<typeof oc>) {
+  const m = norm3(sub3(A.out[ea], B.out[eb]))
+  const bis = norm3(add3(A.out[ea], B.out[eb]))
+  const n = norm3(cross3(m, bis))
+  const reach = 50 * (a.distance + Math.max(dist3(A.ends[0], A.ends[1]), dist3(B.ends[0], B.ends[1])))
+  const corners = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([x, y]) => add3(P, add3(mul3(bis, x * reach), mul3(n, y * reach))))
+  const cut = (S: StripInfo, dir: Vec3) => {
+    const slab = prismNamed(makePolygon(corners) as unknown as Sh, mul3(dir, reach))
+    const com = new o.BRepAlgoAPI_Common(S.shape.wrapped, any(slab).wrapped)
+    try {
+      com.Build()
+      S.shape = nonEmpty(cast(com.Shape()) as unknown as Sh, 'Could not mitre the corner between the extended edges')
+    } finally { com.delete() }
+  }
+  cut(A, mul3(m, -1))
+  cut(B, m)
+}
+
+/**
+ * Fusion's corner: where two extended edges meet at a convex corner the two strips leave a notch between them, so a
+ * patch closes it. Its four sides are the two strips' side edges at the corner (shared, so it sews on) and two new edges
+ * out to the corner a parallelogram completes; a natural extension lays those on the surface the faces sit on, so a
+ * cylinder or sphere corner stays on it. The patch is a plate fitted to the four sides, so it is C0 with both strips.
+ * Corners that are flat (the strips already meet along one side edge) or reflex (the strips overlap) need no patch.
+ */
+function cornerFills(info: StripInfo[], a: SurfaceExtendArgs, tol: number): NShape[] {
+  const o = oc()
+  const fills: NShape[] = []
+  const reach = Math.max(1e-3, 4 * tol)
+  for (let i = 0; i < info.length; i++) {
+    for (let j = i + 1; j < info.length; j++) {
+      for (const ea of [0, 1] as const) {
+        for (const eb of [0, 1] as const) {
+          const A = info[i], B = info[j]
+          const P = A.ends[ea]
+          if (dist3(P, B.ends[eb]) > SNAP) continue
+          const PA = A.far[ea], PB = B.far[eb]
+          if (dist3(PA, PB) < reach) continue
+          // convex only: A's way out has to point away from B's edge and the other way round, or the strips overlap
+          const toA = sub3(A.ends[1 - ea], P), toB = sub3(B.ends[1 - eb], P)
+          const dA = dot3(A.out[ea], toB), dB = dot3(B.out[eb], toA)
+          const eps = 1e-6 * Math.max(1, a.distance)
+          if (dA > eps && dB > eps) { mitre(A, B, ea, eb, P, a, o); continue }
+          if (dA >= 0 || dB >= 0) continue
+          const sideA = edgeBetween(A.shape, P, PA), sideB = edgeBetween(B.shape, P, PB)
+          if (!sideA || !sideB) throw new Error('Could not close the corner between the extended edges')
+          // the corner point a parallelogram completes, and the rim curves out to it
+          let onSurface = (q: Vec3): Vec3 => q
+          if (a.mode === 'natural') {
+            const surf = o.BRep_Tool.Surface(A.face.wrapped)
+            onSurface = (q) => {
+              const pp = new o.GeomAPI_ProjectPointOnSurf(pntOf(q), surf)
+              if (!(pp.NbPoints() > 0)) throw new Error('Natural extension is not available for this surface: use Tangent')
+              const r = pp.NearestPoint()
+              return [r.X(), r.Y(), r.Z()]
+            }
+          }
+          const PC = onSurface(sub3(add3(PA, PB), P))
+          const rim = (from: Vec3, by: Vec3): Edge => {
+            if (a.mode !== 'natural') return makeLine(from, PC)
+            const n = 8
+            const q: Vec3[] = []
+            for (let k = 0; k <= n; k++) q.push(k === n ? PC : k === 0 ? from : onSurface(add3(from, mul3(by, k / n))))
+            return makeBSplineApproximation(q, { tolerance: 1e-6, smoothing: null, degMax: 8 } as never)
+          }
+          const rimA = rim(PA, sub3(PB, P)), rimB = rim(PB, sub3(PA, P))
+          const mk = new o.BRepOffsetAPI_MakeFilling(3, 15, 2, false, 1e-5, 1e-4, 0.01, 0.1, 8, 9)
+          try {
+            for (const e of [sideA, sideB, rimA, rimB]) mk.Add(e.wrapped, o.GeomAbs_Shape.GeomAbs_C0, true)
+            mk.Build()
+            if (!mk.IsDone()) throw new Error('Could not close the corner between the extended edges')
+            const shape = nonEmpty(cast(mk.Shape()) as unknown as Sh, 'Could not close the corner between the extended edges')
+            const faces = topoOf(shape as unknown as AnyShape).faces.map(() => [`${a.id}:corner:${A.label}:${B.label}`])
+            fills.push({ shape, faces: finalize(shape as unknown as AnyShape, faces, a.id, 'c') })
+          } finally { mk.delete() }
+        }
+      }
+    }
+  }
+  return fills
+}
 
 // ------------------------------------------------------------------------------------------------ stitch / unstitch
 
@@ -747,22 +866,106 @@ export interface SurfaceThickenArgs {
 /** The edge as OCC walks it: where it starts and ends once its orientation is applied. */
 const walked = (e: Edge): [Vec3, Vec3] => (e.orientation === 'forward' ? [v3(e.startPoint), v3(e.endPoint)] : [v3(e.endPoint), v3(e.startPoint)])
 
+/** `s` offset along its face normals by `d` (positive: the way the faces point). */
+function offsetNamed(s: NShape, d: number, fid: string, join: 'arc' | 'intersection' = 'arc'): NShape {
+  const o = oc()
+  const mk = new o.BRepOffsetAPI_MakeOffsetShape()
+  try {
+    mk.PerformByJoin(any(s).wrapped, d, 1e-4, o.BRepOffset_Mode.BRepOffset_Skin, false, false, join === 'arc' ? o.GeomAbs_JoinType.GeomAbs_Arc : o.GeomAbs_JoinType.GeomAbs_Intersection, false)
+    if (!mk.IsDone()) throw new Error('OpenCascade could not offset the surface')
+    const shape = nonEmpty(cast(mk.Shape()) as unknown as Sh, 'The offset is empty')
+    return { shape, faces: finalize(shape as unknown as AnyShape, inherit(mk, [{ shape: any(s), faces: s.faces }], shape as unknown as AnyShape, { fid, genFace: 'off' }), fid) }
+  } finally { mk.delete() }
+}
+
+/** The volume a closed shell encloses, signed: positive when its faces point outward, negative when they point inward. */
+function signedVolume(shell: unknown): number {
+  const o = oc()
+  const props = new o.GProp_GProps()
+  try {
+    o.BRepGProp.VolumeProperties(shell, props, false, false, false)
+    return props.Mass()
+  } finally { props.delete() }
+}
+
+/**
+ * A closed shell gets a hollow solid: the shell itself and its offset become the outer and inner walls. The side the
+ * thickness grows to follows the faces (positive: the way they point; for a box of outward faces that is outward). With a
+ * sharp-cornered shell the offset walls keep sharp corners where OpenCascade can do it, rounded otherwise.
+ */
+function thickenClosed(src: NShape, a: SurfaceThickenArgs): NShape {
+  const o = oc()
+  const t = Math.abs(a.distance)
+  // the two walls, as offsets along the face normals: lo <= hi
+  const [lo, hi] = a.sym ? [-t / 2, t / 2] : a.distance > 0 ? [0, t] : [-t, 0]
+  const wall = (d: number): NShape => {
+    if (d === 0) return src
+    try { return offsetNamed(src, d, a.id, 'intersection') } catch { return offsetNamed(src, d, a.id, 'arc') }
+  }
+  const shellOf = (n: NShape): never => {
+    const shells = Array.from(iterTopo(any(n).wrapped as never, 'shell'))
+    if (shells.length !== 1) throw new Error('the offset is not a single closed shell')
+    return shells[0] as never
+  }
+  const name = (n: NShape, d: number): NShape => (d === 0 ? n : { shape: n.shape, faces: n.faces.map((f) => (f.length ? [`${a.id}:off:${f[0]}`] : [])) })
+  const wl = name(wall(lo), lo), wh = name(wall(hi), hi)
+  const sl = shellOf(wl), sh = shellOf(wh)
+  // the walls face the way of the source: an outward-facing source has its larger offset outside, an inward-facing one its smaller
+  const faces = Math.sign(signedVolume(shellOf(src)))
+  const outward = faces > 0
+  // an offset past the shape's reach turns it inside out: it then faces the other way
+  for (const w of [sl, sh]) if (Math.sign(signedVolume(w)) !== faces) throw new Error('the shape cannot be offset that far without folding over itself')
+  const [outer, inner] = outward ? [{ n: wh, s: sh }, { n: wl, s: sl }] : [{ n: wl, s: sl }, { n: wh, s: sh }]
+  // every point of a wall has to be at least its offset away from the source: closer means the offset ran into itself
+  const srcFaces = topoOf(any(src)).faces
+  for (const [w, d] of [[wl, lo], [wh, hi]] as const) {
+    if (d === 0) continue
+    const wt = topoOf(any(w))
+    const probes: Vec3[] = wt.faces.flatMap((f) => [v3(f.pointOnSurface(0.5, 0.5)), v3(f.pointOnSurface(0.25, 0.25)), v3(f.pointOnSurface(0.75, 0.75))])
+    for (const v of iterTopo(any(w).wrapped as never, 'vertex')) { const p = o.BRep_Tool.Pnt(v); probes.push([p.X(), p.Y(), p.Z()]) }
+    for (const q of probes) if (distToFaces(q, srcFaces) < Math.abs(d) * (1 - 1e-2)) throw new Error('the offset wall runs into the surface itself')
+  }
+  const vo = Math.abs(signedVolume(outer.s)), vi = Math.abs(signedVolume(inner.s))
+  if (!(vi < vo * (1 - 1e-6))) throw new Error('the inner wall does not fit inside the outer one')
+  const fix = new o.ShapeFix_Solid()
+  const mk = new o.BRepBuilderAPI_MakeSolid(fix.SolidFromShell(outer.s))
+  try {
+    // the inner shell is a cavity: its faces have to point into it, away from the material
+    mk.Add(signedVolume(inner.s) > 0 ? cast((inner.s as { Reversed(): never }).Reversed()).wrapped : inner.s)
+    if (!mk.IsDone()) throw new Error('the walls do not make a solid')
+    const shape = cast(mk.Solid()) as unknown as Sh
+    const rt = topoOf(shape as unknown as AnyShape)
+    const find = indexer(rt.faces, rt.faceHashes)
+    const claims: string[][] = rt.faces.map(() => [])
+    for (const part of [outer.n, inner.n]) {
+      topoOf(any(part)).faces.forEach((f, i) => {
+        const j = find(f.wrapped as never)
+        if (j >= 0) claims[j].push(...(part.faces[i] ?? []))
+      })
+    }
+    const vol = measureVolume(shape as never)
+    if (!(vol > 1e-9) || Math.abs(vol - (vo - vi)) > 1e-3 * vo) throw new Error('the walls do not make a valid solid')
+    return { shape, faces: finalize(shape as unknown as AnyShape, claims, a.id) }
+  } finally {
+    fix.delete()
+    mk.delete()
+  }
+}
+
 surfaceOp<SurfaceThickenArgs>('surfaceThicken', 'Thicken', 'try a thinner thickness', (a, h) => {
   if (Math.abs(a.distance) < 1e-9) throw new Error('Thickness must not be zero')
   let src = h.getNamed(a.key)
   if (any(src).solids.length) throw new Error('Thicken works on surfaces; a solid already has volume')
   const open0 = openEdges(any(src))
-  if (!open0.length) throw new Error('This surface is closed: stitch it into a solid instead of thickening it')
-  const o = oc()
-  const offset = (s: NShape, d: number): NShape => {
-    const mk = new o.BRepOffsetAPI_MakeOffsetShape()
+  if (!open0.length) {
     try {
-      mk.PerformByJoin(any(s).wrapped, d, 1e-4, o.BRepOffset_Mode.BRepOffset_Skin, false, false, o.GeomAbs_JoinType.GeomAbs_Arc, false)
-      if (!mk.IsDone()) throw new Error('OpenCascade could not offset the surface')
-      const shape = nonEmpty(cast(mk.Shape()) as unknown as Sh, 'The offset is empty')
-      return { shape, faces: finalize(shape as unknown as AnyShape, inherit(mk, [{ shape: any(s), faces: s.faces }], shape as unknown as AnyShape, { fid: a.id, genFace: 'off' }), a.id) }
-    } finally { mk.delete() }
+      return send(h, a, thickenClosed(src, a))
+    } catch (e) {
+      throw new Error(`Thickening this closed surface by ${Math.abs(a.distance)} mm is not possible (${why(e)}); try a thinner thickness`)
+    }
   }
+  const o = oc()
+  const offset = (s: NShape, d: number): NShape => offsetNamed(s, d, a.id)
   try {
     if (a.sym) src = offset(src, -a.distance / 2)
     const base = a.sym ? openEdges(any(src)) : open0

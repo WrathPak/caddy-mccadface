@@ -111,6 +111,55 @@ describe('a box built from surfaces', () => {
   })
 })
 
+describe('extend corners and thicken closed shells', () => {
+  /** Edge refs of the body's edges whose both ends satisfy `on`. */
+  function edgesWhere(b: Body, on: (x: number, y: number) => boolean): string[] {
+    const out = new Set<number>()
+    const e = b.mesh.edges, ids = b.mesh.edgeIds!
+    for (let s = 0; s < e.length / 6; s++) if (on(e[s * 6], e[s * 6 + 1]) && on(e[s * 6 + 3], e[s * 6 + 4])) out.add(ids[s])
+    return [...out].map((index) => encodeRef(refFromSelection({ kind: 'edge', id: b.id, index }, [b])!))
+  }
+
+  it('extending two neighbouring edges fills the corner into one connected sheet', async () => {
+    const sk = await add('sketch', rectParams(20, 10))
+    const patch = await add('surfacePatch', { boundary: [chainRef(sk)], continuity: 'g0' })
+    const edges = [...edgesWhere(body(patch), (x) => Math.abs(x - 20) < 1e-6), ...edgesWhere(body(patch), (_x, y) => Math.abs(y - 10) < 1e-6)]
+    expect(edges.length).toBe(2)
+    const ext = await add('surfaceExtend', { edges, distance: 3, mode: 'natural' })
+    expect(feat(ext).state, feat(ext).error).toBe('ok')
+    // 20 x 10, two strips of 3 and the 3 x 3 corner
+    near(area(body(patch)), 200 + 3 * 10 + 3 * 20 + 9, 2e-3)
+    expect(body(patch).surface).toBe(true)
+    // the corner is closed: the rim is the two far edges, the two rim edges of the corner patch, and what was never touched
+    expect(body(patch).freeEdges).toBe(8)
+  })
+
+  it('a closed surface thickens into a hollow solid', async () => {
+    const sk = await add('sketch', rectParams(20, 10))
+    const ref = chainRef(sk)
+    const bottom = await add('surfacePatch', { boundary: [ref], continuity: 'g0' })
+    const walls = await add('surfaceExtrude', { curves: [ref], direction: 'one', distance: 8, distance2: 5, axis: 'normal' })
+    const lid = await add('surfacePatch', { boundary: edgesAt(body(walls), 8), continuity: 'g0' })
+    const closed = await add('surfaceStitch', { surfaces: [bottom, walls, lid], tolerance: 0.01, solid: false })
+    expect(feat(closed).state, feat(closed).error).toBe('ok')
+    expect(body(bottom).surface).toBe(true)
+    expect(body(bottom).freeEdges).toBe(0)
+    // far more than the shape can take: a clear error, and the surface is left alone
+    const nothing = await add('surfaceThicken', { surfaces: [bottom], distance: 40, side: 'sym', keep: true })
+    expect(feat(nothing).state).toBe('error')
+    expect(feat(nothing).error).toMatch(/not possible/)
+    expect(body(bottom).surface).toBe(true)
+    doc().removeFeature(nothing)
+    await regenerate()
+    const thick = await add('surfaceThicken', { surfaces: [bottom], distance: 2, side: 'front', keep: false })
+    expect(feat(thick).state, feat(thick).error).toBe('ok')
+    expect(body(bottom).surface).toBeUndefined()
+    // an outer box 24 x 14 x 12 around the 20 x 10 x 8 hollow, or the same inside: the faces point one way or the other
+    const v = vol(body(bottom))
+    expect(Math.min(Math.abs(v - (24 * 14 * 12 - 1600)), Math.abs(v - (1600 - 16 * 6 * 4)))).toBeLessThan(0.02 * v)
+  })
+})
+
 describe('thicken and delete face', () => {
   it('thicken turns the surface into a solid; keeping the surface adds a body instead', async () => {
     const sk = await add('sketch', rectParams(20, 10))
