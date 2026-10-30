@@ -10,9 +10,11 @@ import type { FeatureCtx, FeatureResult, PreviewCtx, PreviewHandle } from '@/doc
 import type { Body, Vec3 } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
-import { clearPreview, resetManip, setPreview, useCurvePick, useManip } from '@/viewport/preview'
+import { resetAngleManip, useAngleManip } from '@/viewport/AngleManipulator'
+import { clearPreview, resetManip, setPreview, useCurvePick } from '@/viewport/preview'
 import { liveRefEnv, type RefEnv } from '../modeling-tools/geo'
 import { createRunner } from '../previewKit'
+import { showArrows } from '../handleKit'
 
 export interface BuildEnv extends RefEnv {
   /** the feature running (names of the faces it makes are rooted there) and its name (the name of a new body) */
@@ -30,14 +32,17 @@ export interface Built {
   /** a result drawn as an addition (a new surface) or as a replacement */
   kind?: 'add' | 'result'
 }
+export interface ManipSpec { origin: Vec3; dir: Vec3; key: string; factor?: number; min?: number }
 export interface SurfaceTool {
   type: string
   label: string
   icon: Icon
   schema: ParamSchema
   build(p: ParamValues, env: BuildEnv, report: RefReport): Promise<Built>
-  /** the arrow to drag in the viewport: origin, direction and the parameter it edits */
-  manip?(p: ParamValues, env: BuildEnv): Promise<{ origin: Vec3; dir: Vec3; key: string; factor?: number } | null>
+  /** the arrow (or arrows) to drag in the viewport: origin, direction and the parameter each edits */
+  manip?(p: ParamValues, env: BuildEnv): Promise<ManipSpec | ManipSpec[] | null>
+  /** the rotary handle to drag in the viewport: a point on the axis, the axis, the direction the angle is measured from, the arc radius and the (degrees) parameter it edits */
+  angleManip?(p: ParamValues, env: BuildEnv): Promise<{ origin: Vec3; axis: Vec3; start: Vec3; radius: number; key?: string } | null>
   /** the selection filter to start with in the dialog */
   filter?: 'face' | 'body' | 'edge'
   /** params whose values are curve refs: the chosen ones light up while the curve picker is on */
@@ -74,18 +79,25 @@ function surfacePreview(d: SurfaceTool, { values, setValues }: PreviewCtx): Prev
   publish()
   const runner = createRunner(async (stale) => {
     let p: ParamValues
-    try { p = resolveParams(d.schema, cur) } catch { clearPreview(); resetManip(); return }
+    try { p = resolveParams(d.schema, cur) } catch { clearPreview(); resetManip(); resetAngleManip(); return }
     const env: BuildEnv = { ...liveRefEnv(), fid: 'preview', name: 'preview', newId: (n) => (n ? `preview.${n}` : 'preview') }
     try {
       if (d.manip) {
         const m = await d.manip(p, env)
+        if (!stale()) {
+          if (m) showArrows([m].flat(), p, (patch) => { cur = { ...cur, ...patch }; setValues(cur) })
+          else resetManip()
+        }
+      }
+      if (d.angleManip) {
+        const m = await d.angleManip(p, env)
         if (m && !stale()) {
-          const key = m.key, factor = m.factor ?? 1
-          useManip.setState({
-            active: true, origin: m.origin, dir: m.dir, tip: (p[key] as number) / factor, factor, label: (v) => `${v.toFixed(2)} mm`,
+          const key = m.key ?? 'angle'
+          useAngleManip.setState({
+            active: true, origin: m.origin, axis: m.axis, start: m.start, radius: m.radius, angle: p[key] as number,
             onChange: (v) => { cur = { ...cur, [key]: v }; setValues(cur) },
           })
-        } else if (!m) resetManip()
+        } else if (!m) resetAngleManip()
       }
       const r = await d.build(p, env, new RefReport())
       if (stale()) return
@@ -107,6 +119,7 @@ function surfacePreview(d: SurfaceTool, { values, setValues }: PreviewCtx): Prev
       runner.dispose()
       clearPreview()
       resetManip()
+      resetAngleManip()
       useCurvePick.setState({ selected: [] })
       ui.setState((s) => (s.selection.some((r) => r.kind === 'curve') ? { inspectorNotice: null, selection: s.selection.filter((r) => r.kind !== 'curve') } : { inspectorNotice: null }))
       if (d.filter) ui.getState().setSelectionFilter(before)

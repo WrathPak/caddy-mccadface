@@ -14,6 +14,7 @@ import type { PlaneDef } from '@/sketch/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues, SelectionRefParam } from '@/ui/schema'
 import { createRunner } from '../previewKit'
+import { arcRadius, clearHandles, showAngle, showArrows, type AngleSpec, type ArrowSpec } from '../handleKit'
 import { liveRefEnv, resolveAxis, resolvePlane, resolvePoint, useConstruct, type AxisDef, type RefEnv } from './geo'
 
 PLANE_FEATURES.add('constructPlane')
@@ -119,19 +120,64 @@ registerFeature({
     usePlanes.getState().set(ctx.feature.id, plane)
     return { data: { plane }, warning: report.warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
   },
-  preview: (ctx) => livePreview(ctx, constructPlaneSchema, async (p) => usePlanes.getState().set('preview', await planeFor(p, liveRefEnv())), () => usePlanes.getState().set('preview', null)),
+  preview: (ctx) => livePreview(ctx, constructPlaneSchema, async (p) => usePlanes.getState().set('preview', await planeFor(p, liveRefEnv())), () => usePlanes.getState().set('preview', null), planeHandles),
 })
 
+/**
+ * The drag handles of a construction plane: an arrow standing on the base plane for an offset, an arc round the axis (or the
+ * cylinder) for an angle. The arc starts along the base plane, so its knob swings with the new plane.
+ */
+async function planeHandles(p: ParamValues, env: RefEnv): Promise<{ arrows: ArrowSpec[]; angle: AngleSpec | null }> {
+  const report = new RefReport()
+  if (p.mode === 'offset') {
+    const b = await resolvePlane(needed(one(p.base), 'a plane or flat face'), env, report)
+    return { arrows: [{ origin: b.origin, dir: b.normal, key: 'distance' }], angle: null }
+  }
+  if (p.mode === 'angle') {
+    const b = await resolvePlane(needed(one(p.base), 'a plane or flat face'), env, report)
+    const ax = await resolveAxis(needed(one(p.axis), 'an axis'), env, report)
+    const u = norm3(ax.dir)
+    const n0 = sub3(b.normal, mul3(u, dot3(b.normal, u)))
+    if (Math.hypot(...n0) < 1e-6) throw new Error('The axis is perpendicular to the plane')
+    return { arrows: [], angle: { origin: ax.origin, axis: u, start: norm3(cross3(u, norm3(n0))), radius: arcRadius(env.bodies), key: 'angle' } }
+  }
+  if (p.mode === 'tangent') {
+    const ref = decodeRef(needed(one(p.face), 'a cylindrical face'))
+    if (!ref || ref.kind !== 'face') throw new Error('Select a cylindrical face')
+    const hit = resolveFace(ref, env.bodies, report)
+    if (!hit) throw new Error('The face no longer exists')
+    const [g] = (await env.kernel.call('faceGeom', { key: hit.body.key, faces: [hit.index] })) as (FaceGeom | null)[]
+    if (!g || g.type !== 'cylinder') return { arrows: [], angle: null }
+    const u = norm3(g.dir)
+    const c = sub3(g.center, g.origin)
+    const along = dot3(c, u)
+    const radial = norm3(sub3(c, mul3(u, along)))
+    return { arrows: [], angle: { origin: add3(g.origin, mul3(u, along)), axis: u, start: radial, radius: g.radius, key: 'angle' } }
+  }
+  return { arrows: [], angle: null }
+}
+
 /** Preview that re-evaluates a construction value whenever the values change (and clears it when closed). */
-function livePreview({ values }: PreviewCtx, schema: ParamSchema, show: (p: ParamValues) => Promise<void>, clear: () => void): PreviewHandle {
+function livePreview({ values, setValues }: PreviewCtx, schema: ParamSchema, show: (p: ParamValues) => Promise<void>, clear: () => void,
+  handles?: (p: ParamValues, env: RefEnv) => Promise<{ arrows: ArrowSpec[]; angle: AngleSpec | null }>): PreviewHandle {
   let cur = values
-  const ui = useUi
-  const runner = createRunner(async () => {
-    try { await show(resolveParams(schema, cur)) } catch { clear() }
+  const runner = createRunner(async (stale) => {
+    try {
+      const p = resolveParams(schema, cur)
+      await show(p)
+      if (handles) {
+        try {
+          const h = await handles(p, liveRefEnv())
+          if (stale()) return
+          const apply = (patch: ParamValues) => { cur = { ...cur, ...patch }; setValues(cur) }
+          showArrows(h.arrows, p, apply)
+          showAngle(h.angle, p, apply)
+        } catch { clearHandles() }
+      }
+    } catch { clear(); clearHandles() }
   })
   runner.schedule()
-  void ui
-  return { update(v) { cur = v; runner.schedule() }, dispose() { runner.dispose(); clear() } }
+  return { update(v) { cur = v; runner.schedule() }, dispose() { runner.dispose(); clear(); clearHandles() } }
 }
 
 // ------------------------------------------------------------------------------------------------ axes

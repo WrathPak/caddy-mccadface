@@ -10,7 +10,10 @@ import { getKernel } from '@/kernel/client'
 import type { HairArgs, HairPreviewResult } from '@/kernel/hair-ops'
 import type { Body } from '@/kernel/types'
 import { useUi } from '@/store/ui'
+import type { ParamValues } from '@/ui/schema'
 import { createRunner, watchSelection } from '../previewKit'
+import { showArrows } from '../handleKit'
+import { resetManip } from '@/viewport/preview'
 import { directionGlyphs } from './glyphs'
 import { loadSelection, setPaint, type PaintMode } from './paint'
 import { extractOthers, extractRegion, regionFromSelection, resolveRegionSet, type RegionSet } from './region'
@@ -74,23 +77,29 @@ function hairPreview({ values, setValues }: PreviewCtx): PreviewHandle {
   const geometry = () => useDoc.getState().geometry
 
   const runner = createRunner(async (stale) => {
+    // (a generation error leaves the length arrow up: a length that is too long or too short can be the cause)
+    let shown = false
     try {
       const v = resolveParams(hairSchema, cur) as unknown as HairValues
-      if (!v.region.length) { clearHairView(); return }
+      if (!v.region.length) { clearHairView(); resetManip(); return }
       useHairView.setState({ busy: true })
       const { args } = buildArgs(v, geometry(), 'preview')
       try {
         const g = directionGlyphs(args.positions, args.indices, v, args.axis)
+        // the length arrow follows one strand: out of the surface the way strands point there
+        const at = g.data.length >= 6 ? { o: [g.data[0], g.data[1], g.data[2]] as V3, d: [g.data[3], g.data[4], g.data[5]] as V3 } : { o: g.centre, d: g.normal }
+        showArrows([{ origin: at.o, dir: at.d, key: 'length', min: 0.5 }], v as unknown as ParamValues, (patch) => { cur = { ...cur, ...patch }; setValues(cur) })
+        shown = true
         useHairView.setState({
           glyphs: g,
           fixed: v.dirMode === 'fixed' ? { dir: v.fixedDir, set: (d) => { cur = { ...cur, fixedDir: d }; setValues(cur) } } : null,
         })
-      } catch { useHairView.setState({ glyphs: null }) }
+      } catch { useHairView.setState({ glyphs: null }); resetManip() }
       const res = (await getKernel().call('hairGenerate', args)) as HairPreviewResult
       if (!stale()) { useHairView.setState({ result: res, error: null, busy: false }); useUi.setState({ inspectorNotice: null }) }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      if (!stale()) { useHairView.setState({ result: null, error: msg, busy: false }); useUi.setState({ inspectorNotice: msg }) }
+      if (!stale()) { useHairView.setState({ result: null, error: msg, busy: false }); if (!shown) resetManip(); useUi.setState({ inspectorNotice: msg }) }
     }
   }, 250)
 
@@ -142,6 +151,7 @@ function hairPreview({ values, setValues }: PreviewCtx): PreviewHandle {
       runner.dispose()
       useUi.setState({ inspectorNotice: null })
       clearHairView()
+      resetManip()
       setPaint({ visible: false, mode: 'off', sink: null })
       loadSelection(null, null, new Set())
     },

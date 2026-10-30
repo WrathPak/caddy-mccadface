@@ -11,10 +11,11 @@ import type { Body } from '@/kernel/types'
 import { heightImageOf, PATTERNS } from '@/kernel/texture/patterns'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValue, ParamValues } from '@/ui/schema'
-import { clearPreview, setPreview } from '@/viewport/preview'
+import { clearPreview, resetManip, setPreview } from '@/viewport/preview'
 import { createRunner } from '../previewKit'
+import { showArrows } from '../handleKit'
 import { regionFromSelection } from '../hair/region'
-import { bindRegion, decodeImage, surfaceOf } from './common'
+import { bindRegion, decodeImage, surfaceFrame, surfaceOf } from './common'
 import { clearDetailView, useDetailView } from './store'
 
 export interface TextureValues {
@@ -91,8 +92,8 @@ export const textureSchema: ParamSchema = {
 
 const MAX_TRIS = 1_500_000
 
-async function textureArgs(v: TextureValues, bodies: Body[], blob: (id: string) => Uint8Array | undefined, preview: boolean): Promise<{ args: TextureOpArgs; body: Body }> {
-  const { rs } = surfaceOf(v.region, bodies, 'texture')
+async function textureArgs(v: TextureValues, bodies: Body[], blob: (id: string) => Uint8Array | undefined, preview: boolean): Promise<{ args: TextureOpArgs; body: Body; positions: Float32Array; indices: Uint32Array }> {
+  const { rs, positions, indices } = surfaceOf(v.region, bodies, 'texture')
   let pattern: TextureOpArgs['pattern']
   if (v.pattern === 'image') {
     const bytes = v.image ? blob(v.image) : undefined
@@ -105,7 +106,7 @@ async function textureArgs(v: TextureValues, bodies: Body[], blob: (id: string) 
     scale: v.scale, depth: v.depth, direction: v.direction, rotation: v.rotation, offsetU: v.offsetU, offsetV: v.offsetV, blend: v.blend,
     projection: v.projection, detail: v.detail, maxTris: MAX_TRIS,
   }
-  return { args, body: rs.body }
+  return { args, body: rs.body, positions, indices }
 }
 
 registerFeature({
@@ -135,10 +136,10 @@ function texturePreview({ values, setValues }: PreviewCtx): PreviewHandle {
   const runner = createRunner(async (stale) => {
     try {
       const v = resolveParams(textureSchema, cur) as unknown as TextureValues
-      if (!v.region.length) { showBody(null); useDetailView.setState({ texture: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: null }); return }
+      if (!v.region.length) { showBody(null); resetManip(); useDetailView.setState({ texture: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: null }); return }
       useDetailView.setState({ busy: true })
       const blobs = useDoc.getState().blobs
-      const { args, body } = await textureArgs(v, geometry(), (id) => blobs[id], true)
+      const { args, body, positions, indices } = await textureArgs(v, geometry(), (id) => blobs[id], true)
       const res = (await getKernel().call('textureFace', args)) as TexturePreview
       if (stale()) return
       showBody(body.id)
@@ -147,10 +148,14 @@ function texturePreview({ values, setValues }: PreviewCtx): PreviewHandle {
         readout: `Preview at ${res.stats.edgeLength.toFixed(2)} mm detail, ${Math.round(res.stats.triangles / 1000)}k triangles. The final model uses full detail.${res.warnings.length ? ' | ' + res.warnings.join('. ') : ''}`,
         busy: false,
       })
+      // the depth arrow stands on the selected surface, pointing the way the pattern grows (into the part for cut-in)
+      const fr = surfaceFrame(positions, indices)
+      const sgn = v.direction === 'in' ? -1 : 1
+      showArrows([{ origin: fr.point, dir: [fr.normal[0] * sgn, fr.normal[1] * sgn, fr.normal[2] * sgn], key: 'depth', min: 0.05 }], v as unknown as ParamValues, (patch) => { cur = { ...cur, ...patch }; setValues(cur) })
       useUi.setState({ inspectorNotice: null })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      if (!stale()) { showBody(null); useDetailView.setState({ texture: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: msg }) }
+      if (!stale()) { showBody(null); resetManip(); useDetailView.setState({ texture: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: msg }) }
     }
   }, 260)
   runner.schedule()
@@ -165,6 +170,7 @@ function texturePreview({ values, setValues }: PreviewCtx): PreviewHandle {
       faces.dispose()
       clearPreview()
       clearDetailView()
+      resetManip()
       useUi.setState({ inspectorNotice: null })
     },
   }

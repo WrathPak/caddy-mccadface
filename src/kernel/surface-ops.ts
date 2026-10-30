@@ -585,12 +585,7 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
   const names = h.getNames(a.key)
   const topo = topoOf(any(src))
   if (any(src).solids.length) throw new Error('Extend works on surfaces, not solids')
-  const findEdge = indexer(topo.edges, topo.edgeHashes)
-  const owners = new Map<number, number[]>()
-  topo.faces.forEach((f, fi) => f.edges.forEach((e) => {
-    const j = findEdge(e.wrapped as never)
-    if (j >= 0 && !(owners.get(j) ?? []).includes(fi)) owners.set(j, [...(owners.get(j) ?? []), fi])
-  }))
+  const owners = edgeOwners(topo)
   const o = oc()
   /** what a corner needs to know about each strip: the edge's two ends, where they end up, and the way out */
   const info: StripInfo[] = []
@@ -612,13 +607,7 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
       pts.push(p)
       dirs.push(norm3(cross3(n, t)))
     }
-    // which way is out? the side of the edge that is not on the face
-    const eps = Math.max(1e-3, Math.min(a.distance, edge.length) * 0.05)
-    // (tested at the middle of the edge: its ends can touch other faces of the surface)
-    const pm = v3(edge.pointAt(0.5))
-    const dm = norm3(cross3(v3(face.normalAt(pm)), norm3(v3(edge.tangentAt(0.5)))))
-    const away = (s: number) => measureDistanceBetween(face as never, makeVertex(add3(pm, mul3(dm, s * eps))) as never)
-    const sign = away(1) >= away(-1) ? 1 : -1
+    const sign = outwardSign(face, edge, a.distance)
     const out = dirs.map((d) => mul3(d, sign))
     const sections: Wire[] = [assembleWire([edge.clone() as Edge])]
     let far: Vec3[] = []
@@ -675,6 +664,45 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
   const parts = [src, ...strips, ...fills]
   const { out } = sewNamed(parts, tol, a.id)
   return send(h, a, out)
+})
+
+/** Face indices that own each edge (by edge index). A free (boundary) edge has exactly one. */
+function edgeOwners(topo: ReturnType<typeof topoOf>): Map<number, number[]> {
+  const findEdge = indexer(topo.edges, topo.edgeHashes)
+  const owners = new Map<number, number[]>()
+  topo.faces.forEach((f, fi) => f.edges.forEach((e) => {
+    const j = findEdge(e.wrapped as never)
+    if (j >= 0 && !(owners.get(j) ?? []).includes(fi)) owners.set(j, [...(owners.get(j) ?? []), fi])
+  }))
+  return owners
+}
+
+/**
+ * Which way is out of a surface at one of its free edges: the sign (+1 / -1) to put on cross(face normal, edge tangent),
+ * found by testing which side of the edge is not on the face. Tested at the middle of the edge, because its ends can
+ * touch other faces of the surface.
+ */
+function outwardSign(face: Face, edge: Edge, distance: number): 1 | -1 {
+  const eps = Math.max(1e-3, Math.min(distance, edge.length) * 0.05)
+  const pm = v3(edge.pointAt(0.5))
+  const dm = norm3(cross3(v3(face.normalAt(pm)), norm3(v3(edge.tangentAt(0.5)))))
+  const away = (s: number) => measureDistanceBetween(face as never, makeVertex(add3(pm, mul3(dm, s * eps))) as never)
+  return away(1) >= away(-1) ? 1 : -1
+}
+
+export interface SurfaceExtendDirArgs { key: string; edge: number }
+/** Where the Extend handle sits: the middle of the free edge and the way out along the surface tangent there. */
+surfaceOp<SurfaceExtendDirArgs>('surfaceExtendDir', 'Extend', 'pick an open edge of a surface', (a, h) => {
+  const src = h.getNamed(a.key)
+  const topo = topoOf(any(src))
+  const edge = topo.edges[a.edge]
+  if (!edge) throw new Error('An edge you picked no longer exists')
+  const own = edgeOwners(topo).get(a.edge) ?? []
+  if (own.length !== 1) throw new Error('Only the open (boundary) edges of a surface can be extended')
+  const face = topo.faces[own[0]]
+  const pm = v3(edge.pointAt(0.5))
+  const dir = mul3(norm3(cross3(v3(face.normalAt(pm)), norm3(v3(edge.tangentAt(0.5))))), outwardSign(face, edge, 1))
+  return { origin: pm, dir }
 })
 
 interface StripInfo {

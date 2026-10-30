@@ -8,16 +8,18 @@ import { useDoc } from '@/doc/store'
 import type { FeatureCtx, PreviewCtx, PreviewHandle } from '@/doc/types'
 import { bbox, type Body, type Vec3 } from '@/kernel/types'
 import type { HoleArgs, HolePlace, HoleSpec } from '@/kernel/modeling-ops'
-import { add3, mul3, norm3 } from '@/kernel/xform'
+import { add3, cross3, mul3, norm3 } from '@/kernel/xform'
 import { isPlanarFace } from '@/sketch/create'
 import { planeFromNormal, toLocal, toWorld } from '@/sketch/plane'
 import type { SketchData } from '@/sketch/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
 import { useLastPick } from '@/viewport/lastPick'
-import { clearPreview, setPreview } from '@/viewport/preview'
+import { resetAngleManip } from '@/viewport/AngleManipulator'
+import { clearPreview, resetManip, setPreview } from '@/viewport/preview'
 import { minDim, niceFloor, workBody } from '../modeling'
 import { createRunner } from '../previewKit'
+import { showAngle, showArrows, type AngleSpec, type ArrowSpec } from '../handleKit'
 import { liveRefEnv, resolvePoint, useConstruct, type CosmeticThread, type RefEnv } from './geo'
 import { HOLE_PRESETS, tapDrill } from './holePresets'
 import { clearMarkers, setMarkers } from './markers'
@@ -198,6 +200,54 @@ export function holeSizes(body: Body | undefined): ParamValues {
   return { dia, cbDia: +(dia * 11 / 6).toPrecision(2), cbDepth: Math.max(0.1, +dia.toPrecision(2)), cskDia: +(dia * 2).toPrecision(2), depth, major: dia >= 1 ? dia : 6, threadLength: depth }
 }
 
+/** Across the opening: the world X direction made perpendicular to the hole (Y when the hole runs along X), and the one at right angles to it. */
+function openingFrame(dir: Vec3): { n: Vec3; t1: Vec3; t2: Vec3 } {
+  const n = norm3(dir)
+  const ref: Vec3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
+  const d = ref[0] * n[0] + ref[1] * n[1] + ref[2] * n[2]
+  const t1 = norm3([ref[0] - n[0] * d, ref[1] - n[1] * d, ref[2] - n[2] * d])
+  return { n, t1, t2: norm3(cross3(n, t1)) }
+}
+
+/**
+ * The drag arrows of a hole, standing at the first hole: depths run into the body (depth of a blind hole, counterbore, thread),
+ * diameters run across the opening (hole or thread, counterbore or countersink; the arrow reaches the rim, so it edits half).
+ */
+export function holeArrows(p: HoleP, at: { origin: Vec3; dir: Vec3 }): ArrowSpec[] {
+  const out: ArrowSpec[] = []
+  const into = mul3(norm3(at.dir), -1)
+  const { t1, t2 } = openingFrame(at.dir)
+  const around = (a: number): Vec3 => add3(mul3(t1, Math.cos(a)), mul3(t2, Math.sin(a)))
+  const lip = at.origin
+  if (p.depthMode !== 'through') out.push({ origin: lip, dir: into, key: 'depth', min: 0.1 })
+  if (p.holeType === 'cbore') out.push({ origin: lip, dir: into, key: 'cbDepth', min: 0.1 })
+  if (p.tapType === 'tapped') out.push({ origin: lip, dir: into, key: 'threadLength', min: 0.5 })
+  out.push({ origin: lip, dir: around(0), key: p.tapType === 'tapped' ? 'major' : 'dia', factor: 2, min: p.tapType === 'tapped' ? 1 : 0.1 })
+  if (p.holeType === 'cbore') out.push({ origin: lip, dir: around(Math.PI * 0.66), key: 'cbDia', factor: 2, min: 0.1 })
+  if (p.holeType === 'csink') out.push({ origin: lip, dir: around(Math.PI * 0.66), key: 'cskDia', factor: 2, min: 0.1 })
+  return out
+}
+
+/**
+ * The arcs of a hole: the countersink angle and the drill point angle. Each turns about the point on the rim of its cone (the mouth
+ * of the countersink, the bottom of the bore) that stays put when the angle changes, starting down the axis and swinging in towards
+ * it, so it shows the half angle (the parameter is the included angle: twice the arc).
+ */
+export function holeAngles(p: HoleP, at: { origin: Vec3; dir: Vec3 }): AngleSpec[] {
+  const out: AngleSpec[] = []
+  const { n, t1 } = openingFrame(at.dir)
+  const down = mul3(n, -1)
+  const turn = norm3(cross3(t1, down))
+  const bore = p.tapType === 'tapped' ? tapDrill(p.major, p.pitch) : p.dia
+  if (p.holeType === 'csink') {
+    out.push({ origin: add3(at.origin, mul3(t1, p.cskDia / 2)), axis: turn, start: down, radius: Math.max(1.5, p.cskDia / 2), key: 'cskAngle', scale: 2, min: 10, max: 170, step: 0.5, nonZero: true })
+  }
+  if (p.depthMode !== 'through') {
+    out.push({ origin: add3(add3(at.origin, mul3(down, p.depth)), mul3(t1, bore / 2)), axis: turn, start: down, radius: Math.max(1.5, bore / 2), key: 'tip', scale: 2, min: 0, max: 170, step: 0.5, nonZero: false })
+  }
+  return out
+}
+
 function holePreview({ values, setValues }: PreviewCtx): PreviewHandle {
   let cur = values
   // the sizes last set by the dialog itself: whatever still equals them has not been touched by the person
@@ -217,18 +267,24 @@ function holePreview({ values, setValues }: PreviewCtx): PreviewHandle {
   }
   const runner = createRunner(async (stale) => {
     let p: HoleP
-    try { p = asP(resolveParams(holeSchema, cur)) } catch { clearPreview(); clearMarkers(); return }
+    try { p = asP(resolveParams(holeSchema, cur)) } catch { clearPreview(); clearMarkers(); resetManip(); resetAngleManip(); return }
     const env = liveRefEnv()
     const rep = new RefReport()
     try {
       const placed = await placeHoles(p, env, rep)
       setMarkers(placed.map((h) => ({ id: h.k, pos: add3(h.origin, mul3(norm3(h.dir), 0.05)), state: 'on' as const })), markerClick)
+      if (!stale()) {
+        const apply = (patch: ParamValues) => { cur = { ...cur, ...patch }; setValues(cur) }
+        showArrows(holeArrows(p, placed[0]), p as unknown as ParamValues, apply)
+        const arcs = holeAngles(p, placed[0])
+        for (let i = 0; i < 2; i++) showAngle(arcs[i] ?? null, p as unknown as ParamValues, apply, i)
+      }
       // the original body stays pickable (more holes can be clicked onto it); the drills show in red where they cut
       const r = await buildHoles(p, env, 'preview', rep, true)
       if (stale()) return
       setPreview(r.bodies.map((b) => ({ mesh: b.mesh, kind: 'cut' as const })))
       useConstruct.getState().setThreads('preview', r.threads)
-    } catch { clearPreview() }
+    } catch { clearPreview(); resetManip(); resetAngleManip() }
   })
   // a click on a flat face adds a hole there
   const off = useLastPick.subscribe((s) => {
@@ -251,7 +307,7 @@ function holePreview({ values, setValues }: PreviewCtx): PreviewHandle {
   runner.schedule()
   return {
     update(v) { cur = v; runner.schedule() },
-    dispose() { off(); runner.dispose(); clearPreview(); clearMarkers(); useConstruct.getState().setThreads('preview', null) },
+    dispose() { off(); runner.dispose(); clearPreview(); clearMarkers(); resetManip(); resetAngleManip(); useConstruct.getState().setThreads('preview', null) },
   }
 }
 

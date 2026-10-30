@@ -9,8 +9,9 @@ import { parse3mf } from '@/io/threemf'
 import { resolveParams } from '@/doc/params'
 import { getKernel } from '@/kernel/client'
 import { importMeshPooled, POOL_IMPORT_BYTES, sourceOf } from '@/io/meshImport'
-import { clearPreview, setPreview } from '@/viewport/preview'
+import { clearPreview, resetManip, setPreview } from '@/viewport/preview'
 import { createRunner } from './previewKit'
+import { showArrows } from './handleKit'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
 
 export const boxSchema: ParamSchema = {
@@ -35,19 +36,27 @@ registerFeature({
     const body = await ctx.kernel.makeBox({ id: ctx.newBodyId(), name: ctx.feature.name, size: [w, d, h], position: [px, py, pz] })
     return { bodies: [body] }
   },
-  preview({ values }) {
+  preview({ values, setValues }) {
     let cur: ParamValues = values
     const runner = createRunner(async (stale) => {
       let p: ParamValues
-      try { p = resolveParams(boxSchema, cur) } catch { clearPreview(); return }
+      try { p = resolveParams(boxSchema, cur) } catch { clearPreview(); resetManip(); return }
       const [px, py, pz] = p.position as [number, number, number]
+      // one arrow per size: the height from the middle of the base up, width and depth from the middle of the box out to the faces
+      // (the faces move with the pointer, so those arrows edit half the size)
+      const h = p.height as number
+      showArrows([
+        { origin: [px, py, pz], dir: [0, 0, 1], key: 'height', min: 0.001 },
+        { origin: [px, py, pz + h / 2], dir: [1, 0, 0], key: 'width', factor: 2, min: 0.001 },
+        { origin: [px, py, pz + h / 2], dir: [0, 1, 0], key: 'depth', factor: 2, min: 0.001 },
+      ], p, (patch) => { cur = { ...cur, ...patch }; setValues(cur) })
       const body = await getKernel().makeBox({ id: 'preview', name: 'preview', size: [p.width as number, p.depth as number, p.height as number], position: [px, py, pz] })
       if (!stale()) setPreview([{ mesh: body.mesh, kind: 'add' }])
     })
     runner.schedule()
     return {
       update(v) { cur = v; runner.schedule() },
-      dispose() { runner.dispose(); clearPreview() },
+      dispose() { runner.dispose(); clearPreview(); resetManip() },
     }
   },
 })

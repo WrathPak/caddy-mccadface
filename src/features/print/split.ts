@@ -9,7 +9,7 @@ import { useDoc } from '@/doc/store'
 import type { PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel } from '@/kernel/client'
 import { add3, cross3, dot3, mul3, sub3, unit3 } from '@/kernel/print-geom'
-import type { ConnectorSpec, Cutter, SplitArgs, SplitResult } from '@/kernel/print-ops'
+import type { ConnectorSpec, ConnectorSpot, Cutter, SplitArgs, SplitResult } from '@/kernel/print-ops'
 import { bbox, type Body, type Vec3 } from '@/kernel/types'
 import { useSketchData } from '@/sketch/draw'
 import type { SketchData } from '@/sketch/types'
@@ -18,6 +18,7 @@ import type { ParamSchema, ParamValues } from '@/ui/schema'
 import { clearPreview, setPreview } from '@/viewport/preview'
 import { sketchPath } from '../solids'
 import { createRunner } from '../previewKit'
+import { clearHandles, showAngle, showArrows, type ArrowSpec } from '../handleKit'
 import type { PathSeg } from '@/kernel/solid-ops'
 
 export const PARTS_PER_BODY = 16
@@ -150,12 +151,14 @@ export async function runSplit(p: SplitP, env: SplitEnv, call: (name: string, ar
   const cutter = cutterOf(p, env, report)
   const out: Body[] = []
   const notes: string[] = []
+  let connector: ConnectorSpot | undefined
   let lastErr: Error | null = null
   for (let j = 0; j < bodies.length; j++) {
     const b = bodies[j]
     try {
       const r = (await call('printSplit', { id: b.id, name: b.name, key: b.key, ids: partIds(b, j, newId), cutter, connectors: connectorOf(p), fid } satisfies SplitArgs)) as SplitResult
       out.push(...r.bodies)
+      connector ??= r.connector
       if (r.warning) notes.push(bodies.length > 1 ? `${b.name}: ${r.warning}` : r.warning)
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e))
@@ -164,7 +167,7 @@ export async function runSplit(p: SplitP, env: SplitEnv, call: (name: string, ar
     }
   }
   if (!out.length) throw lastErr ?? new Error('Nothing was split')
-  return { bodies: out, warning: [report.warning, ...notes].filter(Boolean).join('; ') || undefined, cutter }
+  return { bodies: out, warning: [report.warning, ...notes].filter(Boolean).join('; ') || undefined, cutter, connector }
 }
 
 registerFeature({
@@ -185,10 +188,9 @@ export const useSplitView = create<{ plane: { origin: Vec3; normal: Vec3; size: 
 
 function splitPreview({ values, setValues }: PreviewCtx): PreviewHandle {
   let cur = values
-  void setValues
   const runner = createRunner(async (stale) => {
     let p: SplitP
-    try { p = resolveParams(splitSchema, cur) as unknown as SplitP } catch { clearPreview(); return }
+    try { p = resolveParams(splitSchema, cur) as unknown as SplitP } catch { clearPreview(); clearHandles(); return }
     const geometry = useDoc.getState().geometry
     const env: SplitEnv = { bodies: geometry, dataOf: (id) => useSketchData.getState().data[id] }
     const report = new RefReport()
@@ -200,6 +202,7 @@ function splitPreview({ values, setValues }: PreviewCtx): PreviewHandle {
       setPreview(r.bodies.map((b, i) => ({ mesh: b.mesh, kind: i % 2 ? 'cut' : 'result' })), ids)
       const all = geometry.filter((b) => ids.includes(b.id))
       let size = 40
+      let offsetArrow: ArrowSpec | null = null
       if (all.length && r.cutter.kind === 'plane') {
         const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]
         for (const b of all) { const bb = bbox(b.mesh.positions); for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], bb.min[k]); hi[k] = Math.max(hi[k], bb.max[k]) } }
@@ -208,11 +211,29 @@ function splitPreview({ values, setValues }: PreviewCtx): PreviewHandle {
         const n = unit3(r.cutter.normal)
         const origin = sub3(c, mul3(n, dot3(sub3(c, r.cutter.origin), n)))
         useSplitView.setState({ plane: { origin, normal: n, size }, error: null })
+        // the offset arrow stands on the plane the cut starts from (offset 0) in the middle of the bodies
+        // at the edge of the part, so it stays clear of the connectors that sit in the middle of the cut
+        const tan = unit3(Math.abs(n[2]) > 0.9 ? [1, 0, 0] : cross3(n, [0, 0, 1]))
+        let reach = 0
+        for (const b of all) {
+          const P = b.mesh.positions
+          for (let i = 0; i < P.length; i += 3) reach = Math.max(reach, Math.abs(dot3(sub3([P[i], P[i + 1], P[i + 2]], c), tan)))
+        }
+        offsetArrow = { origin: add3(sub3(origin, mul3(n, p.offset)), mul3(tan, reach)), dir: n, key: 'offset' }
       } else useSplitView.setState({ plane: null, error: null })
+      // the connector arrows stand on the first connector: how far it goes into the other part, how wide it is, and (dovetails) how far its flanks flare
+      const cn = p.connector !== 'none' ? r.connector : undefined
+      const arrows: ArrowSpec[] = offsetArrow ? [offsetArrow] : []
+      // (the depth arrow stands at the far side of the connector from the size arrow, so their grips do not overlap on a small connector)
+      if (cn) arrows.push({ origin: sub3(cn.origin, mul3(cn.across, p.size / 2)), dir: cn.down, key: 'depth', min: 0.5 }, { origin: cn.origin, dir: cn.across, key: 'size', factor: 2, min: 0.5 })
+      const apply = (patch: ParamValues) => { cur = { ...cur, ...patch }; setValues(cur) }
+      showArrows(arrows, p as unknown as ParamValues, apply)
+      showAngle(cn?.flare && p.connector === 'dovetail' ? { origin: cn.flare.origin, axis: cn.flare.axis, start: cn.down, radius: Math.max(3, p.depth), key: 'angle', min: 5, max: 45, step: 1 } : null, p as unknown as ParamValues, apply)
       useUi.setState({ inspectorNotice: r.warning && /not touched/.test(r.warning) ? null : null })
     } catch (e) {
       if (stale()) return
       clearPreview()
+      clearHandles()
       useSplitView.setState({ plane: null, error: e instanceof Error ? e.message : String(e) })
     }
   }, 220)
@@ -222,6 +243,7 @@ function splitPreview({ values, setValues }: PreviewCtx): PreviewHandle {
     dispose() {
       runner.dispose()
       clearPreview()
+      clearHandles()
       useSplitView.setState({ plane: null, error: null })
     },
   }

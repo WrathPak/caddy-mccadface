@@ -10,8 +10,9 @@ import type { RepairResult } from '@/kernel/mesh-ops'
 import type { Body, Vec3 } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import type { ParamDef, ParamSchema, ParamValues } from '@/ui/schema'
-import { clearPreview, setPreview } from '@/viewport/preview'
+import { clearPreview, resetManip, setPreview } from '@/viewport/preview'
 import { createRunner } from './previewKit'
+import { extentOf, showArrows, type ArrowSpec } from './handleKit'
 
 interface Ids { id: string; otherId: string }
 interface BodyTool {
@@ -23,6 +24,8 @@ interface BodyTool {
   /** only B-rep bodies (Convert) */
   brepOnly?: boolean
   run(kernel: KernelClient, p: ParamValues, b: Body, ids: Ids): Promise<Body[]>
+  /** the drag arrows of the tool in the viewport */
+  arrows?(p: ParamValues, bodies: Body[]): ArrowSpec[]
 }
 
 const bodiesParam: ParamDef = { type: 'selection-ref', key: 'bodies', help: 'The bodies to work on. Click them in the viewport or the Browser.', label: 'Bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] }
@@ -37,6 +40,14 @@ const TOOLS: BodyTool[] = [
       { type: 'number', key: 'offset', help: 'Where the cutting plane sits along that axis, in mm.', label: 'Offset', unit: 'mm', step: 1, default: 0 },
       { type: 'enum', key: 'keep', help: 'Which side of the plane to keep: the positive side, the negative side, or both as separate bodies.', label: 'Keep', display: 'select', default: 'above', options: [{ value: 'above', label: 'Positive side' }, { value: 'below', label: 'Negative side' }, { value: 'both', label: 'Both (split)' }] },
     ],
+    // the arrow stands on the plane through the origin (offset 0), in the middle of the bodies, and carries the cutting plane with it
+    arrows(p, bodies) {
+      const e = extentOf(bodies)
+      if (!e) return []
+      const n = AXES[p.axis as string] ?? AXES.Z
+      const c: Vec3 = [(e[0][0] + e[1][0]) / 2, (e[0][1] + e[1][1]) / 2, (e[0][2] + e[1][2]) / 2]
+      return [{ origin: [c[0] * (1 - n[0]), c[1] * (1 - n[1]), c[2] * (1 - n[2])], dir: n, key: 'offset' }]
+    },
     async run(k, p, b, ids) {
       return (await k.call('meshPlaneCut', { id: ids.id, name: b.name, key: b.key, normal: AXES[p.axis as string] ?? AXES.Z, offset: p.offset as number, keep: p.keep, otherId: ids.otherId })) as Body[]
     },
@@ -93,11 +104,12 @@ for (const tool of TOOLS) {
       for (const b of targets(p, (id) => ctx.body(id), tool)) out.push(...(await tool.run(ctx.kernel, p, b, { id: b.id, otherId: ctx.newBodyId(n++) })))
       return { bodies: out }
     },
-    preview({ values }) {
+    preview({ values, setValues }) {
       let cur = values
       const runner = createRunner(async (stale) => {
         let list: Body[], p: ParamValues
-        try { p = resolveParams(schema, cur); list = targets(p, (id) => useDoc.getState().geometry.find((b) => b.id === id), tool) } catch { clearPreview(); return }
+        try { p = resolveParams(schema, cur); list = targets(p, (id) => useDoc.getState().geometry.find((b) => b.id === id), tool) } catch { clearPreview(); resetManip(); return }
+        if (tool.arrows) showArrows(tool.arrows(p, list), p, (patch) => { cur = { ...cur, ...patch }; setValues(cur) })
         const out: Body[] = []
         try {
           for (const b of list) out.push(...(await tool.run(getKernel(), p, b, { id: 'preview-' + b.id, otherId: 'preview-other-' + b.id })))
@@ -106,7 +118,7 @@ for (const tool of TOOLS) {
         setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), list.map((b) => b.id))
       }, 220)
       runner.schedule()
-      return { update(v) { cur = v; runner.schedule() }, dispose() { runner.dispose(); clearPreview() } }
+      return { update(v) { cur = v; runner.schedule() }, dispose() { runner.dispose(); clearPreview(); resetManip() } }
     },
   })
 }

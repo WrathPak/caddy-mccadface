@@ -8,7 +8,7 @@ import { stateAround } from '@/doc/engine'
 import { useDoc } from '@/doc/store'
 import type { FeatureCtx, PreviewCtx, PreviewHandle } from '@/doc/types'
 import type { Body, Vec3 } from '@/kernel/types'
-import { applyPoint, type Xf } from '@/kernel/xform'
+import { add3, applyPoint, mul3, norm3, sub3, type Xf } from '@/kernel/xform'
 import { useSketchData } from '@/sketch/draw'
 import { toWorld } from '@/sketch/plane'
 import type { SketchData } from '@/sketch/types'
@@ -20,7 +20,8 @@ import { chainPolylines, edgePolyline, liveRefEnv, resolveAxis, resolveDirection
 import { clearMarkers, setMarkers } from './markers'
 import { entityPolyline } from '@/sketch/curves'
 import { repeat, type RepeatEnv, type Source } from './source'
-import { circXforms, pathXforms, rectXforms, type LinearDir } from './transforms'
+import { circXforms, pathXforms, pointAlong, rectXforms, type LinearDir } from './transforms'
+import { clearHandles, showAngle, showArrows, type AngleSpec, type ArrowSpec } from '../handleKit'
 
 const AXES = [{ value: 'X', label: 'X axis' }, { value: 'Y', label: 'Y axis' }, { value: 'Z', label: 'Z axis' }, { value: 'ref', label: 'Reference' }]
 const WORLD: Record<string, Vec3> = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }
@@ -182,6 +183,54 @@ registerFeature({
   preview: (ctx) => patternPreview(ctx),
 })
 
+/** A point beside `p` (up, or along Y for a vertical `dir`), far enough from the line through it to clear the markers on it. */
+function aside(p: Vec3, dir: Vec3, spacing: number): Vec3 {
+  const ref: Vec3 = Math.abs(dir[2]) > 0.9 ? [0, 1, 0] : [0, 0, 1]
+  const k = ref[0] * dir[0] + ref[1] * dir[1] + ref[2] * dir[2]
+  const side = norm3([ref[0] - dir[0] * k, ref[1] - dir[1] * k, ref[2] - dir[2] * k])
+  return add3(p, mul3(side, Math.max(4, Math.abs(spacing) * 0.4)))
+}
+
+/**
+ * The drag handles of a pattern, standing at the original: an arrow along each direction of a grid (its tip is where the first
+ * copy lands, or the last one for an extent), an arrow along the start of a path, or an arc round the axis of a circular pattern.
+ * The instance markers sit exactly where those tips and knobs would be, so the arrows are shifted to the side and the arc is drawn a
+ * little outside the circle the markers are on: the markers stay clickable.
+ */
+export async function patternHandles(p: PatternP, env: RefEnv, anchor: Vec3): Promise<{ arrows: ArrowSpec[]; angle: AngleSpec | null }> {
+  const report = new RefReport()
+  if (p.kind === 'rect') {
+    const one = async (axis: string, ref: string[], flip: boolean, key: string, distance: number): Promise<ArrowSpec> => {
+      const dir = mul3(norm3(await dirOf(axis, ref, env, report)), flip ? -1 : 1)
+      return { origin: aside(anchor, dir, distance), dir, key }
+    }
+    const arrows = [await one(p.axis1, p.ref1, p.flip1, 'distance1', p.distance1)]
+    if (p.second) arrows.push(await one(p.axis2, p.ref2, p.flip2, 'distance2', p.distance2))
+    return { arrows, angle: null }
+  }
+  if (p.kind === 'circ') {
+    let ax: AxisDef = { origin: [0, 0, 0], dir: WORLD[p.caxis] ?? [0, 0, 1] }
+    if (p.caxis === 'ref') {
+      if (!p.cref[0]) throw new Error('Select the axis reference')
+      ax = await resolveAxis(p.cref[0], env, report)
+    }
+    const d = norm3(ax.dir)
+    const w = sub3(anchor, ax.origin)
+    const along = w[0] * d[0] + w[1] * d[1] + w[2] * d[2]
+    let r: Vec3 = [w[0] - d[0] * along, w[1] - d[1] * along, w[2] - d[2] * along]
+    let radius = Math.hypot(...r)
+    if (radius < 1e-6) { r = Math.abs(d[2]) > 0.9 ? [1, 0, 0] : norm3([-d[1], d[0], 0]); radius = 10 }
+    return {
+      arrows: [],
+      angle: { origin: [ax.origin[0] + d[0] * along, ax.origin[1] + d[1] * along, ax.origin[2] + d[2] * along], axis: p.cflip ? mul3(d, -1) : d, start: norm3(r), radius: radius * 1.3, key: 'cangle' },
+    }
+  }
+  if (p.ptype === 'full') return { arrows: [], angle: null }
+  const path = pathOf(p.path, env, report)
+  const t = pointAlong(p.pflip ? [...path].reverse() : path, 0).t
+  return { arrows: [{ origin: aside(anchor, t, p.pdistance), dir: t, key: 'pdistance' }], angle: null }
+}
+
 function patternPreview({ values, setValues }: PreviewCtx): PreviewHandle {
   let cur = values
   const ui = useUi
@@ -197,14 +246,23 @@ function patternPreview({ values, setValues }: PreviewCtx): PreviewHandle {
 
   const runner = createRunner(async (stale) => {
     let p: PatternP
-    try { p = asP(resolveParams(patternSchema, cur)) } catch { clearPreview(); clearMarkers(); return }
+    try { p = asP(resolveParams(patternSchema, cur)) } catch { clearPreview(); clearMarkers(); clearHandles(); return }
     const env: RepeatEnv = {
       ...liveRefEnv(), around: stateAround, fid: 'preview', newId: (n) => `preview.${n}`,
     }
     let r: PatternResult
-    try { r = await buildPattern(p, env) } catch { clearPreview(); clearMarkers(); return }
+    try { r = await buildPattern(p, env) } catch { clearPreview(); clearMarkers(); clearHandles(); return }
     if (stale()) return
     const anchor = r.anchor
+    const apply = (patch: ParamValues) => { cur = { ...cur, ...patch }; setValues(cur) }
+    if (anchor) {
+      try {
+        const h = await patternHandles(p, env, anchor)
+        if (stale()) return
+        showArrows(h.arrows, p as unknown as ParamValues, apply)
+        showAngle(h.angle, p as unknown as ParamValues, apply)
+      } catch { clearHandles() }
+    } else clearHandles()
     if (anchor) {
       setMarkers([
         { id: '0', pos: anchor, state: 'fixed', label: 'Original' },
@@ -231,6 +289,7 @@ function patternPreview({ values, setValues }: PreviewCtx): PreviewHandle {
       runner.dispose()
       clearPreview()
       clearMarkers()
+      clearHandles()
       ui.getState().setSelectionFilter(filterBefore)
     },
   }

@@ -134,6 +134,21 @@ describe('split', () => {
     await expect(split(slab(), { kind: 'profiles', groups: [{ plane: { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] }, profiles: [{ outer: sq, holes: [] }] }] }, spec({}))).rejects.toThrow(/flat cut/)
   })
 
+  it('reports where the first connector stands, for the drag handles', async () => {
+    const round = (await split(slab(), planeZ(0), spec({ type: 'round', count: 1 }))).connector!
+    expect(round.origin[2]).toBeCloseTo(0, 4)
+    // it goes down into the part behind the cut (the normal points from that part towards the other one), size measured across the cut
+    expect(Math.abs(round.down[2])).toBeCloseTo(1, 4)
+    expect(Math.abs(round.across[2])).toBeLessThan(1e-6)
+    expect(round.flare).toBeUndefined()
+    const tail = (await split(slab(), planeZ(0), spec({ type: 'dovetail', count: 1 }))).connector!
+    expect(tail.flare).toBeDefined()
+    // the flare turns about the line the dovetail runs along, which lies in the cut plane and across `across`
+    expect(Math.abs(tail.flare!.axis[2])).toBeLessThan(1e-6)
+    expect(Math.abs(tail.flare!.axis[0] * tail.across[0] + tail.flare!.axis[1] * tail.across[1])).toBeLessThan(1e-6)
+    expect((await split(slab(), planeZ(0))).connector).toBeUndefined()
+  })
+
   it('splits a mesh body (manifold) and adds connectors to it', async () => {
     const b = bodyFromTopo('m', 'Mesh', meshOf(slab()))
     const r = await run<SplitResult>('printSplit', { id: 'm', name: 'Mesh', key: b.key, ids: ids(), cutter: planeZ(0), connectors: spec({ type: 'round', count: 1, size: 6, depth: 5, clearance: 0.25 }), fid: 's' } satisfies SplitArgs)

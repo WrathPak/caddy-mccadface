@@ -2,7 +2,7 @@
 import { ArrowLineRight, Eraser, LinkBreak, Needle, Rows, Scissors, Swap } from '@phosphor-icons/react'
 import { RefError, RefReport, bodyIdsOf, decodeRef, faceSigs, resolveEdge } from '@/doc/refs'
 import type { SurfaceDeleteFaceArgs, SurfaceExtendArgs, SurfaceReplaceFaceArgs, SurfaceStitchArgs, SurfaceThickenArgs, SurfaceTrimArgs, SurfaceUnstitchArgs, TrimTool } from '@/kernel/surface-ops'
-import type { Body } from '@/kernel/types'
+import type { Body, Vec3 } from '@/kernel/types'
 import { mul3 } from '@/kernel/xform'
 import type { ParamSchema } from '@/ui/schema'
 import { resolvePlane } from '../modeling-tools/geo'
@@ -98,6 +98,15 @@ registerSurfaceTool({
       bodies.push(await call<Body>(env, 'surfaceExtend', args))
     }
     return { bodies }
+  },
+  async manip(p, env) {
+    const ref = (p.edges as string[])[0] ? decodeRef((p.edges as string[])[0]) : null
+    if (ref?.kind !== 'edge') return null
+    const hit = resolveEdge(ref, env.bodies)
+    if (!hit?.body.surface) return null
+    // the kernel knows which side of the edge is outside the surface: ask it for the middle of the edge and the way out
+    const at = await call<{ origin: Vec3; dir: Vec3 }>(env, 'surfaceExtendDir', { key: hit.body.key, edge: hit.index })
+    return { origin: at.origin, dir: at.dir, key: 'distance', min: 0.001 }
   },
 })
 
@@ -202,7 +211,7 @@ registerSurfaceTool({
     const [b] = surfaceBodies(p.surfaces as string[], env, 'the surfaces to thicken')
     const sg = faceSigs(b)[0]
     if (!sg) return null
-    return { origin: sg.centroid, dir: mul3(sg.normal, p.side === 'back' ? -1 : 1), key: 'distance', factor: p.side === 'sym' ? 2 : 1 }
+    return { origin: sg.centroid, dir: mul3(sg.normal, p.side === 'back' ? -1 : 1), key: 'distance', factor: p.side === 'sym' ? 2 : 1, min: 0.001 }
   },
 })
 

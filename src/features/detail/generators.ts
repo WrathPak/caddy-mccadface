@@ -12,10 +12,12 @@ import type { Body } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
 import { createRunner } from '../previewKit'
+import { resetManip } from '@/viewport/preview'
 import { clearHairView, useHairView } from '../hair/store'
 import type { HairPreviewResult } from '@/kernel/hair-ops'
 import { extractOthers, regionFromSelection } from '../hair/region'
-import { bindRegion, surfaceOf } from './common'
+import { showArrows } from '../handleKit'
+import { bindRegion, surfaceFrame, surfaceOf } from './common'
 import { GEN_SCHEMAS } from './genSchema'
 import { clearDetailView, useDetailView } from './store'
 
@@ -24,6 +26,11 @@ const LABELS: Record<GenKind, { label: string; noun: string; icon: Icon; mode: '
   scales: { label: 'Scales', noun: 'scales', icon: Fish, mode: 'brush' },
   spikes: { label: 'Spikes', noun: 'spikes', icon: Cactus, mode: 'brush' },
   grass: { label: 'Grass', noun: 'blades', icon: Plant, mode: 'brush' },
+}
+
+/** The number that says how far each one stands out of the surface, and its smallest value. */
+const REACH: Record<GenKind, { key: string; min: number }> = {
+  fur: { key: 'length', min: 0.5 }, scales: { key: 'height', min: 0.4 }, spikes: { key: 'height', min: 0.3 }, grass: { key: 'height', min: 1 },
 }
 
 function args(kind: GenKind, schema: ParamSchema, raw: ParamValues, bodies: Body[], mode: 'preview' | 'final'): { op: GenOpArgs; body: Body } {
@@ -66,7 +73,7 @@ function preview(kind: GenKind, schema: ParamSchema, { values, setValues }: Prev
   const runner = createRunner(async (stale) => {
     try {
       const v = resolveParams(schema, cur)
-      if (!(v.region as string[]).length) { clearHairView(); useDetailView.setState({ readout: null, busy: false }); useUi.setState({ inspectorNotice: null }); return }
+      if (!(v.region as string[]).length) { clearHairView(); resetManip(); useDetailView.setState({ readout: null, busy: false }); useUi.setState({ inspectorNotice: null }); return }
       useDetailView.setState({ busy: true })
       const { op } = args(kind, schema, cur, geometry(), 'preview')
       const res = (await getKernel().call('surfaceGenerate', op)) as GenPreview
@@ -84,10 +91,13 @@ function preview(kind: GenKind, schema: ParamSchema, { values, setValues }: Prev
         readout: `${s.count.toLocaleString()} ${LABELS[kind].noun}${extra ? ` (${extra})` : ''} | ${Math.round(res.stats.triangles / 1000).toLocaleString()}k triangles | ${res.stats.ms} ms`,
         busy: false,
       })
+      // the reach arrow stands in the middle of the selected surface and points out of it
+      const fr = surfaceFrame(op.positions, op.indices)
+      showArrows([{ origin: fr.point, dir: fr.normal, key: REACH[kind].key, min: REACH[kind].min }], v, (patch) => { cur = { ...cur, ...patch }; setValues(cur) })
       useUi.setState({ inspectorNotice: null })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      if (!stale()) { clearHairView(); useDetailView.setState({ readout: null, busy: false }); useUi.setState({ inspectorNotice: msg }) }
+      if (!stale()) { clearHairView(); resetManip(); useDetailView.setState({ readout: null, busy: false }); useUi.setState({ inspectorNotice: msg }) }
     }
   }, 260)
   runner.schedule()
@@ -102,6 +112,7 @@ function preview(kind: GenKind, schema: ParamSchema, { values, setValues }: Prev
       faces.dispose()
       clearHairView()
       clearDetailView()
+      resetManip()
       useUi.setState({ inspectorNotice: null })
     },
   }

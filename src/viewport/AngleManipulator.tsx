@@ -21,15 +21,30 @@ interface AngleState {
   radius: number
   /** degrees */
   angle: number
+  /** limits of the angle (default: a full turn either way) */
+  min: number
+  max: number
+  /** grid of a drag in degrees (Shift snaps coarser) */
+  step: number
+  /** the angle cannot be 0 (a revolve of nothing) */
+  nonZero: boolean
+  /** the value shown and typed is the arc's angle times this (2 when the arc shows the half angle of a cone) */
+  scale: number
   onChange: ((deg: number) => void) | null
 }
-export const useAngleManip = create<AngleState>(() => ({ active: false, origin: [0, 0, 0], axis: [0, 0, 1], start: [1, 0, 0], radius: 10, angle: 360, onChange: null }))
-export const resetAngleManip = () => useAngleManip.setState({ active: false, onChange: null })
+const makeAngle = () => create<AngleState>(() => ({ active: false, origin: [0, 0, 0], axis: [0, 0, 1], start: [1, 0, 0], radius: 10, angle: 360, min: -360, max: 360, step: 1, nonZero: true, scale: 1, onChange: null }))
+/** The arc slots: most tools use only the first; a hole shows two (countersink angle and drill point). */
+export const useAngleManip = makeAngle()
+export const ANGLE_SLOTS = [useAngleManip, makeAngle()]
+export const resetAngleManip = () => { for (const s of ANGLE_SLOTS) s.setState({ active: false, onChange: null, min: -360, max: 360, step: 1, nonZero: true, scale: 1 }) }
 
-const MAX = 360
-
+/** Every rotary handle in the scene. */
 export function AngleManipulator() {
-  const m = useAngleManip()
+  return <>{ANGLE_SLOTS.map((store, i) => <AngleHandle key={i} store={store} suffix={i ? '-angle-b' : ''} />)}</>
+}
+
+function AngleHandle({ store, suffix }: { store: typeof useAngleManip; suffix: string }) {
+  const m = store()
   const colors = useVpColors()
   const knob = useRef<Group>(null)
   const { camera, gl, invalidate } = useThree()
@@ -68,8 +83,9 @@ export function AngleManipulator() {
 
   const commitTyped = (text: string) => {
     const v = evalNumber(text, 'deg')
-    if (v === null || !Number.isFinite(v) || v === 0) return false
-    useAngleManip.getState().onChange?.(+MathUtils.clamp(v, -MAX, MAX).toFixed(3))
+    const lim = store.getState()
+    if (v === null || !Number.isFinite(v) || (v === 0 && lim.nonZero)) return false
+    lim.onChange?.(+MathUtils.clamp(v / lim.scale, lim.min, lim.max).toFixed(3))
     setTyping(null)
     setTimeout(() => acceptInspector(), 0)
     return true
@@ -100,11 +116,12 @@ export function AngleManipulator() {
       if (d > Math.PI) d -= 2 * Math.PI
       else if (d < -Math.PI) d += 2 * Math.PI
       prev = a
-      angle = MathUtils.clamp(angle + MathUtils.radToDeg(d), -MAX, MAX)
-      const st = ev.shiftKey ? 15 : 1
-      let v = Math.round(angle / st) * st
-      if (v === 0) v = angle < 0 ? -st : st
-      useAngleManip.getState().onChange?.(+v.toFixed(3))
+      const lim = store.getState()
+      angle = MathUtils.clamp(angle + MathUtils.radToDeg(d), lim.min, lim.max)
+      const st = ev.shiftKey ? Math.max(15, lim.step) : lim.step
+      let v = MathUtils.clamp(Math.round(angle / st) * st, lim.min, lim.max)
+      if (v === 0 && lim.nonZero) v = angle < 0 ? -st : st
+      store.getState().onChange?.(+v.toFixed(3))
       invalidate()
     }
     const up = () => {
@@ -140,11 +157,11 @@ export function AngleManipulator() {
         <Html position={[0, 0, 0]} zIndexRange={[25, 0]} style={{ pointerEvents: 'none' }}>
           {typing === null ? (
             <Tip label="Type a value" desc="Click to type an exact angle, then press Enter to accept it." side="top">
-              <div className="sk-tip" data-testid="manip-value" style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', cursor: 'text' }}
-                onClick={() => setTyping(String(+m.angle.toFixed(3)))}>{`${m.angle.toFixed(1)} deg`}</div>
+              <div className="sk-tip" data-testid={`manip-value${suffix}`} style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', cursor: 'text' }}
+                onClick={() => setTyping(String(+(m.angle * m.scale).toFixed(3)))}>{`${(m.angle * m.scale).toFixed(1)} deg`}</div>
             </Tip>
           ) : (
-            <input className="sk-tip sk-tip-input" data-testid="manip-input" data-accept-on-enter autoFocus value={typing} spellCheck={false} inputMode={coarse ? 'decimal' : undefined} enterKeyHint="done"
+            <input className="sk-tip sk-tip-input" data-testid={`manip-input${suffix}`} data-accept-on-enter autoFocus value={typing} spellCheck={false} inputMode={coarse ? 'decimal' : undefined} enterKeyHint="done"
               style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', width: 84 }}
               onFocus={(e) => e.currentTarget.select()}
               onChange={(e) => setTyping(e.target.value)}

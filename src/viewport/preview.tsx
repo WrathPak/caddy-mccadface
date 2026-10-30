@@ -171,8 +171,12 @@ interface ManipState {
   label: (value: number) => string
   onChange: ((value: number) => void) | null
 }
-export const useManip = create<ManipState>(() => ({ active: false, origin: [0, 0, 0], dir: [0, 0, 1], tip: 10, factor: 1, label: (v) => v.toFixed(2), onChange: null }))
-export const resetManip = () => useManip.setState({ active: false, onChange: null })
+const makeManip = () => create<ManipState>(() => ({ active: false, origin: [0, 0, 0], dir: [0, 0, 1], tip: 10, factor: 1, label: (v) => v.toFixed(2), onChange: null }))
+/** The arrow slots: most tools use only the first, a few (box sizes, grid directions, hole sizes) show several at once. */
+export const useManip = makeManip()
+/** (six at most: a hole can show depth, counterbore depth, thread length and two or three diameters at once) */
+export const MANIP_SLOTS = [useManip, makeManip(), makeManip(), makeManip(), makeManip(), makeManip()]
+export const resetManip = () => { for (const s of MANIP_SLOTS) s.setState({ active: false, onChange: null }) }
 
 /** Parameter along the line (o, d) of the point closest to the pointer ray. */
 function axisParam(ray: Ray, o: Vector3, d: Vector3): number | null {
@@ -184,8 +188,17 @@ function axisParam(ray: Ray, o: Vector3, d: Vector3): number | null {
   return (b * e - dd) / den
 }
 
+/** Every distance arrow in the scene (the first slot, then the extra ones for tools with several distances). */
 export function ArrowManipulator() {
-  const m = useManip()
+  return (
+    <>
+      {MANIP_SLOTS.map((store, i) => <ArrowHandle key={i} store={store} suffix={i ? '-' + 'bcdef'[i - 1] : ''} />)}
+    </>
+  )
+}
+
+function ArrowHandle({ store, suffix }: { store: typeof useManip; suffix: string }) {
+  const m = store()
   const colors = useVpColors()
   const group = useRef<Group>(null)
   const { camera, gl, invalidate } = useThree()
@@ -199,7 +212,7 @@ export function ArrowManipulator() {
   const commitTyped = (text: string) => {
     const v = evalNumber(text, 'mm')
     if (v === null || !Number.isFinite(v)) return false
-    useManip.getState().onChange?.(+v.toFixed(4))
+    store.getState().onChange?.(+v.toFixed(4))
     setTyping(null)
     setTimeout(() => acceptInspector(), 0)
     return true
@@ -235,7 +248,7 @@ export function ArrowManipulator() {
       if (t === null) return
       // the tool may turn the arrow round mid-drag (Extrude flips Join / Cut): measure on the axis the drag began on, then read the
       // tip off in whatever direction the arrow points now, so it never jumps
-      const cur = useManip.getState()
+      const cur = store.getState()
       const flip = new Vector3(...cur.dir).normalize().dot(d) < 0 ? -1 : 1
       const along = dr.tip0 + (t - dr.t0)
       const st = ev.shiftKey ? 1 : 0.1
@@ -283,11 +296,11 @@ export function ArrowManipulator() {
         <Html position={[0, 0, 0]} zIndexRange={[25, 0]} style={{ pointerEvents: 'none' }}>
           {typing === null ? (
             <Tip label="Type a value" desc="Click to type an exact value, then press Enter to accept it." side="top">
-              <div className="sk-tip" data-testid="manip-value" style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', cursor: 'text' }}
+              <div className="sk-tip" data-testid={`manip-value${suffix}`} style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', cursor: 'text' }}
                 onClick={() => setTyping(String(+(m.tip * m.factor).toFixed(3)))}>{m.label(m.tip * m.factor)}</div>
             </Tip>
           ) : (
-            <input className="sk-tip sk-tip-input" data-testid="manip-input" data-accept-on-enter autoFocus value={typing} spellCheck={false} inputMode={coarse ? 'decimal' : undefined} enterKeyHint="done"
+            <input className="sk-tip sk-tip-input" data-testid={`manip-input${suffix}`} data-accept-on-enter autoFocus value={typing} spellCheck={false} inputMode={coarse ? 'decimal' : undefined} enterKeyHint="done"
               style={{ transform: 'translate(14px, -26px)', pointerEvents: 'auto', width: 84 }}
               onFocus={(e) => e.currentTarget.select()}
               onChange={(e) => setTyping(e.target.value)}

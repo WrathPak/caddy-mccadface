@@ -64,7 +64,18 @@ export interface SplitArgs {
   fid: string
 }
 
-export interface SplitResult { bodies: Body[]; warning?: string }
+/** Where the first alignment connector stands, for the drag handles of the dialog (all on the cut plane, in world space). */
+export interface ConnectorSpot {
+  /** the middle of the connector on the cut plane */
+  origin: Vec3
+  /** into the part the connector goes to */
+  down: Vec3
+  /** the direction its size is measured along */
+  across: Vec3
+  /** dovetails only: where the flank starts at the plane, and the axis the flank turns about to flare out */
+  flare?: { origin: Vec3; axis: Vec3 }
+}
+export interface SplitResult { bodies: Body[]; warning?: string; connector?: ConnectorSpot }
 
 function bounds(mesh: TopoMesh) {
   const lo: Vec3 = [Infinity, Infinity, Infinity], hi: Vec3 = [-Infinity, -Infinity, -Infinity]
@@ -202,11 +213,12 @@ const trapezoid = (origin: Vec3, v: Vec3, down: Vec3, w0: number, w1: number, de
 }
 
 /** Pin + socket tool shapes for a flat cut. Pins grow from part A (normal side) into part B; sockets are cut from part B. */
-function connectorTools(spec: ConnectorSpec, origin: Vec3, normal: Vec3, section: TopoMesh, depth: number): { pins: Sh[]; sockets: Sh[] } {
+function connectorTools(spec: ConnectorSpec, origin: Vec3, normal: Vec3, section: TopoMesh, depth: number): { pins: Sh[]; sockets: Sh[]; spot?: ConnectorSpot } {
   const { u, v, n } = planeBasis(normal)
   const down = mul3(n, -1)
   const { segs } = sectionSegments(section, origin, n)
   const pins: Sh[] = [], sockets: Sh[] = []
+  let spot: ConnectorSpot | undefined
   const lift = 0.2 // the pin starts a little inside part A so the union is solid
   const clr = spec.clearance
   const at2 = (p: Vec2): Vec3 => add3(origin, add3(mul3(u, p[0]), mul3(v, p[1])))
@@ -218,16 +230,21 @@ function connectorTools(spec: ConnectorSpec, origin: Vec3, normal: Vec3, section
       const w0 = spec.size, w1 = spec.size + 2 * depth * tan
       const len = ln.u1 - ln.u0 + 2
       const start = add3(o, mul3(u, ln.u0 - 1))
+      if (!spot) {
+        const mid = add3(start, mul3(u, len / 2))
+        spot = { origin: mid, down, across: v, flare: { origin: add3(mid, mul3(v, w0 / 2)), axis: u } }
+      }
       pins.push(prism(trapezoid(start, v, down, w0, w1, depth, lift), u, len))
       // the socket is the same shape grown by the clearance, open at both ends
       sockets.push(prism(trapezoid(start, v, down, w0 + 2 * clr, w1 + 2 * clr * (1 + tan), depth + clr, lift), u, len))
     }
-    return { pins, sockets }
+    return { pins, sockets, spot }
   }
   const half = spec.size / 2 + clr
   const margin = Math.max(1, spec.size * 0.5)
   for (const p of layoutPins(segs, spec.count, half + margin)) {
     const top = add3(at2(p), mul3(n, lift))
+    spot ??= { origin: at2(p), down, across: u }
     if (spec.type === 'round') {
       pins.push(makeCylinder(spec.size / 2, depth + lift, top, down) as unknown as Sh)
       sockets.push(makeCylinder(spec.size / 2 + clr, depth + lift + clr, top, down) as unknown as Sh)
@@ -240,7 +257,7 @@ function connectorTools(spec: ConnectorSpec, origin: Vec3, normal: Vec3, section
       sockets.push(sq(spec.size / 2 + clr, depth + lift + clr))
     }
   }
-  return { pins, sockets }
+  return { pins, sockets, spot }
 }
 
 export const MAX_PARTS = 16
@@ -258,6 +275,7 @@ registerOp<SplitArgs, SplitResult>('printSplit', async (a, h) => {
   if (inside.empty() || outside.empty()) throw new Error('The cut does not go through the body, so there is nothing to split')
 
   let warning: string | undefined
+  let connector: ConnectorSpot | undefined
   let A = inside, B = outside
   const spec = a.connectors
   if (spec && spec.count > 0) {
@@ -279,6 +297,7 @@ registerOp<SplitArgs, SplitResult>('printSplit', async (a, h) => {
       warning = `Connector depth reduced to ${+depth.toFixed(2)} mm so it stays inside the part`
     }
     const tools = connectorTools(spec, origin, normal, topo, depth)
+    connector = tools.spot
     if (!tools.pins.length) throw new Error('No connector fits on this cut: make them smaller or the cut larger')
     if (tools.pins.length < spec.count) warning = `Only ${tools.pins.length} of ${spec.count} connectors fit${warning ? '; ' + warning : ''}`
     for (let i = 0; i < tools.pins.length; i++) {
@@ -292,7 +311,7 @@ registerOp<SplitArgs, SplitResult>('printSplit', async (a, h) => {
   const parts = [...(await A.pieces()), ...(await B.pieces())]
   if (parts.length > Math.min(MAX_PARTS, a.ids.length)) throw new Error(`The cut would make ${parts.length} separate parts; the most allowed is ${Math.min(MAX_PARTS, a.ids.length)}`)
   const out = parts.map((p, i) => p.body(h, a.ids[i], `${a.name} ${i + 1}`))
-  return { bodies: h.sendBodies(out) as unknown as Body[], warning }
+  return { bodies: h.sendBodies(out) as unknown as Body[], warning, connector }
 })
 
 // ---------------------------------------------------------------- hollow

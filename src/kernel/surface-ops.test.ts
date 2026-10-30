@@ -317,6 +317,27 @@ describe('surface extend', () => {
     near(areaOf(x), 140)
     expect(bbox(x.mesh.positions).max[0]).toBeCloseTo(14, 3)
   })
+  it('says where the drag handle stands: the middle of the free edge, pointing away from the surface', async () => {
+    const p = await flat('p', 10, 10)
+    const cases: [(s: number[], t: number[]) => boolean, number[], number[]][] = [
+      [(s, t) => Math.abs(s[0] - 10) < 1e-6 && Math.abs(t[0] - 10) < 1e-6, [10, 5, 0], [1, 0, 0]],
+      [(s, t) => Math.abs(s[0]) < 1e-6 && Math.abs(t[0]) < 1e-6, [0, 5, 0], [-1, 0, 0]],
+      [(s, t) => Math.abs(s[1]) < 1e-6 && Math.abs(t[1]) < 1e-6, [5, 0, 0], [0, -1, 0]],
+      [(s, t) => Math.abs(s[1] - 10) < 1e-6 && Math.abs(t[1] - 10) < 1e-6, [5, 10, 0], [0, 1, 0]],
+    ]
+    for (const [pred, origin, dir] of cases) {
+      const [e] = await rimEdge(p, pred as never)
+      const at = await run<{ origin: number[]; dir: number[] }>('surfaceExtendDir', { key: p.key, edge: e })
+      origin.forEach((v, i) => expect(at.origin[i]).toBeCloseTo(v, 6))
+      dir.forEach((v, i) => expect(at.dir[i]).toBeCloseTo(v, 6))
+    }
+    // a cylinder wall extends straight on along its axis, away from the wall
+    const wall = await run('surfaceRevolve', { id: 'w', name: 'w', curves: [chain([line([5, 0, 0], [5, 0, 10], 'l')])], axisOrigin: [0, 0, 0], axisDir: [0, 0, 1], angle: 360 })
+    const top = edgeIdx(wall, (s, t) => Math.abs(s[2] - 10) < 1e-6 && Math.abs(t[2] - 10) < 1e-6)
+    const up = await run<{ origin: number[]; dir: number[] }>('surfaceExtendDir', { key: wall.key, edge: top[0] })
+    expect(up.dir[2]).toBeCloseTo(1, 4)
+    expect(up.origin[2]).toBeCloseTo(10, 6)
+  })
   it('every edge of a rectangle extends outward whatever its orientation', async () => {
     const p = await flat('p', 10, 10)
     for (const pred of [

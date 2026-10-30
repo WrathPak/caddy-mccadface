@@ -11,9 +11,12 @@ import { getKernel } from '@/kernel/client'
 import type { HollowArgs } from '@/kernel/print-ops'
 import type { Body, MeshData, Vec3 } from '@/kernel/types'
 import { useUi } from '@/store/ui'
-import type { ParamSchema } from '@/ui/schema'
-import { clearPreview, setPreview } from '@/viewport/preview'
+import type { ParamSchema, ParamValues } from '@/ui/schema'
+import { clearPreview, resetManip, setPreview } from '@/viewport/preview'
 import { createRunner } from '../previewKit'
+import { showArrows, topPoint, type ArrowSpec } from '../handleKit'
+
+const unit = (v: Vec3): Vec3 => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l, v[2] / l] }
 
 export interface Drain { p: Vec3; n: Vec3 }
 
@@ -141,7 +144,19 @@ function hollowPreview({ values, setValues }: PreviewCtx): PreviewHandle {
   sync()
   const runner = createRunner(async (stale) => {
     let p: HollowP
-    try { p = resolveParams(hollowSchema, cur) as unknown as HollowP } catch { clearPreview(); return }
+    try { p = resolveParams(hollowSchema, cur) as unknown as HollowP } catch { clearPreview(); resetManip(); return }
+    // the wall thickness arrow stands on the top of the first body and points into the wall; the drain arrow runs across the first drain hole
+    const first = bodyIdsOf(p.bodies).map((id) => useDoc.getState().geometry.find((b) => b.id === id)).find((b): b is Body => !!b)
+    const top = first ? topPoint(first) : null
+    const specs: ArrowSpec[] = []
+    if (top) specs.push({ origin: top.point, dir: top.inward, key: 'thickness', min: 0.2 })
+    const drain = p.drains.map(decodeDrain).find((d): d is Drain => !!d)
+    if (drain) {
+      const n = unit(drain.n)
+      const side = unit(Math.abs(n[2]) > 0.9 ? [1, 0, 0] : [n[1], -n[0], 0])
+      specs.push({ origin: drain.p, dir: side, key: 'diameter', factor: 2, min: 0.5 })
+    }
+    showArrows(specs, p as unknown as ParamValues, (patch) => { cur = { ...cur, ...patch }; setValues(cur) })
     // while holes are being placed the real body is shown, so clicks land on its surface
     if (useDrains.getState().adding) { clearPreview(); return }
     try {
@@ -163,6 +178,7 @@ function hollowPreview({ values, setValues }: PreviewCtx): PreviewHandle {
       off()
       runner.dispose()
       clearPreview()
+      resetManip()
       useUi.setState({ inspectorNotice: null })
       useDrains.setState({ open: false, adding: false, holes: [], set: null })
     },
