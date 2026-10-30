@@ -212,8 +212,9 @@ test.describe('phone, portrait', () => {
     await page.touchscreen.tap(empty.x, empty.y)
     await page.waitForTimeout(80)
     await page.touchscreen.tap(empty.x, empty.y)
+    // the fit can start a frame or two after the second tap on a slow runner, so wait for it rather than for a still camera
+    await expect.poll(async () => (await nav(app)).dist).toBeLessThan(farDist * 0.6)
     await app.cameraStable()
-    expect((await nav(app)).dist).toBeLessThan(farDist * 0.6)
     await app.shot('mobile-nav')
   })
 
