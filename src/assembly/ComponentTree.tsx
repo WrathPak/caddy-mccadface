@@ -15,6 +15,7 @@ import { usePlacement } from './place'
 import { useAssemblyRuntime } from './runtime'
 import { ROOT } from './types'
 import { startJoint } from './jointDialog'
+import { startComponentInfo } from './info'
 import { applyExternalUpdate, dismissExternalUpdate, refreshExternal } from './external'
 import { copyComponent, pasteComponent, useClipboard } from './clipboard'
 
@@ -113,6 +114,7 @@ function ComponentRow({ node, depth, children }: { node: OccNode; depth: number;
           <CM.Content className="menu">
             <CM.Item className="menu-item" onSelect={() => activateOcc(isActive ? parentPath(node.id) : node.id)}>{isActive ? 'Deactivate' : 'Activate'}</CM.Item>
             <CM.Item className="menu-item" onSelect={() => setEditing(true)}>Rename<span className="kbd">F2</span></CM.Item>
+            <CM.Item className="menu-item" onSelect={() => startComponentInfo(node.component)}>Material and description...</CM.Item>
             <CM.Item className="menu-item" onSelect={() => isolateComponent(node.id)}>{isolated ? 'Show all' : 'Isolate'}</CM.Item>
             <CM.Item className="menu-item" onSelect={() => toggleHidden(node.id)}>{hidden ? 'Show' : 'Hide'}</CM.Item>
             <CM.Separator className="menu-sep" />

@@ -64,7 +64,7 @@ export const surfaceExtendSchema: ParamSchema = {
   id: 'surfaceExtend',
   title: 'Extend',
   params: [
-    { type: 'selection-ref', key: 'edges', help: 'The open edges of a surface to push outward. Click them in the viewport.', label: 'Edges', accepts: ['edge'], multiple: true, required: true, pick: true, default: [] },
+    { type: 'selection-ref', key: 'edges', help: 'The open edges of a surface to push outward. Click them in the viewport. Edges that meet at a corner have that corner filled in when you pick both.', label: 'Edges', accepts: ['edge'], multiple: true, required: true, pick: true, default: [] },
     { type: 'number', key: 'distance', help: 'How far to extend, in mm.', label: 'Distance', unit: 'mm', min: 0.001, step: 0.5, default: 5 },
     {
       type: 'enum', key: 'mode', help: 'Natural keeps following the surface, so a cylinder stays a cylinder. Tangent carries straight on along the surface at the edge, like a cone off a sphere.', label: 'Type', display: 'segmented', default: 'natural',
@@ -172,7 +172,7 @@ export const surfaceThickenSchema: ParamSchema = {
   id: 'surfaceThicken',
   title: 'Thicken',
   params: [
-    { type: 'selection-ref', key: 'surfaces', help: 'The surfaces to give a thickness. Click them in the viewport. Closed surfaces cannot be thickened: stitch them into a solid instead.', label: 'Surfaces', accepts: ['body'], multiple: true, required: true, pick: true, default: [] },
+    { type: 'selection-ref', key: 'surfaces', help: 'The surfaces to give a thickness. Click them in the viewport. A closed surface becomes a hollow solid (front: grows outward, back: inward).', label: 'Surfaces', accepts: ['body'], multiple: true, required: true, pick: true, default: [] },
     { type: 'number', key: 'distance', help: 'The thickness of the solid, in mm. You can also drag the arrow in the viewport.', label: 'Thickness', unit: 'mm', min: 0.001, step: 0.5, default: 2 },
     {
       type: 'enum', key: 'side', help: 'Front grows the way the surface faces, back the other way, symmetric puts half the thickness on each side.', label: 'Side', display: 'segmented', default: 'front',

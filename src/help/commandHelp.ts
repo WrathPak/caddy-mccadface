@@ -124,10 +124,10 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
   'surface.patch': h('Fill a closed outline of curves or surface edges with a surface. It can follow the neighbouring faces so the join stays smooth.', 'A closed loop of sketch curves or surface edges'),
   'surface.offset': h('Copy surfaces or faces to a new surface at a distance.', 'Surfaces or faces'),
   'surface.trim': h('Cut a surface with a plane, another surface, a face or a solid, and keep the side you want.', 'The surface to trim, then the cutting plane, face, surface or solid'),
-  'surface.extend': h('Stretch the open edges of a surface outward, following its curve or going straight along its tangent.', 'The open edges to extend'),
+  'surface.extend': h('Stretch the open edges of a surface outward, following its curve or going straight along its tangent. Edges that meet at a corner get the corner filled in (or mitred, at an inside corner), so the result stays one sheet.', 'The open edges to extend'),
   'surface.stitch': h('Sew surfaces together along the edges they share. When the result is fully closed it becomes a solid.', 'Two or more surfaces that touch along edges'),
   'surface.unstitch': h('Split a body into one surface per face, or pull chosen faces off as separate surfaces.', 'A body, or the faces to pull off'),
-  'surface.thicken': h('Give a surface a thickness on one side or both, which turns it into a solid.', 'The surface to thicken'),
+  'surface.thicken': h('Give a surface a thickness on one side or both, which turns it into a solid. A closed surface becomes a hollow solid with an outer and an inner wall.', 'The surface to thicken'),
   'surface.deleteFace': h('Remove faces from a solid or a surface and leave an open surface behind.', 'The faces to remove'),
 
   // ---- assemble
@@ -171,8 +171,8 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
   'drawing.ann.gdt': h('Place a geometric tolerance frame, such as position, flatness or parallelism. Used when the part must meet tight shape rules.'),
   'drawing.ann.datum': h('Place a datum symbol (A, B, C), a reference that tolerances are measured from.', 'The edge or face that is the datum'),
   'drawing.ann.finish': h('Place a surface roughness symbol that says how smooth a face must be.', 'The face or edge it applies to'),
-  'drawing.ann.balloon': h('Place a numbered balloon that points at a part. The number comes from the parts list.', 'The part to point at'),
-  'drawing.ann.partsList': h('Place a table that lists the parts of the model and how many of each there are.'),
+  'drawing.ann.balloon': h('Place a numbered balloon that points at a part. The number is the item number the part has in the parts list, and it follows the list when parts are added or removed.', 'The part to point at'),
+  'drawing.ann.partsList': h('Place a parts list: a table with an item number, quantity, part name, material and description for each part. In an assembly every component is a row and copies are counted together. It updates when the model changes.'),
   'drawing.export.pdf': h('Save every sheet as a PDF with real, selectable text.'),
   'drawing.export.dxf': h('Save the active sheet as a DXF, with layers and line types, for CAM and other CAD programs.'),
   'drawing.export.svg': h('Save the active sheet as an SVG picture.'),

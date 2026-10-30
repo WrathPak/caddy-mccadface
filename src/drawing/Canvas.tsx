@@ -39,6 +39,7 @@ export function useSheetOutput(sheet: Sheet | undefined): SheetOutput | null {
   const bodies = useDoc((s) => s.geometry)
   const geoms = useViewGeoms((s) => s.geoms)
   const names = useDoc((s) => s.bodyNames)
+  const assembly = useDoc((s) => s.assembly)
   return useMemo(() => {
     if (!sheet) return null
     try {
@@ -47,8 +48,8 @@ export function useSheetOutput(sheet: Sheet | undefined): SheetOutput | null {
       console.warn('[drawing] could not build the sheet', e)
       return null
     }
-    // names: the parts list shows body names
-  }, [doc, sheet, bodies, geoms, names])
+    // names and assembly: the parts list is built from the component tree
+  }, [doc, sheet, bodies, geoms, names, assembly])
 }
 
 const strokeFor = (s: LineStyle) => LINE_STYLES[s]
@@ -123,8 +124,9 @@ export function Canvas({ sheet, out }: { sheet: Sheet; out: SheetOutput | null }
   }, [sheet, size])
 
   const bodies = useDoc((s) => s.geometry)
+  const assembly = useDoc((s) => s.assembly)
   const sheets = useDrawing((s) => s.doc.sheets)
-  useEffect(() => { void refreshGeoms(sheets) }, [sheets, bodies])
+  useEffect(() => { void refreshGeoms(sheets) }, [sheets, bodies, assembly])
 
   useEffect(() => {
     camHandle.current = {
