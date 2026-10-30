@@ -1,6 +1,6 @@
 /** Surface worker ops, run on real OpenCascade in Node. */
 import { beforeAll, describe, expect, it } from 'vitest'
-import { iterTopo, measureArea, measureVolume, type AnyShape } from 'replicad'
+import { getOC, iterTopo, makeVertex, measureArea, measureDistanceBetween, measureVolume, type AnyShape } from 'replicad'
 import { box, initOcc, topoOf } from './occ'
 import { bodyFromShape, getBrep, getOp, helpers } from './store'
 import { boxNames, openEdges } from './naming'
@@ -449,6 +449,240 @@ describe('surface extend', () => {
     const p = await run('surfaceDeleteFace', { id: 'd', name: 'd', key: b.key, faces: faceIdx(b, (_c, n) => n[2] > 0.9) })
     const inner = edgeIdx(p, (s, t) => Math.abs(s[2]) < 1e-6 && Math.abs(t[2]) < 1e-6)
     await expect(run('surfaceExtend', { id: 'x', name: 'x', key: p.key, edges: [inner[0]], distance: 2, mode: 'tangent' })).rejects.toThrow(/open/)
+  })
+})
+
+/**
+ * How well a result hangs together. One shell, valid, no stray free edges (the free edges are one closed loop, every
+ * vertex on it shared by exactly two of them), no vertex or edge tolerance blown up to hide a gap, and the tessellation
+ * is closed everywhere except along those free edges (a gap between a strip and a corner patch would show up there).
+ */
+function seams(b: Body) {
+  const shape = getBrep(b.key) as unknown as AnyShape
+  const oc = getOC() as unknown as {
+    BRepCheck_Analyzer: new (s: unknown, a: boolean, b: boolean) => { IsValid(): boolean }
+    BRep_Tool: { MaxTolerance(s: unknown, t: unknown): number }
+    TopAbs_ShapeEnum: { TopAbs_VERTEX: unknown; TopAbs_EDGE: unknown }
+  }
+  const rim = openEdges(shape)
+  const q = (x: number, y: number, z: number) => `${Math.round(x * 1e3)},${Math.round(y * 1e3)},${Math.round(z * 1e3)}`
+  const degree = new Map<string, number>()
+  for (const e of rim) for (const p of [e.startPoint, e.endPoint]) degree.set(q(p.x, p.y, p.z), (degree.get(q(p.x, p.y, p.z)) ?? 0) + 1)
+  // mesh edges used by one triangle only
+  const m = b.mesh
+  const key = (i: number) => q(m.positions[3 * i], m.positions[3 * i + 1], m.positions[3 * i + 2])
+  const used = new Map<string, [number, number, number]>()
+  const bump = (i: number, j: number) => {
+    const a = key(i), c = key(j)
+    if (a === c) return // a collapsed edge (the tip of a triangular face) is not a gap
+    const k = a < c ? a + '|' + c : c + '|' + a
+    const prev = used.get(k)
+    used.set(k, [(prev?.[0] ?? 0) + 1, i, j])
+  }
+  for (let t = 0; t < m.indices.length; t += 3) {
+    const [i, j, k] = [m.indices[t], m.indices[t + 1], m.indices[t + 2]]
+    bump(i, j); bump(j, k); bump(k, i)
+  }
+  let strayMeshEdges = 0
+  for (const [n, i, j] of used.values()) {
+    if (n !== 1) continue
+    const at = (v: number) => makeVertex([m.positions[3 * v], m.positions[3 * v + 1], m.positions[3 * v + 2]])
+    const onRim = (v: number) => rim.some((e) => measureDistanceBetween(e as never, at(v) as never) < 2e-3)
+    if (!onRim(i) || !onRim(j)) strayMeshEdges++
+  }
+  const worstTol = Math.max(oc.BRep_Tool.MaxTolerance(shape.wrapped, oc.TopAbs_ShapeEnum.TopAbs_VERTEX), oc.BRep_Tool.MaxTolerance(shape.wrapped, oc.TopAbs_ShapeEnum.TopAbs_EDGE))
+  return {
+    shells: Array.from(iterTopo(shape.wrapped as never, 'shell')).length,
+    valid: new oc.BRepCheck_Analyzer(shape.wrapped, true, false).IsValid(),
+    free: rim.length,
+    badVertices: Array.from(degree.values()).filter((d) => d !== 2).length,
+    strayMeshEdges,
+    worstTol,
+  }
+}
+const sound = (b: Body, free: number) => {
+  const s = seams(b)
+  expect(s).toMatchObject({ shells: 1, valid: true, free, badVertices: 0, strayMeshEdges: 0 })
+  expect(s.worstTol).toBeLessThan(1e-3)
+  expect(b.freeEdges).toBe(free)
+}
+const spread = (b: Body, f: (x: number, y: number, z: number) => number): [number, number] => {
+  const m = b.mesh.positions
+  let lo = Infinity, hi = -Infinity
+  for (let i = 0; i < m.length; i += 3) { const r = f(m[i], m[i + 1], m[i + 2]); lo = Math.min(lo, r); hi = Math.max(hi, r) }
+  return [lo, hi]
+}
+
+describe('surface extend on curved surfaces', () => {
+  const R = 5, H = 10
+  /** a quarter of a cylinder wall: two arcs (z = 0, z = H) and two straight edges (x axis side, y axis side) */
+  const quarterWall = () => run('surfaceRevolve', { id: 'w', name: 'w', curves: [chain([line([R, 0, 0], [R, 0, H], 'l')])], axisOrigin: [0, 0, 0], axisDir: [0, 0, 1], angle: 90 })
+  const topArc = (b: Body) => edgeIdx(b, (s, t) => Math.abs(s[2] - H) < 1e-6 && Math.abs(t[2] - H) < 1e-6)
+  const yEdge = (b: Body) => edgeIdx(b, (s, t) => Math.abs(s[0]) < 1e-6 && Math.abs(t[0]) < 1e-6 && Math.abs(s[2] - t[2]) > 1)
+  const xEdge = (b: Body) => edgeIdx(b, (s, t) => Math.abs(s[1]) < 1e-6 && Math.abs(t[1]) < 1e-6 && Math.abs(s[2] - t[2]) > 1)
+  const botArc = (b: Body) => edgeIdx(b, (s, t) => Math.abs(s[2]) < 1e-6 && Math.abs(t[2]) < 1e-6)
+  const axial = (x: number, y: number) => Math.hypot(x, y)
+
+  it('a cylinder patch: the arc and the straight edge that meet at a corner, natural, stay on the cylinder with the corner closed', async () => {
+    const w = await quarterWall()
+    sound(w, 4)
+    const d = 2
+    const e = [...topArc(w), ...yEdge(w)]
+    expect(e.length).toBe(2)
+    const x = await run('surfaceExtend', { id: 'x', name: 'x', key: w.key, edges: e, distance: d, mode: 'natural' })
+    // a cylinder unrolls flat: the patch, an arc strip, a straight strip and the d x d corner
+    const th = Math.PI / 2
+    near(areaOf(x), R * th * H + R * th * d + H * d + d * d, 5e-3)
+    expect(faceCount(x)).toBe(4)
+    // one shell, and nothing open at the corner: the free edges are the outer rim and nothing else
+    sound(x, 8)
+    const [lo, hi] = spread(x, axial)
+    expect(lo).toBeGreaterThan(R - 0.02)
+    expect(hi).toBeLessThan(R + 0.02)
+    expect(bbox(x.mesh.positions).max[2]).toBeCloseTo(H + d, 2)
+  })
+
+  it('a cylinder patch, tangent: the arc strip leaves the wall along its tangent and the corner is closed', async () => {
+    const w = await quarterWall()
+    const e = [...topArc(w), ...yEdge(w)]
+    const x = await run('surfaceExtend', { id: 'x', name: 'x', key: w.key, edges: e, distance: 2, mode: 'tangent' })
+    expect(faceCount(x)).toBe(4)
+    sound(x, 8)
+    expect(areaOf(x)).toBeGreaterThan(areaOf(w) + 2 * (H + R * Math.PI / 2) * 0.9)
+  })
+
+  it('both ends of a cylinder patch, and all four edges at once, close every corner', async () => {
+    const w = await quarterWall()
+    for (const mode of ['natural', 'tangent'] as const) {
+      const two = await run('surfaceExtend', { id: 'x', name: 'x', key: w.key, edges: [...botArc(w), ...xEdge(w)], distance: 1.5, mode })
+      sound(two, 8)
+      const all = await run('surfaceExtend', { id: 'a', name: 'a', key: w.key, edges: edgeIdx(w, () => true), distance: 1.5, mode })
+      expect(faceCount(all)).toBe(9)
+      sound(all, 12)
+      if (mode === 'natural') {
+        const d = 1.5, th = Math.PI / 2
+        near(areaOf(all), (R * th + 2 * d) * (H + 2 * d), 8e-3)
+      }
+    }
+  })
+
+  it('a cylinder patch extended further than the wall is tall still closes', async () => {
+    const w = await quarterWall()
+    const x = await run('surfaceExtend', { id: 'x', name: 'x', key: w.key, edges: [...topArc(w), ...yEdge(w)], distance: 6, mode: 'natural' })
+    sound(x, 8)
+    const [lo, hi] = spread(x, axial)
+    expect(lo).toBeGreaterThan(R - 0.03)
+    expect(hi).toBeLessThan(R + 0.03)
+  })
+
+  // a lat-long window of a sphere of radius 10: two parallels (arcs) and two meridians
+  const sphereWindow = () => {
+    const r = 10, a1 = Math.PI / 6, a2 = Math.PI / 3
+    const arc: PathSeg = { k: 'a', a: [r * Math.sin(a1), 0, r * Math.cos(a1)], m: [r * Math.sin((a1 + a2) / 2), 0, r * Math.cos((a1 + a2) / 2)], b: [r * Math.sin(a2), 0, r * Math.cos(a2)], id: 'arc' }
+    return run('surfaceRevolve', { id: 'c', name: 'c', curves: [chain([arc])], axisOrigin: [0, 0, 0], axisDir: [0, 0, 1], angle: 90 })
+  }
+  const radius = (x: number, y: number, z: number) => Math.hypot(x, y, z)
+  const parallelOf = (b: Body) => edgeIdx(b, (s, t) => Math.abs(s[2] - 10 * Math.cos(Math.PI / 3)) < 1e-4 && Math.abs(t[2] - 10 * Math.cos(Math.PI / 3)) < 1e-4)
+  const meridianOf = (b: Body) => edgeIdx(b, (s, t) => Math.abs(s[0]) < 1e-6 && Math.abs(t[0]) < 1e-6)
+
+  it('a doubly curved patch, two edges that meet at a corner, natural: the corner stays on the sphere and is closed', async () => {
+    const win = await sphereWindow()
+    sound(win, 4)
+    expect(parallelOf(win).length).toBe(1)
+    expect(meridianOf(win).length).toBe(1)
+    const x = await run('surfaceExtend', { id: 'x', name: 'x', key: win.key, edges: [...parallelOf(win), ...meridianOf(win)], distance: 1.5, mode: 'natural' })
+    expect(faceCount(x)).toBe(4)
+    sound(x, 8)
+    const [lo, hi] = spread(x, radius)
+    expect(lo).toBeGreaterThan(10 - 0.03)
+    expect(hi).toBeLessThan(10 + 0.03)
+  })
+
+  it('a doubly curved patch, all four edges, natural: nine faces on the sphere, one closed rim', async () => {
+    const win = await sphereWindow()
+    const x = await run('surfaceExtend', { id: 'x', name: 'x', key: win.key, edges: edgeIdx(win, () => true), distance: 1.5, mode: 'natural' })
+    expect(faceCount(x)).toBe(9)
+    sound(x, 12)
+    const [lo, hi] = spread(x, radius)
+    expect(lo).toBeGreaterThan(10 - 0.03)
+    expect(hi).toBeLessThan(10 + 0.03)
+  })
+
+  it('a doubly curved patch, tangent: the edges leave the sphere along their tangents and every corner is closed', async () => {
+    const win = await sphereWindow()
+    const two = await run('surfaceExtend', { id: 'x', name: 'x', key: win.key, edges: [...parallelOf(win), ...meridianOf(win)], distance: 1.5, mode: 'tangent' })
+    expect(faceCount(two)).toBe(4)
+    sound(two, 8)
+    const all = await run('surfaceExtend', { id: 'a', name: 'a', key: win.key, edges: edgeIdx(win, () => true), distance: 1.5, mode: 'tangent' })
+    expect(faceCount(all)).toBe(9)
+    sound(all, 12)
+    // straight out of a sphere leaves it: the tangent result sits outside the natural one
+    expect(spread(all, radius)[1]).toBeGreaterThan(10 + 0.01)
+  })
+
+  it('a free-form patch (a saddle): natural carries on along the patch past its boundary, corners included', async () => {
+    // the natural continuation has to leave the patch's own parameter range: a point projected back onto the patch would be clamped to its edge
+    const P: [number, number, number][] = [[0, 0, 0], [10, 0, 2], [10, 10, 0], [0, 10, 2]]
+    const outline = chain(P.map((q, i) => line(q, P[(i + 1) % 4], 'k' + i)), true)
+    for (const continuity of ['g0', 'g1'] as const) {
+      const saddle = await run('surfacePatch', { id: 'S', name: 'S', boundary: [outline], continuity })
+      const two = edgeIdx(saddle, (s, t) => (Math.abs(s[0] - 10) < 1e-6 && Math.abs(t[0] - 10) < 1e-6) || (Math.abs(s[1] - 10) < 1e-6 && Math.abs(t[1] - 10) < 1e-6))
+      for (const mode of ['natural', 'tangent'] as const) for (const d of [1, 3]) {
+        const x = await run('surfaceExtend', { id: 'x', name: 'x', key: saddle.key, edges: two, distance: d, mode })
+        expect(faceCount(x)).toBe(4)
+        sound(x, 8)
+        // the corner patch is a real d x d piece of surface, not a sliver (the edge strips alone are 10 d each)
+        const corner = topoOf(getBrep(x.key) as unknown as AnyShape).faces.map((f) => measureArea(f as never)).sort((p, q) => p - q)[0]
+        expect(corner).toBeGreaterThan(0.9 * d * d)
+        expect(corner).toBeLessThan(1.4 * d * d)
+        const all = await run('surfaceExtend', { id: 'a', name: 'a', key: saddle.key, edges: edgeIdx(saddle, () => true), distance: d, mode })
+        expect(faceCount(all)).toBe(9)
+        sound(all, 12)
+      }
+    }
+  })
+
+  it('a reflex corner on a curved surface is mitred like a flat one', async () => {
+    // a notch cut into the top of a cylinder wall: the material wraps round the notch's two bottom corners
+    const w = await quarterWall()
+    const cutter = mkBox('cb', [3.5, 3.5, 8], [2.5, 2.5, 6])
+    const notched = await run('surfaceTrim', { id: 't', name: 't', key: w.key, tool: { kind: 'body', key: cutter.key }, keep: 'front' })
+    sound(notched, 8)
+    const notch = edgeIdx(notched, (s, t) => !(Math.abs(s[2] - H) < 1e-6 && Math.abs(t[2] - H) < 1e-6) && !(Math.abs(s[2]) < 1e-6 && Math.abs(t[2]) < 1e-6) && !(Math.abs(s[1]) < 1e-6 && Math.abs(t[1]) < 1e-6) && !(Math.abs(s[0]) < 1e-6 && Math.abs(t[0]) < 1e-6))
+    expect(notch.length).toBe(3)
+    for (const mode of ['natural', 'tangent'] as const) {
+      const x = await run('surfaceExtend', { id: 'x', name: 'x', key: notched.key, edges: notch, distance: 0.6, mode })
+      // natural strips lie on the wall and meet on the mitre; tangent ones leave it on separate sheets, so a thin face closes each mitre
+      expect(faceCount(x)).toBe(mode === 'natural' ? 4 : 6)
+      // five untouched outline edges, the three far edges and the two ends of the outer strips (tangent: the two rim edges of the closing faces too)
+      sound(x, mode === 'natural' ? 10 : 12)
+    }
+  })
+
+  it('an extension that runs into a pole says so instead of leaving a broken corner', async () => {
+    // a sphere window whose top edge is 3 from the pole: 4 further would go over the top
+    const r = 10, a1 = 0.3, a2 = 1.2
+    const arc: PathSeg = { k: 'a', a: [r * Math.sin(a1), 0, r * Math.cos(a1)], m: [r * Math.sin((a1 + a2) / 2), 0, r * Math.cos((a1 + a2) / 2)], b: [r * Math.sin(a2), 0, r * Math.cos(a2)], id: 'arc' }
+    const win = await run('surfaceRevolve', { id: 'c', name: 'c', curves: [chain([arc])], axisOrigin: [0, 0, 0], axisDir: [0, 0, 1], angle: 150 })
+    const all = edgeIdx(win, () => true)
+    await expect(run('surfaceExtend', { id: 'x', name: 'x', key: win.key, edges: all, distance: 4, mode: 'natural' })).rejects.toThrow(/pole/)
+    await expect(run('surfaceExtend', { id: 'x', name: 'x', key: win.key, edges: all, distance: 4, mode: 'tangent' })).rejects.toThrow(/pole|valid/)
+    // short of the pole it is fine
+    const x = await run('surfaceExtend', { id: 'x', name: 'x', key: win.key, edges: all, distance: 1, mode: 'natural' })
+    sound(x, 12)
+  })
+
+  it('a torus patch (curved both ways, with opposite signs) closes its corners too', async () => {
+    // revolve a quarter of a circle of radius 2 centred at x = 6 around the z axis by 90 degrees
+    const rr = 2, cx = 6
+    const arc: PathSeg = { k: 'a', a: [cx + rr, 0, 0], m: [cx + rr * Math.SQRT1_2, 0, rr * Math.SQRT1_2], b: [cx, 0, rr], id: 'arc' }
+    const win = await run('surfaceRevolve', { id: 't', name: 't', curves: [chain([arc])], axisOrigin: [0, 0, 0], axisDir: [0, 0, 1], angle: 90 })
+    sound(win, 4)
+    for (const mode of ['natural', 'tangent'] as const) {
+      const x = await run('surfaceExtend', { id: 'x', name: 'x', key: win.key, edges: edgeIdx(win, () => true), distance: 0.8, mode })
+      expect(faceCount(x)).toBe(9)
+      sound(x, 12)
+    }
   })
 })
 

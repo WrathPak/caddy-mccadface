@@ -49,6 +49,7 @@ interface Item { edge: Edge; label: string; support?: Face }
 interface Run { wire: Wire; items: Item[]; closed: boolean }
 
 const SNAP = 1e-4
+const CORNER_FAIL = 'Could not close the corner between the extended edges: the extension may run past a pole or fold over itself, try a smaller distance'
 
 /** Groups loose edges into connected runs, each ordered end to start. */
 function orderEdges(items: Item[]): { items: Item[]; closed: boolean }[] {
@@ -611,19 +612,27 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
     const out = dirs.map((d) => mul3(d, sign))
     const sections: Wire[] = [assembleWire([edge.clone() as Edge])]
     let far: Vec3[] = []
+    /** natural: where on the surface (u, v) each point of the edge starts and where its walk ends, so a corner can complete the same parallelogram in the surface's own parameters */
+    let uvStart: UV[] = [], uvFar: UV[] = []
+    let surfHandle: unknown
+    /** the strip's far edge, where a neighbouring strip's meets it at a reflex corner */
+    let farEdge!: Edge
     const through = (q: Vec3[]): Edge => (line && q.every((_, k) => dist3(sub3(q[k], pts[k]), sub3(q[0], pts[0])) < 1e-9) ? makeLine(q[0], q[q.length - 1]) : makeBSplineApproximation(q, { tolerance: 1e-5, smoothing: null, degMax: 8 } as never))
     if (a.mode === 'tangent') {
       far = pts.map((p, k) => add3(p, mul3(out[k], a.distance)))
-      sections.push(assembleWire([through(far)]))
+      farEdge = through(far)
+      sections.push(assembleWire([farEdge]))
     } else {
       // natural: walk out over the surface the face sits on, a few steps, so the extension keeps its curvature
       const surf = o.BRep_Tool.Surface(face.wrapped)
+      surfHandle = surf
       const steps = 4
       const walk = pts.map((p, k) => {
         const pp = new o.GeomAPI_ProjectPointOnSurf(pntOf(p), surf)
         if (!(pp.NbPoints() > 0)) throw new Error('Natural extension is not available for this surface: use Tangent')
         const uv = pp.LowerDistanceParameters()
         let u = uv.U, v = uv.V
+        uvStart[k] = [u, v]
         const path: Vec3[] = []
         for (let s = 1; s <= steps; s++) {
           const d1 = surf.EvalD1(u, v)
@@ -632,7 +641,7 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
           const m11 = dot3(su, su), m12 = dot3(su, sv), m22 = dot3(sv, sv)
           const r1 = dot3(su, out[k]), r2 = dot3(sv, out[k])
           const det = m11 * m22 - m12 * m12
-          if (Math.abs(det) < 1e-18) throw new Error('Natural extension is not available for this surface: use Tangent')
+          if (Math.abs(det) < 1e-18) throw new Error('The natural extension runs into a pole or a fold of the surface (the tip of a cone, the top of a sphere): try a smaller distance, or Tangent')
           const du = (r1 * m22 - r2 * m12) / det, dv = (m11 * r2 - m12 * r1) / det
           const stepLen = a.distance / steps
           const speed = Math.hypot(...add3(mul3(su, du), mul3(sv, dv))) || 1
@@ -641,9 +650,14 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
           const q = surf.EvalD0(u, v)
           path.push([q.X(), q.Y(), q.Z()])
         }
+        uvFar[k] = [u, v]
         return path
       })
-      for (let s = 0; s < steps; s++) sections.push(assembleWire([through(walk.map((w) => w[s]))]))
+      for (let s = 0; s < steps; s++) {
+        const e = through(walk.map((w) => w[s]))
+        if (s === steps - 1) farEdge = e
+        sections.push(assembleWire([e]))
+      }
       far = walk.map((w) => w[steps - 1])
     }
     const mk = new o.BRepOffsetAPI_ThruSections(false, a.mode === 'tangent', 1e-6)
@@ -652,7 +666,9 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
       sections.forEach((w) => mk.AddWire(w.wrapped))
       mk.Build()
       const shape = nonEmpty(cast(mk.Shape()) as unknown as Sh, 'Could not extend this edge')
-      info.push({ shape, face, ends: [pts[0], pts[count - 1]], far: [far[0], far[count - 1]], out: [out[0], out[count - 1]], label: String(names.edges[ei]?.[0] ?? ei) })
+      const label = String(names.edges[ei]?.[0] ?? ei)
+      const surface = surfHandle ? { handle: surfHandle, start: [uvStart[0], uvStart[count - 1]] as [UV, UV], far: [uvFar[0], uvFar[count - 1]] as [UV, UV] } : undefined
+      info.push({ shape, face, ends: [pts[0], pts[count - 1]], far: [far[0], far[count - 1]], out: [out[0], out[count - 1]], label, surface, farEdge })
     } finally { mk.delete() }
   }
   const tol = 1e-4 * Math.max(1, a.distance)
@@ -663,6 +679,7 @@ surfaceOp<SurfaceExtendArgs>('surfaceExtend', 'Extend', 'try the other type, or 
   })
   const parts = [src, ...strips, ...fills]
   const { out } = sewNamed(parts, tol, a.id)
+  if (!new o.BRepCheck_Analyzer(any(out).wrapped, true, false).IsValid()) throw new Error('The extension is not a valid surface (it folds over itself): try the other type or a smaller distance')
   return send(h, a, out)
 })
 
@@ -714,7 +731,11 @@ interface StripInfo {
   far: [Vec3, Vec3]
   out: [Vec3, Vec3]
   label: string
+  /** natural mode: the surface the face sits on and the (u, v) of the edge's two ends before and after the walk */
+  surface?: { handle: unknown; start: [UV, UV]; far: [UV, UV] }
+  farEdge: Edge
 }
+type UV = [number, number]
 
 /** The edge of `shape` that runs between the two points (either way round), if any. */
 function edgeBetween(shape: Sh, p: Vec3, q: Vec3): Edge | null {
@@ -726,14 +747,49 @@ function edgeBetween(shape: Sh, p: Vec3, q: Vec3): Edge | null {
 }
 
 /**
+ * Where the far edges of two strips that overlap at a reflex corner cross: on the surface both walked over it is the
+ * corner their displacements complete in (u, v), otherwise the closest points of the two far edges.
+ */
+function farMeet(A: StripInfo, B: StripInfo, ea: 0 | 1, eb: 0 | 1, a: SurfaceExtendArgs, o: ReturnType<typeof oc>): Vec3 | null {
+  const sA = A.surface, sB = B.surface
+  if (a.mode === 'natural' && sA && sB && A.face.isSame(B.face)) {
+    const surf = sA.handle as { EvalD0(u: number, v: number): { X(): number; Y(): number; Z(): number } }
+    const u = sA.far[ea][0] + sB.far[eb][0] - sB.start[eb][0], v = sA.far[ea][1] + sB.far[eb][1] - sB.start[eb][1]
+    const q = surf.EvalD0(u, v)
+    return [q.X(), q.Y(), q.Z()]
+  }
+  const ex = new o.BRepExtrema_DistShapeShape(A.farEdge.wrapped, B.farEdge.wrapped)
+  try {
+    if (!ex.IsDone() || ex.NbSolution() < 1 || ex.Value() > 0.25 * a.distance) return null
+    const p = ex.PointOnShape1(1), q = ex.PointOnShape2(1)
+    return [(p.X() + q.X()) / 2, (p.Y() + q.Y()) / 2, (p.Z() + q.Z()) / 2]
+  } finally { ex.delete() }
+}
+
+/**
  * A reflex corner (the surface wraps round it, as at the inside of an L): the two strips overlap there, so each is cut
  * along the mitre plane through the corner (the bisector of the two ways out, standing on the surface) and they meet on
  * one shared edge, like a picture frame. The planes' sides are picked from where each strip's other end is.
+ *
+ * Natural strips lie on one surface, so the plane cuts both along the same curve. Tangent strips leave a curved surface
+ * on different sheets and the plane cuts them along two curves a sliver apart: a planar face between the two cuts closes it.
  */
-function mitre(A: StripInfo, B: StripInfo, ea: 0 | 1, eb: 0 | 1, P: Vec3, a: SurfaceExtendArgs, o: ReturnType<typeof oc>) {
-  const m = norm3(sub3(A.out[ea], B.out[eb]))
-  const bis = norm3(add3(A.out[ea], B.out[eb]))
+function mitre(A: StripInfo, B: StripInfo, ea: 0 | 1, eb: 0 | 1, P: Vec3, a: SurfaceExtendArgs, o: ReturnType<typeof oc>): NShape | null {
+  let m = norm3(sub3(A.out[ea], B.out[eb]))
+  let bis = norm3(add3(A.out[ea], B.out[eb]))
   const n = norm3(cross3(m, bis))
+  // on a curved surface the plane through the corner that bisects the two ways out misses the point where the strips' far edges
+  // meet, so it would leave a sliver of a gap in the rim: aim it at that point instead (on a flat one the two are the same plane)
+  const Q = farMeet(A, B, ea, eb, a, o)
+  if (Q) {
+    const q = sub3(Q, P)
+    const inPlane = sub3(q, mul3(n, dot3(q, n)))
+    if (dot3(inPlane, bis) > 0 && Math.hypot(...inPlane) > 1e-9) {
+      bis = norm3(inPlane)
+      const m2 = norm3(cross3(bis, n))
+      m = dot3(m2, m) < 0 ? mul3(m2, -1) : m2
+    }
+  }
   const reach = 50 * (a.distance + Math.max(dist3(A.ends[0], A.ends[1]), dist3(B.ends[0], B.ends[1])))
   const corners = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([x, y]) => add3(P, add3(mul3(bis, x * reach), mul3(n, y * reach))))
   const cut = (S: StripInfo, dir: Vec3) => {
@@ -746,6 +802,35 @@ function mitre(A: StripInfo, B: StripInfo, ea: 0 | 1, eb: 0 | 1, P: Vec3, a: Sur
   }
   cut(A, mul3(m, -1))
   cut(B, m)
+  // the cut of each strip: the edge in the mitre plane that leaves the corner
+  const cutOf = (S: StripInfo) => {
+    let best: { edge: Edge; end: Vec3 } | null = null
+    for (const e of topoOf(S.shape as unknown as AnyShape).edges) {
+      const s0 = v3(e.startPoint), s1 = v3(e.endPoint), mid = v3(e.pointAt(0.5))
+      if ([s0, s1, mid].some((q) => Math.abs(dot3(sub3(q, P), m)) > 1e-5 * (1 + a.distance))) continue
+      const end = dist3(s0, P) < SNAP ? s1 : dist3(s1, P) < SNAP ? s0 : null
+      if (end && (!best || e.length > best.edge.length)) best = { edge: e, end }
+    }
+    return best
+  }
+  const cA = cutOf(A), cB = cutOf(B)
+  if (!cA || !cB) return null
+  const tol = 1e-4 * Math.max(1, a.distance)
+  // the same curve already (natural strips): nothing to close
+  const apart = measureDistanceBetween(cA.edge as never, makeVertex(v3(cB.edge.pointAt(0.5))) as never)
+  if (dist3(cA.end, cB.end) < tol && apart < tol) return null
+  // a ruled face from one cut to the other
+  const tk = new o.BRepOffsetAPI_ThruSections(false, true, 1e-6)
+  let shape: Sh
+  try {
+    tk.SetMutableInput(false)
+    tk.AddWire(assembleWire([cA.edge.clone() as Edge]).wrapped)
+    tk.AddWire(assembleWire([cB.edge.clone() as Edge]).wrapped)
+    tk.Build()
+    shape = nonEmpty(cast(tk.Shape()) as unknown as Sh, CORNER_FAIL)
+  } finally { tk.delete() }
+  const faces = topoOf(shape as unknown as AnyShape).faces.map(() => [`${a.id}:corner:${A.label}:${B.label}`])
+  return { shape, faces: finalize(shape as unknown as AnyShape, faces, a.id, 'm') }
 }
 
 /**
@@ -772,36 +857,58 @@ function cornerFills(info: StripInfo[], a: SurfaceExtendArgs, tol: number): NSha
           const toA = sub3(A.ends[1 - ea], P), toB = sub3(B.ends[1 - eb], P)
           const dA = dot3(A.out[ea], toB), dB = dot3(B.out[eb], toA)
           const eps = 1e-6 * Math.max(1, a.distance)
-          if (dA > eps && dB > eps) { mitre(A, B, ea, eb, P, a, o); continue }
+          if (dA > eps && dB > eps) { const bridge = mitre(A, B, ea, eb, P, a, o); if (bridge) fills.push(bridge); continue }
           if (dA >= 0 || dB >= 0) continue
           const sideA = edgeBetween(A.shape, P, PA), sideB = edgeBetween(B.shape, P, PB)
-          if (!sideA || !sideB) throw new Error('Could not close the corner between the extended edges')
+          if (!sideA || !sideB) throw new Error(CORNER_FAIL)
           // the corner point a parallelogram completes, and the rim curves out to it
-          let onSurface = (q: Vec3): Vec3 => q
-          if (a.mode === 'natural') {
-            const surf = o.BRep_Tool.Surface(A.face.wrapped)
-            onSurface = (q) => {
-              const pp = new o.GeomAPI_ProjectPointOnSurf(pntOf(q), surf)
-              if (!(pp.NbPoints() > 0)) throw new Error('Natural extension is not available for this surface: use Tangent')
-              const r = pp.NearestPoint()
-              return [r.X(), r.Y(), r.Z()]
+          let PC: Vec3, rimA: Edge, rimB: Edge
+          const sA = A.surface, sB = B.surface
+          if (a.mode === 'natural' && sA && sB && A.face.isSame(B.face)) {
+            // both strips walked over the same surface: complete the parallelogram in its own (u, v), which works for a free-form
+            // surface too, where a point projected back onto it would be clamped to the patch's edge instead of following it out
+            const surf = sA.handle as { EvalD0(u: number, v: number): { X(): number; Y(): number; Z(): number } }
+            const eval0 = (u: number, v: number): Vec3 => { const q = surf.EvalD0(u, v); return [q.X(), q.Y(), q.Z()] }
+            const stepA: UV = [sA.far[ea][0] - sA.start[ea][0], sA.far[ea][1] - sA.start[ea][1]]
+            const stepB: UV = [sB.far[eb][0] - sB.start[eb][0], sB.far[eb][1] - sB.start[eb][1]]
+            const corner = eval0(sA.far[ea][0] + stepB[0], sA.far[ea][1] + stepB[1])
+            PC = corner
+            const rimOver = (from: UV, by: UV): Edge => {
+              const n = 8
+              const q: Vec3[] = []
+              for (let k = 0; k <= n; k++) q.push(k === n ? corner : eval0(from[0] + (by[0] * k) / n, from[1] + (by[1] * k) / n))
+              return makeBSplineApproximation(q, { tolerance: 1e-6, smoothing: null, degMax: 8 } as never)
             }
+            rimA = rimOver(sA.far[ea], stepB)
+            rimB = rimOver(sB.far[eb], stepA)
+          } else {
+            let onSurface = (q: Vec3): Vec3 => q
+            if (a.mode === 'natural') {
+              const surf = o.BRep_Tool.Surface(A.face.wrapped)
+              onSurface = (q) => {
+                const pp = new o.GeomAPI_ProjectPointOnSurf(pntOf(q), surf)
+                if (!(pp.NbPoints() > 0)) throw new Error('Natural extension is not available for this surface: use Tangent')
+                const r = pp.NearestPoint()
+                return [r.X(), r.Y(), r.Z()]
+              }
+            }
+            PC = onSurface(sub3(add3(PA, PB), P))
+            const rim = (from: Vec3, by: Vec3): Edge => {
+              if (a.mode !== 'natural') return makeLine(from, PC)
+              const n = 8
+              const q: Vec3[] = []
+              for (let k = 0; k <= n; k++) q.push(k === n ? PC : k === 0 ? from : onSurface(add3(from, mul3(by, k / n))))
+              return makeBSplineApproximation(q, { tolerance: 1e-6, smoothing: null, degMax: 8 } as never)
+            }
+            rimA = rim(PA, sub3(PB, P))
+            rimB = rim(PB, sub3(PA, P))
           }
-          const PC = onSurface(sub3(add3(PA, PB), P))
-          const rim = (from: Vec3, by: Vec3): Edge => {
-            if (a.mode !== 'natural') return makeLine(from, PC)
-            const n = 8
-            const q: Vec3[] = []
-            for (let k = 0; k <= n; k++) q.push(k === n ? PC : k === 0 ? from : onSurface(add3(from, mul3(by, k / n))))
-            return makeBSplineApproximation(q, { tolerance: 1e-6, smoothing: null, degMax: 8 } as never)
-          }
-          const rimA = rim(PA, sub3(PB, P)), rimB = rim(PB, sub3(PA, P))
           const mk = new o.BRepOffsetAPI_MakeFilling(3, 15, 2, false, 1e-5, 1e-4, 0.01, 0.1, 8, 9)
           try {
             for (const e of [sideA, sideB, rimA, rimB]) mk.Add(e.wrapped, o.GeomAbs_Shape.GeomAbs_C0, true)
             mk.Build()
-            if (!mk.IsDone()) throw new Error('Could not close the corner between the extended edges')
-            const shape = nonEmpty(cast(mk.Shape()) as unknown as Sh, 'Could not close the corner between the extended edges')
+            if (!mk.IsDone()) throw new Error(CORNER_FAIL)
+            const shape = nonEmpty(cast(mk.Shape()) as unknown as Sh, CORNER_FAIL)
             const faces = topoOf(shape as unknown as AnyShape).faces.map(() => [`${a.id}:corner:${A.label}:${B.label}`])
             fills.push({ shape, faces: finalize(shape as unknown as AnyShape, faces, a.id, 'c') })
           } finally { mk.delete() }
