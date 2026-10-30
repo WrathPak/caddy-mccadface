@@ -82,7 +82,7 @@ export function planStrands(s: Surf, P: HairParams, axis: Axis): Plan {
   const N = roots.count
   if (!N) {
     throw new Error(P.distribution === 'rows'
-      ? 'No strands could be placed: Rows follow horizontal layer lines, so they need a surface that is not flat. Choose another Pattern (Random or Grid), or increase the density / reduce the edge margin'
+      ? 'No strands could be placed: no row of strands fits on this surface. Increase the density, reduce the edge margin or choose another Pattern (Random or Grid)'
       : 'No strands could be placed; increase the density or reduce the edge margin')
   }
   const dir = new Float32Array(N * 3)

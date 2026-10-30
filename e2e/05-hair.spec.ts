@@ -152,16 +152,18 @@ for (const mode of ['perFace', 'blend'] as const) {
   })
 }
 
-test('hair: a surface the settings cannot grow on explains why inside the dialog; Fixed direction starts along the face normal', async ({ app, page }) => {
-  await startHairOn(app, [[0, 0, 1]]) // the top face: print-aware strands are horizontal, so none can grow
+test('hair: a surface the settings cannot grow on is handled inside the dialog; Fixed direction starts along the face normal', async ({ app, page }) => {
+  await startHairOn(app, [[0, 0, 1]]) // the top face: print-aware strands are horizontal, so the dialog turns Print-aware off by itself
   const dlg = app.inspector()
-  await expect(dlg.getByTestId('inspector-notice')).toContainText('Rows', { timeout: 30_000 })
-  await expect(page.locator('.status')).toContainText('Hair:')
-  await dlg.locator('.section-head', { hasText: 'Pattern and edges' }).click()
-  await dlg.getByRole('radio', { name: 'Random' }).click()
-  await expect(dlg.getByTestId('inspector-notice')).toContainText('Print-aware', { timeout: 30_000 })
-  // turning Print-aware off (Printing section) lets them grow and clears the message
+  await expect.poll(() => strands(app), { timeout: 45_000 }).toBeGreaterThan(0)
+  await expect(dlg.getByTestId('inspector-notice')).toHaveCount(0)
   await dlg.locator('.section-head', { hasText: 'Printing' }).click()
+  await expect(dlg.getByRole('checkbox', { name: 'Print-aware' })).not.toBeChecked()
+  // turning Print-aware back on by hand is respected: nothing can grow, and the dialog says why
+  await dlg.getByRole('checkbox', { name: 'Print-aware' }).click()
+  await expect(dlg.getByTestId('inspector-notice')).toContainText('Print-aware', { timeout: 30_000 })
+  await expect(page.locator('.status')).toContainText('Hair:')
+  // and off again lets them grow and clears the message
   await dlg.getByRole('checkbox', { name: 'Print-aware' }).click()
   await expect.poll(() => strands(app), { timeout: 45_000 }).toBeGreaterThan(0)
   await expect(dlg.getByTestId('inspector-notice')).toHaveCount(0)

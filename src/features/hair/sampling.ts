@@ -192,7 +192,10 @@ function rowRoots(s: Surf, P: HairParams, dens: number, rand: () => number, pts:
   const base = layerBase(P)
   const zOf = (k: number) => base + k * rowGap + half
   const rows = new Map<number, number[]>()
+  const flat: number[] = []
   for (let t = 0; t < s.idx.length / 3; t++) {
+    // a level face lies at one height, so no contour crosses it: it gets straight rows across it instead (below)
+    if (Math.abs(s.tn[t * 3 + 2]) > 0.9999) { flat.push(t); continue }
     const z = [0, 1, 2].map((k) => s.pos[s.idx[t * 3 + k] * 3 + 2])
     const lo = Math.min(...z), hi = Math.max(...z)
     for (let k = Math.floor((lo - half - base) / rowGap); zOf(k) <= hi; k++) {
@@ -247,6 +250,39 @@ function rowRoots(s: Surf, P: HairParams, dens: number, rand: () => number, pts:
     for (const key of [...link.keys()].sort((a, b) => a - b)) if (link.get(key)!.length === 1 && !used[link.get(key)![0]]) walk(link.get(key)![0], key)
     for (let i = 0; i < segs.length; i++) if (!used[i]) walk(i, segs[i].ka)
     if (pts.length >= MAX_STRANDS) break
+  }
+  levelRoots(s, flat, dens, rowGap, pts, tris)
+}
+
+/**
+ * Rows across level faces (a rim, a floor): straight lines along X, `rowGap` apart, with roots at the same spacing along them
+ * as on a wall. Every row starts at a fixed offset (a function of its index), so the faces of one region line up with each other
+ * and a root on the shared edge of two triangles is placed once.
+ */
+function levelRoots(s: Surf, flat: number[], dens: number, rowGap: number, pts: V3[], tris: number[]) {
+  const along = 1 / (dens * rowGap)
+  for (const t of flat) {
+    const P = [0, 1, 2].map((k) => [s.pos[s.idx[t * 3 + k] * 3], s.pos[s.idx[t * 3 + k] * 3 + 1], s.pos[s.idx[t * 3 + k] * 3 + 2]] as V3)
+    const ylo = Math.min(P[0][1], P[1][1], P[2][1]), yhi = Math.max(P[0][1], P[1][1], P[2][1])
+    for (let j = Math.ceil(ylo / rowGap); j * rowGap < yhi; j++) {
+      const y = j * rowGap
+      if (y <= ylo) continue
+      const xs: number[] = []
+      for (let e = 0; e < 3; e++) {
+        const a = P[e], b = P[(e + 1) % 3]
+        if ((a[1] < y) === (b[1] < y)) continue
+        xs.push(a[0] + ((b[0] - a[0]) * (y - a[1])) / (b[1] - a[1]))
+      }
+      if (xs.length !== 2) continue
+      const x0 = Math.min(xs[0], xs[1]), x1 = Math.max(xs[0], xs[1])
+      const off = ((j * 0.6180339887) % 1 + 1) % 1 * along
+      for (let i = Math.ceil((x0 - off) / along - 1e-9); off + i * along < x1 - 1e-9; i++) {
+        const x = off + i * along
+        if (x < x0 - 1e-9) continue
+        if (pts.length >= MAX_STRANDS) return
+        pts.push([x, y, P[0][2]]); tris.push(t)
+      }
+    }
   }
 }
 

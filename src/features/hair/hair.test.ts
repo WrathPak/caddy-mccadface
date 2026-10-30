@@ -5,7 +5,7 @@ import { initManifold } from '../../kernel/mesh'
 import type { Body } from '../../kernel/types'
 import { faceSigs } from '../../doc/refs'
 import { resolveRegionSet } from './region'
-import { prepSurface } from './sampling'
+import { prepSurface, sampleRoots } from './sampling'
 import { hairSchema, type HairParams } from './schema'
 import { followResult, makeCaster, selfIntersects } from './wall'
 import { tipOverlapOf } from './strands'
@@ -255,5 +255,45 @@ describe('performance', () => {
     console.log(`perf: ${g.tubes.strands} strands, ${ms.toFixed(0)} ms (${g.redirected} redirected)`)
     expect(g.tubes.strands).toBeGreaterThan(4000)
     expect(ms).toBeLessThan(15000)
+  })
+})
+
+describe('rows on level faces', () => {
+  // a 20 x 20 mm square at z = 5 facing up, as two triangles
+  const flat = (): Mesh => ({ positions: Float32Array.from([0, 0, 5, 20, 0, 5, 20, 20, 5, 0, 20, 5]), indices: Uint32Array.from([0, 1, 2, 0, 2, 3]) })
+
+  it('a face that lies flat gets straight rows of roots, evenly spread over it (the default pattern works on a rim)', () => {
+    const m = flat()
+    const P = defaults({ distribution: 'rows', density: 12, printAware: false })
+    const r = sampleRoots(prepSurface(m.positions, m.indices), P)
+    // 4 cm2 at 12 per cm2
+    expect(r.count).toBeGreaterThan(30)
+    expect(r.count).toBeLessThan(70)
+    const ys = new Set<number>()
+    const seen = new Set<string>()
+    for (let i = 0; i < r.count; i++) {
+      expect(r.p[i * 3 + 2]).toBeCloseTo(5, 6)
+      ys.add(+r.p[i * 3 + 1].toFixed(4))
+      const key = `${r.p[i * 3].toFixed(3)},${r.p[i * 3 + 1].toFixed(3)}`
+      expect(seen.has(key), `root placed twice at ${key}`).toBe(false)
+      seen.add(key)
+    }
+    expect(ys.size).toBeGreaterThan(3) // several rows, not one
+  })
+
+  it('a flat face that faces down works the same', () => {
+    const m = flat()
+    m.indices = Uint32Array.from([0, 2, 1, 0, 3, 2])
+    const r = sampleRoots(prepSurface(m.positions, m.indices), defaults({ distribution: 'rows', density: 12, printAware: false }))
+    expect(r.count).toBeGreaterThan(30)
+  })
+
+  it('a wall still gets its rows at layer heights, as before', () => {
+    const wall: Mesh = { positions: Float32Array.from([0, 0, 0, 20, 0, 0, 20, 0, 10, 0, 0, 10]), indices: Uint32Array.from([0, 1, 2, 0, 2, 3]) }
+    const r = sampleRoots(prepSurface(wall.positions, wall.indices), defaults({ distribution: 'rows', density: 12, printAware: true }))
+    expect(r.count).toBeGreaterThan(5)
+    const zs = new Set<number>()
+    for (let i = 0; i < r.count; i++) zs.add(+r.p[i * 3 + 2].toFixed(3))
+    expect(zs.size).toBeGreaterThan(1)
   })
 })

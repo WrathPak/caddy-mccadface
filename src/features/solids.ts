@@ -341,8 +341,8 @@ export const shellSchema: ParamSchema = {
   id: 'shell',
   title: 'Shell',
   params: [
-    { type: 'selection-ref', key: 'faces', help: 'The faces that become openings. Click them in the viewport. Everything else is hollowed out.', label: 'Faces to remove', accepts: ['face'], multiple: true, required: true, pick: true, default: [], visibleWhen: (v) => !((v.bodies as string[] | undefined)?.length) },
-    { type: 'selection-ref', key: 'bodies', help: 'Or pick whole bodies to hollow them into a closed solid with a sealed void inside (no openings). Click a body, or leave this empty and pick faces instead.', label: 'Bodies (closed hollow)', accepts: ['body'], multiple: true, required: true, pick: true, default: [], visibleWhen: (v) => !((v.faces as string[] | undefined)?.length) },
+    { type: 'selection-ref', key: 'faces', help: 'The faces that become openings. Click them in the viewport. Everything else is hollowed out.', label: 'Faces to remove', accepts: ['face'], multiple: true, required: true, requiredUnless: 'bodies', pick: true, default: [] },
+    { type: 'selection-ref', key: 'bodies', help: 'Or pick whole bodies to hollow them into a closed solid with a sealed void inside (no openings). Click a body, or leave this empty and pick faces instead.', label: 'Bodies (closed hollow)', accepts: ['body'], multiple: true, required: true, requiredUnless: 'faces', pick: true, default: [], visibleWhen: (v) => !((v.faces as string[] | undefined)?.length) },
     { type: 'number', key: 'thickness', help: 'Wall thickness left after hollowing, in mm.', label: 'Thickness', unit: 'mm', min: 0.001, step: 0.5, default: 2 },
     { type: 'enum', key: 'side', help: 'Inside: the wall grows into the body, keeping its outer size. Outside: the wall grows outward, keeping the inner size.', label: 'Direction', display: 'segmented', default: 'inside', options: [{ value: 'inside', label: 'Inside' }, { value: 'outside', label: 'Outside' }] },
   ],
@@ -411,11 +411,16 @@ registerFeature({
       let out: Body[]
       try { out = await runShell(getKernel(), p, bodies, (b) => 'preview-' + b.id) } catch { clearPreview(); return }
       if (stale()) return
-      setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), out.map((b) => b.id.replace('preview-', '')))
+      // a closed hollow (a whole body, no faces yet) leaves the original faint and pickable, so a face can still be clicked to open the shell instead
+      const ids = out.map((b) => b.id.replace('preview-', ''))
+      const closed = !((p.faces as string[]) ?? []).length
+      setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), closed ? [] : ids, closed ? ids : [])
     })
     runner.schedule()
     return {
       update(v) {
+        // faces to remove make an open shell: a body picked as a whole (or taken by default when it is the only one) steps aside
+        if (((v.faces as string[]) ?? []).length && ((v.bodies as string[] | undefined) ?? []).length) { v = { ...v, bodies: [] }; setTimeout(() => setValues(v), 0) }
         // the first face picked sizes the wall to its body, unless a thickness was typed
         const picked = [...((v.faces as string[]) ?? []), ...((v.bodies as string[] | undefined) ?? [])]
         const had = [...((cur.faces as string[]) ?? []), ...((cur.bodies as string[] | undefined) ?? [])]
@@ -446,9 +451,12 @@ export function startShell() {
   const geometry = useDoc.getState().geometry
   const faceSel = sel.filter((r) => r.kind === 'face')
   const bodySel = faceSel.length ? [] : sel.filter((r) => r.kind === 'body')
+  // with nothing picked and a single solid in the document, that solid is the one (OK then gives a closed hollow, as the tooltip says)
+  const solids = geometry.filter((b) => b.kind === 'brep' && !b.surface)
+  const lone = !faceSel.length && !bodySel.length && solids.length === 1 ? [solids[0].id] : []
   createFeature('shell', {
     faces: encodeSelection(faceSel, geometry),
-    bodies: [...new Set(bodySel.map((r) => r.id))],
-    thickness: shellThickness([...faceSel, ...bodySel].map((r) => r.id)),
+    bodies: [...new Set([...bodySel.map((r) => r.id), ...lone])],
+    thickness: shellThickness([...faceSel, ...bodySel].map((r) => r.id).concat(lone)),
   }, 'solid.shell')
 }

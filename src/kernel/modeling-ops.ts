@@ -640,6 +640,9 @@ registerOp<HoleArgs>('holes', (a, h) => {
       const tool = xformNamed(holeTool(spec, through, a.fid, p.k), frameXf(p.origin, norm3(p.dir)), '')
       all = all ? boolNamed('fuse', all, tool, a.fid) : tool
     }
+    // only what the drills take out of the body: a through-all drill is far longer than the part, and its tail would show as a
+    // cylinder sticking out of the other side
+    try { all = boolNamed('common', cur, all!, a.fid) } catch { /* the drills miss the body: show them whole */ }
     return h.sendBody(h.bodyFromShape(a.id, a.name, all!.shape, all!.faces))
   }
   for (const p of a.holes) {

@@ -8,6 +8,8 @@ export interface ViewportEvents {
   /** fit the view to a world-space box (View > Frame Selection) */
   frameBox: { min: [number, number, number]; max: [number, number, number] }
   view: ViewDir
+  /** back to the view a fresh page opens with: home direction, default distance, centred on the origin (a new document) */
+  resetView: undefined
   /** snap to an arbitrary view direction (unit vector from target toward camera) */
   viewVec: [number, number, number]
   /**

@@ -142,3 +142,116 @@ describe('inference', () => {
     expect(s.rel?.some((r) => r.type === 'tangent') ?? false).toBe(false)
   })
 })
+
+describe('round values with snapping on', () => {
+  const grid = (m: SketchModel, anchor: Vec2, woken: string[] = [], over: Partial<InferCtx> = {}) =>
+    ctx(m, anchor, woken, { grid: true, flags: { ...defaultSnapFlags, grid: true }, ...over })
+
+  it('a horizontal inference lands on a grid line: a round length, not wherever the cursor was', () => {
+    const m = emptyModel()
+    const s = inferSnap([37.542, 0.3], grid(m, [0, 0]))
+    expect(s.rel?.[0]).toEqual({ type: 'horizontal' })
+    expect(s.pos[0]).toBeCloseTo(38, 9)
+    expect(s.pos[1]).toBeCloseTo(0, 9)
+  })
+
+  it('a vertical inference from an off-grid start still ends on the grid', () => {
+    const m = emptyModel()
+    const s = inferSnap([10.2, 25.341], grid(m, [10.2, 5.3412]))
+    expect(s.rel?.[0]).toEqual({ type: 'vertical' })
+    expect(s.pos[0]).toBeCloseTo(10.2, 9)
+    expect(Number.isInteger(+s.pos[1].toFixed(9))).toBe(true)
+  })
+
+  it('a slanted relation rounds the length of the segment', () => {
+    const m = emptyModel()
+    const l = addLine(m, addPoint(m, 0, 10), addPoint(m, 20, 18))
+    const s = inferSnap([-4.1, 10.1], grid(m, [0, 0], [l.id]))
+    expect(s.rel?.[0]).toEqual({ type: 'perpendicular', ref: l.id })
+    const len = Math.hypot(s.pos[0], s.pos[1])
+    expect(len).toBeCloseTo(Math.round(len), 9)
+  })
+
+  it('with snapping off the cursor position is kept', () => {
+    const m = emptyModel()
+    expect(inferSnap([37.542, 0.3], ctx(m, [0, 0])).pos[0]).toBeCloseTo(37.542, 9)
+  })
+
+  it('zoomed out the steps are coarser: lengths come out round at the current zoom', () => {
+    const m = emptyModel()
+    const s = inferSnap([37.542, 0.3], grid(m, [0, 0], [], { wpp: 0.3 }))
+    expect(s.pos[0] % 10).toBeCloseTo(0, 9)
+  })
+})
+
+describe('equal length is not offered by accident', () => {
+  const grid = (m: SketchModel, anchor: Vec2, woken: string[]) =>
+    ctx(m, anchor, woken, { grid: true, flags: { ...defaultSnapFlags, grid: true } })
+
+  it('two edges that are both round are not made equal', () => {
+    const m = emptyModel()
+    const l = addLine(m, addPoint(m, 0, 20), addPoint(m, 10, 20))
+    const s = inferSnap([10.4, 0.2], grid(m, [0, 0], [l.id]))
+    expect(s.rel?.some((r) => r.type === 'equal') ?? false).toBe(false)
+    expect(s.pos[0]).toBeCloseTo(10, 9)
+  })
+
+  it('a length the grid cannot give still matches the line it was copied from', () => {
+    const m = emptyModel()
+    const l = addLine(m, addPoint(m, 0, 20), addPoint(m, 7.35, 20))
+    const s = inferSnap([7.2, 0.2], grid(m, [0, 0], [l.id]))
+    expect(s.rel?.some((r) => r.type === 'equal' && r.ref === l.id)).toBe(true)
+    expect(s.pos[0]).toBeCloseTo(7.35, 9)
+  })
+
+  it('only lines the cursor has been over (or that end at the start) count', () => {
+    const m = emptyModel()
+    addLine(m, addPoint(m, 0, 20), addPoint(m, 7.35, 20))
+    const s = inferSnap([7.2, 0.2], ctx(m, [0, 0]))
+    expect(s.rel?.some((r) => r.type === 'equal') ?? false).toBe(false)
+  })
+
+  it('a short edge close to another short edge is left alone', () => {
+    const m = emptyModel()
+    // 12 px edges at 0.1 mm per pixel: well under the size at which a match means anything
+    const l = addLine(m, addPoint(m, 0, 20), addPoint(m, 1.2, 20))
+    const s = inferSnap([1.1, 0.2], ctx(m, [0, 0], [l.id]))
+    expect(s.rel?.some((r) => r.type === 'equal') ?? false).toBe(false)
+  })
+})
+
+describe('closing a loop on an existing point', () => {
+  it('the closing segment is perpendicular to the line it continues from', () => {
+    const m = emptyModel()
+    // an L drawn up to (0, 40): the last edge ran left along y = 40, the origin closes it
+    const a = addPoint(m, 10, 40), b = addPoint(m, 0, 40)
+    const prev = addLine(m, a, b)
+    const s = inferSnap([0.2, 0.3], ctx(m, [0, 40], [], { anchorId: b }))
+    expect(s.kind).toBe('origin')
+    expect(s.rel).toEqual([{ type: 'perpendicular', ref: prev.id }])
+    expect(s.pos).toEqual([0, 0])
+    expect(s.hint).toBe('Perpendicular')
+  })
+
+  it('with nothing to be perpendicular to, a horizontal or vertical run is still inferred', () => {
+    const m = emptyModel()
+    const s = inferSnap([0.1, 0.2], ctx(m, [0, 40]))
+    expect(s.kind).toBe('origin')
+    expect(s.rel).toEqual([{ type: 'vertical' }])
+    expect(s.v).toBe(true)
+  })
+
+  it('a point that is nowhere near a relation gets none', () => {
+    const m = emptyModel()
+    const s = inferSnap([0.1, 0.2], ctx(m, [30, 40]))
+    expect(s.kind).toBe('origin')
+    expect(s.rel ?? []).toEqual([])
+  })
+
+  it('switching the relations off leaves a plain coincident snap', () => {
+    const m = emptyModel()
+    const flags = { ...defaultSnapFlags, grid: false, perpendicular: false, parallel: false, horizontalVertical: false }
+    const s = inferSnap([0.1, 0.2], ctx(m, [0, 40], [], { flags }))
+    expect(s.rel ?? []).toEqual([])
+  })
+})

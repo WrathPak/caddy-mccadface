@@ -186,65 +186,108 @@ registerFeature({
 /** What the viewport shows while the dialog is open: the cutting plane and the pieces in two colors. */
 export const useSplitView = create<{ plane: { origin: Vec3; normal: Vec3; size: number } | null; error: string | null }>(() => ({ plane: null, error: null }))
 
+/** The middle of the bodies along the normal of an origin plane: where a cut would go if it were to cut them in half. */
+export function middleOffset(bodies: Body[], plane: SplitP['plane']): number {
+  if (plane === 'face' || !bodies.length) return 0
+  const k = AXIS[plane].findIndex((x) => x !== 0)
+  let lo = Infinity, hi = -Infinity
+  for (const b of bodies) { const bb = bbox(b.mesh.positions); lo = Math.min(lo, bb.min[k]); hi = Math.max(hi, bb.max[k]) }
+  return Number.isFinite(lo) ? +((lo + hi) / 2).toFixed(2) : 0
+}
+
+/** Where the cutting plane stands in the viewport (through the middle of the bodies) and the arrow that moves it. */
+function planeHandle(p: SplitP, bodies: Body[], cutter: Extract<Cutter, { kind: 'plane' }>): { plane: { origin: Vec3; normal: Vec3; size: number }; arrow: ArrowSpec } {
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]
+  for (const b of bodies) { const bb = bbox(b.mesh.positions); for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], bb.min[k]); hi[k] = Math.max(hi[k], bb.max[k]) } }
+  const size = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) * 0.9
+  const c: Vec3 = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2]
+  const n = unit3(cutter.normal)
+  const origin = sub3(c, mul3(n, dot3(sub3(c, cutter.origin), n)))
+  // the offset arrow stands on the plane the cut starts from (offset 0) at the edge of the part, so it stays clear of the connectors that sit in the middle of the cut
+  const tan = unit3(Math.abs(n[2]) > 0.9 ? [1, 0, 0] : cross3(n, [0, 0, 1]))
+  let reach = 0
+  for (const b of bodies) {
+    const P = b.mesh.positions
+    for (let i = 0; i < P.length; i += 3) reach = Math.max(reach, Math.abs(dot3(sub3([P[i], P[i + 1], P[i + 2]], c), tan)))
+  }
+  return { plane: { origin, normal: n, size }, arrow: { origin: add3(sub3(origin, mul3(n, p.offset)), mul3(tan, reach)), dir: n, key: 'offset' } }
+}
+
 function splitPreview({ values, setValues }: PreviewCtx): PreviewHandle {
   let cur = values
+  // the offset follows the bodies (their middle along the plane normal) until the person sets one themselves
+  let auto = values.offset as number
+  let fitKey = `${bodyIdsOf((values.bodies as string[]) ?? []).join()}|${values.plane}`
   const runner = createRunner(async (stale) => {
     let p: SplitP
-    try { p = resolveParams(splitSchema, cur) as unknown as SplitP } catch { clearPreview(); clearHandles(); return }
+    try { p = resolveParams(splitSchema, cur) as unknown as SplitP } catch { clearPreview(); clearHandles(); useSplitView.setState({ plane: null, error: null }); return }
     const geometry = useDoc.getState().geometry
     const env: SplitEnv = { bodies: geometry, dataOf: (id) => useSketchData.getState().data[id] }
     const report = new RefReport()
+    const ids = bodyIdsOf(p.bodies)
+    const all = geometry.filter((b) => ids.includes(b.id))
+    const apply = (patch: ParamValues) => { cur = { ...cur, ...patch }; auto = NaN; setValues(cur) }
+    // the plane and its offset arrow stand as soon as there is a body, whether or not the cut reaches it: an offset that misses
+    // the part is moved back with the arrow
+    let offsetArrow: ArrowSpec | null = null
+    try {
+      const cutter = cutterOf(p, env, new RefReport())
+      if (all.length && cutter.kind === 'plane') {
+        const h = planeHandle(p, all, cutter)
+        useSplitView.setState({ plane: h.plane, error: null })
+        offsetArrow = h.arrow
+        showArrows([offsetArrow], p as unknown as ParamValues, apply)
+      } else useSplitView.setState({ plane: null, error: null })
+    } catch { useSplitView.setState({ plane: null, error: null }) }
     try {
       const r = await runSplit(p, env, (n, a) => getKernel().call(n, a as never), (n) => `preview.${n}`, 'preview', report)
       if (stale()) return
-      const ids = bodyIdsOf(p.bodies)
       // each piece gets its own translucent tint
       setPreview(r.bodies.map((b, i) => ({ mesh: b.mesh, kind: i % 2 ? 'cut' : 'result' })), ids)
-      const all = geometry.filter((b) => ids.includes(b.id))
-      let size = 40
-      let offsetArrow: ArrowSpec | null = null
-      if (all.length && r.cutter.kind === 'plane') {
-        const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]
-        for (const b of all) { const bb = bbox(b.mesh.positions); for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], bb.min[k]); hi[k] = Math.max(hi[k], bb.max[k]) } }
-        size = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) * 0.9
-        const c: Vec3 = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2]
-        const n = unit3(r.cutter.normal)
-        const origin = sub3(c, mul3(n, dot3(sub3(c, r.cutter.origin), n)))
-        useSplitView.setState({ plane: { origin, normal: n, size }, error: null })
-        // the offset arrow stands on the plane the cut starts from (offset 0) in the middle of the bodies
-        // at the edge of the part, so it stays clear of the connectors that sit in the middle of the cut
-        const tan = unit3(Math.abs(n[2]) > 0.9 ? [1, 0, 0] : cross3(n, [0, 0, 1]))
-        let reach = 0
-        for (const b of all) {
-          const P = b.mesh.positions
-          for (let i = 0; i < P.length; i += 3) reach = Math.max(reach, Math.abs(dot3(sub3([P[i], P[i + 1], P[i + 2]], c), tan)))
-        }
-        offsetArrow = { origin: add3(sub3(origin, mul3(n, p.offset)), mul3(tan, reach)), dir: n, key: 'offset' }
-      } else useSplitView.setState({ plane: null, error: null })
       // the connector arrows stand on the first connector: how far it goes into the other part, how wide it is, and (dovetails) how far its flanks flare
       const cn = p.connector !== 'none' ? r.connector : undefined
       const arrows: ArrowSpec[] = offsetArrow ? [offsetArrow] : []
       // (the depth arrow stands at the far side of the connector from the size arrow, so their grips do not overlap on a small connector)
       if (cn) arrows.push({ origin: sub3(cn.origin, mul3(cn.across, p.size / 2)), dir: cn.down, key: 'depth', min: 0.5 }, { origin: cn.origin, dir: cn.across, key: 'size', factor: 2, min: 0.5 })
-      const apply = (patch: ParamValues) => { cur = { ...cur, ...patch }; setValues(cur) }
       showArrows(arrows, p as unknown as ParamValues, apply)
       showAngle(cn?.flare && p.connector === 'dovetail' ? { origin: cn.flare.origin, axis: cn.flare.axis, start: cn.down, radius: Math.max(3, p.depth), key: 'angle', min: 5, max: 45, step: 1 } : null, p as unknown as ParamValues, apply)
-      useUi.setState({ inspectorNotice: r.warning && /not touched/.test(r.warning) ? null : null })
+      useUi.setState({ inspectorNotice: null })
     } catch (e) {
       if (stale()) return
       clearPreview()
-      clearHandles()
-      useSplitView.setState({ plane: null, error: e instanceof Error ? e.message : String(e) })
+      if (!offsetArrow) clearHandles()
+      const msg = e instanceof Error ? e.message : String(e)
+      useSplitView.setState({ error: msg })
+      // say why nothing is cut (typically: the plane misses the body)
+      useUi.setState({ inspectorNotice: /does not go through/.test(msg) ? `${msg}. Move the offset so the plane passes through the body.` : msg })
     }
   }, 220)
   runner.schedule()
   return {
-    update(v) { cur = v; runner.schedule() },
+    update(v) {
+      // picking the bodies (or another plane) puts the cut through the middle of them, unless an offset was set
+      const key = `${bodyIdsOf((v.bodies as string[]) ?? []).join()}|${v.plane}`
+      if (key !== fitKey) {
+        fitKey = key
+        if (v.offset === auto) {
+          const ids = bodyIdsOf((v.bodies as string[]) ?? [])
+          const mid = middleOffset(useDoc.getState().geometry.filter((b) => ids.includes(b.id)), v.plane as SplitP['plane'])
+          auto = mid
+          v = { ...v, offset: mid }
+          cur = v
+          setValues(v)
+        }
+      }
+      if (v.offset !== auto) auto = NaN
+      cur = v
+      runner.schedule()
+    },
     dispose() {
       runner.dispose()
       clearPreview()
       clearHandles()
       useSplitView.setState({ plane: null, error: null })
+      useUi.setState({ inspectorNotice: null })
     },
   }
 }
@@ -255,7 +298,9 @@ export function startSplit() {
   const sel = useUi.getState().selection
   let ids = [...new Set(sel.map((r) => r.id))].filter((id) => geometry.some((b) => b.id === id))
   if (!ids.length && geometry.length === 1) ids = [geometry[0].id]
-  createFeature('split', { bodies: ids }, 'print.split')
+  // the cut starts through the middle of the body (the first plane, XY, cuts across Z): offset 0 would sit on the base of a part on the ground and cut nothing
+  const offset = middleOffset(geometry.filter((b) => ids.includes(b.id)), 'XY')
+  createFeature('split', { bodies: ids, offset }, 'print.split')
 }
 
 export type { ParamValues }

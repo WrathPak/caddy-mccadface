@@ -71,9 +71,28 @@ registerFeature({
 /** Paint mode the next opened dialog starts in (set by the ribbon commands). */
 let nextMode: PaintMode = 'off'
 
+/** True when every triangle of the region faces (nearly) straight up or down: no horizontal strand can leave it. */
+export function levelOnly(positions: Float32Array, indices: Uint32Array): boolean {
+  if (!indices.length) return false
+  for (let t = 0; t < indices.length; t += 3) {
+    const a = indices[t] * 3, b = indices[t + 1] * 3, c = indices[t + 2] * 3
+    const ux = positions[b] - positions[a], uy = positions[b + 1] - positions[a + 1], uz = positions[b + 2] - positions[a + 2]
+    const vx = positions[c] - positions[a], vy = positions[c + 1] - positions[a + 1], vz = positions[c + 2] - positions[a + 2]
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
+    const l = Math.hypot(nx, ny, nz)
+    if (l < 1e-12) continue
+    // (print-aware strands drop below 0.2 of horizontal travel: the same limit)
+    if (Math.hypot(nx, ny) / l >= 0.2) return false
+  }
+  return true
+}
+
 function hairPreview({ values, setValues }: PreviewCtx): PreviewHandle {
   let cur = values
   let lastRegion = ''
+  // Print-aware strands are horizontal, so a surface that faces straight up or down (a rim, a floor) cannot grow them. Until the
+  // person sets Print-aware themselves, such a surface turns it off, so the default look (a comb off a rim) grows vertical strands.
+  let printAuto = true
   const geometry = () => useDoc.getState().geometry
 
   const runner = createRunner(async (stale) => {
@@ -84,6 +103,13 @@ function hairPreview({ values, setValues }: PreviewCtx): PreviewHandle {
       if (!v.region.length) { clearHairView(); resetManip(); return }
       useHairView.setState({ busy: true })
       const { args } = buildArgs(v, geometry(), 'preview')
+      if (printAuto && v.printAware && v.dirMode !== 'radial' && v.dirMode !== 'fixed' && v.dirMode !== 'point' && levelOnly(args.positions, args.indices)) {
+        printAuto = false
+        cur = { ...cur, printAware: false }
+        setValues(cur)
+        runner.schedule()
+        return
+      }
       try {
         const g = directionGlyphs(args.positions, args.indices, v, args.axis)
         // the length arrow follows one strand: out of the surface the way strands point there
@@ -142,6 +168,9 @@ function hairPreview({ values, setValues }: PreviewCtx): PreviewHandle {
         const n = useHairView.getState().glyphs?.normal
         if (n) { v = { ...v, fixedDir: [+n[0].toFixed(3), +n[1].toFixed(3), +n[2].toFixed(3)] }; setTimeout(() => setValues(v), 0) }
       }
+      // a new preset starts from its own Print-aware; touching the box by hand ends the automatic choice
+      if (v.preset !== cur.preset) printAuto = true
+      else if (v.printAware !== cur.printAware) printAuto = false
       cur = v
       syncRegion(v)
       runner.schedule()
