@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Box3, MathUtils, Matrix4, Mesh, OrthographicCamera, PerspectiveCamera, Plane, Quaternion, Raycaster, Sphere, Vector2, Vector3 } from 'three'
 import { navClock } from './navClock'
+import { holdMotion } from './motion'
 import { viewportBus, type StepKind, type ViewDir } from './bus'
 import { dragAction, useNavSettings, wheelAction } from './navSettings'
 import { DEBUG_HANDLE } from '@/app/flags'
@@ -379,6 +380,7 @@ export function NavControls() {
       moved: number
     }
     let drag: Drag | null = null
+    let release: (() => void) | null = null
     let lastMiddle = { t: 0, x: 0, y: 0, fit: false }
 
     const down = (e: PointerEvent) => {
@@ -405,6 +407,8 @@ export function NavControls() {
       const pivot = pivotAt(e)
       el.setPointerCapture(e.pointerId)
       drag = { kind, id: e.pointerId, pivot, x: e.clientX, y: e.clientY, vx: 0, vy: 0, t: navClock.now(), moved: 0 }
+      release?.()
+      release = holdMotion()
       if (kind === 'pan') {
         const cam0 = c.clone() as PerspectiveCamera | OrthographicCamera
         cam0.updateMatrixWorld()
@@ -446,6 +450,8 @@ export function NavControls() {
       const d = drag
       if (!d || e.pointerId !== d.id) return
       drag = null
+      release?.()
+      release = null
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
       if (d.kind === 'orbit') setPivot(d.pivot, false)
       // optional inertia: keep going with the release velocity
@@ -551,6 +557,7 @@ export function NavControls() {
     return () => {
       offs.forEach((o) => o())
       offTouch()
+      release?.()
       el.removeEventListener('pointerdown', down, true)
       el.removeEventListener('pointermove', move)
       el.removeEventListener('pointerup', up)

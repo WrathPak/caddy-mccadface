@@ -107,6 +107,9 @@ test('a 3 million triangle STL imports without a long main-thread task and orbit
   // while the camera moves the low-res copy is what is drawn
   expect(await app.ev((c) => c.lodState())).toEqual([[false, true]])
   const to = await page.evaluate(() => performance.now())
+  // a pause with the button still held is not a rest: the full mesh stays away until the drag ends
+  await page.waitForTimeout(600)
+  expect(await app.ev((c) => c.lodState())).toEqual([[false, true]])
   await page.mouse.up({ button: 'middle' })
   await page.keyboard.up('Shift')
   const all = await page.evaluate(() => { const w = window as unknown as { __frames: [number, number][]; __stop: boolean }; w.__stop = true; return w.__frames })
