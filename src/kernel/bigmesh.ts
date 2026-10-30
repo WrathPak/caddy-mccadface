@@ -3,12 +3,59 @@
  * LARGE_MESH_TRIS, and a vertex-clustering decimator that produces the low-res mesh the viewport draws while orbiting.
  * Pure functions on typed arrays, so they run in the kernel worker, in the compute pool, and in Node tests.
  */
-import { bbox, type MeshData, type MeshLod, type TopoMesh } from './types'
+import { bbox, type MeshChunk, type MeshData, type MeshLod, type TopoMesh } from './types'
 
 /** Above this many triangles a mesh body skips crease segmentation and feature edges (it is one face) and gets a LOD mesh. */
 export const LARGE_MESH_TRIS = 400_000
 /** Triangle budget of the orbit-time mesh. */
 export const LOD_TRIS = 60_000
+/** Triangles per piece of a big mesh's drawn geometry: the GPU gets one piece per frame. */
+export const CHUNK_TRIS = 24_000
+/** Meshes with more triangles than this are drawn from pieces. */
+export const CHUNKED_MIN_TRIS = CHUNK_TRIS * 1.2
+
+/**
+ * Makes own, compact geometries for runs of a mesh's triangles. The vertex remap table (one int per vertex of the whole mesh)
+ * is allocated once and only the entries a piece touched are reset, so the cost of a piece follows its size and not the
+ * mesh's: allocating and clearing it per piece was most of the main-thread time of a 3 million triangle import.
+ * The pieces have far fewer than 65536 vertices, so they get 16 bit indices: half the bytes to send, and the driver checks every one of them.
+ */
+export function chunker(positions: Float32Array, normals: Float32Array, indices: Uint32Array, chunkTris = CHUNK_TRIS): (t0: number, t1: number) => MeshChunk {
+  const remap = new Int32Array(positions.length / 3).fill(-1)
+  // scratch space for the biggest piece, reused: fresh arrays for every piece were a steady supply of garbage
+  const idxScratch = new Uint32Array(chunkTris * 3)
+  const vertScratch = new Uint32Array(chunkTris * 3) // at most one new vertex per index
+  return (t0, t1) => {
+    const n = (t1 - t0) * 3
+    const idx = idxScratch.subarray(0, n)
+    const verts = vertScratch
+    let nv = 0
+    for (let i = 0; i < n; i++) {
+      const v = indices[t0 * 3 + i]
+      let r = remap[v]
+      if (r < 0) { r = remap[v] = nv; verts[nv++] = v }
+      idx[i] = r
+    }
+    const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3)
+    for (let i = 0; i < nv; i++) {
+      const v = verts[i]
+      remap[v] = -1
+      const o = v * 3, d = i * 3
+      pos[d] = positions[o]; pos[d + 1] = positions[o + 1]; pos[d + 2] = positions[o + 2]
+      nrm[d] = normals[o]; nrm[d + 1] = normals[o + 1]; nrm[d + 2] = normals[o + 2]
+    }
+    return { positions: pos, normals: nrm, indices: nv < 65536 ? new Uint16Array(idx) : idx.slice() }
+  }
+}
+
+/** All the pieces of a mesh (see `chunker`). */
+export function buildChunks(positions: Float32Array, normals: Float32Array, indices: Uint32Array, chunkTris = CHUNK_TRIS): MeshChunk[] {
+  const make = chunker(positions, normals, indices, chunkTris)
+  const total = indices.length / 3
+  const out: MeshChunk[] = []
+  for (let t = 0; t < total; t += chunkTris) out.push(make(t, Math.min(total, t + chunkTris)))
+  return out
+}
 
 /** Open-addressing map from non-negative integers (below 2^53) to int32 values; no per-entry allocation. */
 export class IntMap {

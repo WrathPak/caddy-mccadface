@@ -17,6 +17,12 @@ export const sourceOf = (bytes: Uint8Array): Blob | Uint8Array => sources.get(by
 /** Files at least this big take the pool route (smaller ones are quicker to parse in place). */
 export const POOL_IMPORT_BYTES = 2 << 20
 
+/** The bytes of a picked file. A big one is read in a pool worker and handed over as a transfer: reading it here is a task of its own (about 100 ms for 150 MB, six times that on a slow machine). */
+export async function readFileBytes(file: File): Promise<Uint8Array> {
+  if (file.size < POOL_IMPORT_BYTES || typeof Worker === 'undefined') return new Uint8Array(await file.arrayBuffer())
+  return new Uint8Array(await getComputePool().run((w) => w.readFile(file)))
+}
+
 export interface MeshImportOptions {
   format: 'stl' | '3mf'
   scale: number

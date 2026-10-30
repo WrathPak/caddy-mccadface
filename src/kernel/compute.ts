@@ -8,7 +8,7 @@ import { parse3mfFast, type RawMesh } from '@/io/threemfFast'
 import { parseStlSoup, type MeshSource } from '@/io/stlStream'
 import { meshBoolean as manifoldBoolean, type BoolOp } from './mesh'
 import { DEFAULT_CREASE_DEG, meshDisplayAuto, weld } from './meshutil'
-import { buildLod } from './bigmesh'
+import { buildChunks, buildLod, CHUNKED_MIN_TRIS } from './bigmesh'
 import { withBvh } from './bvhBuild'
 import type { MeshData, MeshLod, TopoMesh } from './types'
 
@@ -25,7 +25,7 @@ export interface ImportArgs { source: MeshSource; format: 'stl' | '3mf'; scale: 
 const buffersOf = (m: MeshData): ArrayBuffer[] =>
   [...[m.positions, m.normals, m.indices, m.faceIds, m.edges, m.edgeIds, m.faceHashes, m.edgeHashes, m.lod?.positions, m.lod?.normals, m.lod?.indices, m.bvh?.indirect]
     .filter((a): a is NonNullable<typeof a> => !!a)
-    .map((a) => a.buffer as ArrayBuffer), ...(m.bvh?.roots ?? [])]
+    .map((a) => a.buffer as ArrayBuffer), ...(m.bvh?.roots ?? []), ...(m.chunks ?? []).flatMap((c) => [c.positions.buffer as ArrayBuffer, c.normals.buffer as ArrayBuffer, c.indices.buffer as ArrayBuffer])]
 
 /** Parse an STL or 3MF, weld it and build its display data. */
 export async function importMesh(a: ImportArgs): Promise<ImportedPart[]> {
@@ -40,7 +40,10 @@ export async function importMesh(a: ImportArgs): Promise<ImportedPart[]> {
     if (a.scale !== 1) for (let k = 0; k < p.length; k++) p[k] *= a.scale
     const topo = weld(p, r.indices)
     if (!topo.indices.length) throw new Error('The file has no usable triangles')
-    return { name: r.name, topo, display: withBvh(meshDisplayAuto(topo, a.creaseDeg ?? DEFAULT_CREASE_DEG)) }
+    const display = withBvh(meshDisplayAuto(topo, a.creaseDeg ?? DEFAULT_CREASE_DEG))
+    // the pieces the page sends to the GPU one frame at a time are cut here: cutting them there is a main-thread task per piece
+    if (display.indices.length / 3 > CHUNKED_MIN_TRIS) display.chunks = buildChunks(display.positions, display.normals, display.indices)
+    return { name: r.name, topo, display }
   })
 }
 
@@ -48,6 +51,14 @@ export const computeApi = {
   async importMesh(a: ImportArgs): Promise<ImportedPart[]> {
     const parts = await importMesh(a)
     return Comlink.transfer(parts, parts.flatMap((p) => [p.topo.positions.buffer as ArrayBuffer, p.topo.indices.buffer as ArrayBuffer, ...buffersOf(p.display)]))
+  },
+  /**
+   * The bytes of a File, read here so the main thread never has to: the read of a 150 MB file ends in one long copy into the
+   * reading thread's memory. The buffer goes back as a transfer, which hands over the memory without touching it.
+   */
+  async readFile(file: Blob): Promise<ArrayBuffer> {
+    const bytes = await file.arrayBuffer()
+    return Comlink.transfer(bytes, [bytes])
   },
   /** Decimated copy for orbiting. */
   async lod(a: { positions: Float32Array; indices: Uint32Array; target?: number }): Promise<MeshLod> {

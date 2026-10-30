@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import type { Icon } from '@phosphor-icons/react'
 import { ArrowArcRight, ArrowFatLineUp, ArrowsClockwise, ArrowsOutCardinal, Circle, GridFour, PencilSimpleLine, Polygon, Question, Spiral } from '@phosphor-icons/react'
 import { useDoc, activeDefId } from '@/doc/store'
@@ -31,7 +32,10 @@ export interface TimelineProps {
 
 /** Feature chips with a draggable rollback marker. Data comes from the doc store. */
 export function Timeline({ onEditFeature }: TimelineProps) {
-  const { features, rollback, selectedFeatureId, selectFeature, setRollback, toggleSuppress } = useDoc()
+  // only what the chips show: the whole store would redraw every chip when a blob is added, the regeneration starts or the geometry arrives
+  const { features, rollback, selectedFeatureId, selectFeature, setRollback, toggleSuppress } = useDoc(useShallow((s) => ({
+    features: s.features, rollback: s.rollback, selectedFeatureId: s.selectedFeatureId, selectFeature: s.selectFeature, setRollback: s.setRollback, toggleSuppress: s.toggleSuppress,
+  })))
   const setActiveTool = useUi((s) => s.setActiveTool)
   const coarse = useDevice((s) => s.coarse)
   const trackRef = useRef<HTMLDivElement>(null)

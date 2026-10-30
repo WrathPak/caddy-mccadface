@@ -3,6 +3,9 @@
 /** Decimated copy of a very large mesh, drawn while the camera moves. */
 export interface MeshLod { positions: Float32Array; normals: Float32Array; indices: Uint32Array }
 
+/** A piece of a very big mesh with vertices of its own (see `chunker` in bigmesh.ts): the page sends one piece to the GPU per frame. */
+export interface MeshChunk { positions: Float32Array; normals: Float32Array; indices: Uint16Array | Uint32Array }
+
 /** A bounding volume hierarchy built off the main thread (three-mesh-bvh, indirect: the index buffer keeps its order). */
 export interface MeshBvh { roots: ArrayBuffer[]; indirect: Uint32Array }
 
@@ -42,6 +45,8 @@ export interface MeshData {
   bounds?: Bounds
   /** picking structure for `lod` meshes, so the main thread never has to build one */
   bvh?: MeshBvh
+  /** the drawn mesh cut into pieces for the GPU upload, made in the worker that made the mesh (absent: the page cuts them) */
+  chunks?: MeshChunk[]
 }
 
 const maxOf = (a: ArrayLike<number>) => {

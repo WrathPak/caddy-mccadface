@@ -22,6 +22,10 @@ test.afterAll(() => stopServer?.())
 // the ci runners draw with software gl on two shared cores, so a main thread task can stall there for reasons that are not ours: 500 ms there, 100 everywhere else
 const longLimit = process.env.CI ? 500 : 100
 const slack = 1
+// at a 6x CPU throttle (local runs): the longest main-thread task an import may have, and how many it may have. Before the pieces went
+// up off screen in short slices an import was ten or twelve of them, up to 200 ms; now it is one to four of 60 to 120 ms
+const THROTTLED_LIMIT = 200
+const THROTTLED_MAX_TASKS = 6
 
 async function watchLongTasks(app: App) {
   await app.page.evaluate(() => {
@@ -55,8 +59,10 @@ test('a 3 million triangle STL imports without a long main-thread task and orbit
   expect(body.tris).toBeGreaterThan(cells * cells * 2 * 0.99)
   expect((await app.features())[0].state).toBe('ok')
   // the worker built a low-res copy and the picking BVH, so the main thread did neither
-  const extras = await app.ev((c) => { const m = c.doc.getState().geometry[0].mesh; return { lod: m.lod.indices.length / 3, bvh: !!m.bvh, bounds: !!m.bounds } })
+  const extras = await app.ev((c) => { const m = c.doc.getState().geometry[0].mesh; return { lod: m.lod.indices.length / 3, bvh: !!m.bvh, bounds: !!m.bounds, chunks: m.chunks?.length ?? 0 } })
   expect(extras.bvh && extras.bounds).toBe(true)
+  // the pieces the page sends to the GPU were cut in the worker too: 3 million triangles in pieces of 24 thousand
+  expect(extras.chunks).toBe(Math.ceil(body.tris / 24_000))
   expect(extras.lod).toBeGreaterThan(10_000)
   expect(extras.lod).toBeLessThan(150_000)
 
@@ -160,4 +166,40 @@ test('a big 3MF takes the same route: parsed in a worker, build transform applie
   expect(bb.max[2]).toBeLessThan(30 + 7)
   const long = await longTasks(app)
   expect(Math.max(0, ...long), `long tasks: ${long.join(', ')}`).toBeLessThan(longLimit)
+})
+
+// A 6x slower CPU is what a busy laptop or a phone looks like. The page's share of an import is what is left once the pool workers
+// have read the file, parsed it, welded it, decimated it, cut it into pieces and built the BVH: handing the pieces to the GPU,
+// and React drawing the new row and chip. Local only: the ci runners draw with software GL on shared cores, where the main thread
+// waits in GL calls for reasons that have nothing to do with the import. (Here too the first frame of the whole mesh is a long
+// task, and what a frame costs under this throttle is about 60 ms whatever is in it: the limits leave room for those.)
+test('at a 6x CPU throttle the import is a few ordinary frames: nothing over the limit, and the GPU upload is not one of them', async ({ app, page }) => {
+  test.skip(!!process.env.CI, 'software GL on the ci runners makes main-thread timing meaningless')
+  test.setTimeout(480_000)
+  const stl = writeBigStl(Number(process.env.BIG_CELLS ?? 1225))
+  await app.open()
+  // the page settles at full speed (the shaders linked and the environment uploaded at the start), then the throttle goes on
+  await page.waitForTimeout(4000)
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 })
+  await watchLongTasks(app)
+
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), app.ribbon('Import').click()])
+  await chooser.setFiles(stl)
+  await expect.poll(() => app.bodies().then((b) => b.length), { timeout: 400_000, intervals: [500] }).toBe(1)
+  await app.idle()
+  // the full mesh is up once the low-res copy is no longer standing in for it
+  await expect.poll(() => app.ev((c) => c.lodState()), { timeout: 120_000 }).toEqual([[true, false]])
+  await page.waitForTimeout(1500)
+  const tasks = (await longTasks(app)).map((d) => Math.round(d))
+  console.log('6x import: long tasks (ms)', tasks.join(', ') || 'none')
+  expect(Math.max(0, ...tasks), `long tasks: ${tasks.join(', ')}`).toBeLessThan(THROTTLED_LIMIT)
+  expect(tasks.length, `long tasks: ${tasks.join(', ')}`).toBeLessThanOrEqual(THROTTLED_MAX_TASKS)
+
+  // for the record: what a plain edit costs under the same throttle
+  await page.evaluate(() => { (window as unknown as { __long: number[] }).__long = [] })
+  await app.ev((c) => c.doc.getState().addFeature('box', { width: 20, depth: 20, height: 20, position: [300, 0, 0] }))
+  await app.idle()
+  await page.waitForTimeout(1500)
+  console.log('6x plain box: long tasks (ms)', (await longTasks(app)).map((d) => Math.round(d)).join(', ') || 'none')
 })
