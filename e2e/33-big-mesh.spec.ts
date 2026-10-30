@@ -35,8 +35,6 @@ async function watchLongTasks(app: App) {
 const longTasks = (app: App) => app.page.evaluate(() => (window as unknown as { __long: number[] }).__long)
 
 test('a 3 million triangle STL imports without a long main-thread task and orbits smoothly', async ({ app, page }) => {
-  // stalls 600+ ms on the ci runners but not locally, skipped on ci until #12 is sorted
-  test.skip(!!process.env.CI, 'big stl import stalls on ci runners, see #12')
   test.setTimeout(420_000)
   const cells = Number(process.env.BIG_CELLS ?? 1225) // 1225 cells a side = 3.0 million triangles
   const stl = writeBigStl(cells)
@@ -86,12 +84,13 @@ test('a 3 million triangle STL imports without a long main-thread task and orbit
   const b = (await page.locator('.vp canvas').boundingBox())!
   const cx = b.x + b.width / 2, cy = b.y + b.height / 2
   await page.evaluate(() => {
-    const w = window as unknown as { __frames: [number, number][]; __stop: boolean }
+    const w = window as unknown as { __frames: [number, number, boolean][]; __stop: boolean; __caddy: { lodState: () => boolean[][] } }
     w.__frames = []
     w.__stop = false
     let last = performance.now()
     const tick = (t: number) => {
-      w.__frames.push([t, t - last])
+      // the frame time, and whether the low-res copy was up for it
+      w.__frames.push([t, t - last, !!w.__caddy.lodState()[0]?.[1]])
       last = t
       if (!w.__stop) requestAnimationFrame(tick)
     }
@@ -109,17 +108,27 @@ test('a 3 million triangle STL imports without a long main-thread task and orbit
   // while the camera moves the low-res copy is what is drawn
   expect(await app.ev((c) => c.lodState())).toEqual([[false, true]])
   const to = await page.evaluate(() => performance.now())
+  // a pause with the button still held is not a rest: the full mesh stays away until the drag ends
+  await page.waitForTimeout(600)
+  expect(await app.ev((c) => c.lodState())).toEqual([[false, true]])
   await page.mouse.up({ button: 'middle' })
   await page.keyboard.up('Shift')
-  const all = await page.evaluate(() => { const w = window as unknown as { __frames: [number, number][]; __stop: boolean }; w.__stop = true; return w.__frames })
-  const frames = all.filter(([t]) => t >= from && t <= to).map(([, d]) => d).sort((a, c) => a - c)
+  const all = await page.evaluate(() => { const w = window as unknown as { __frames: [number, number, boolean][]; __stop: boolean }; w.__stop = true; return w.__frames })
+  const inOrbit = all.filter(([t]) => t >= from && t <= to)
+  const slow = inOrbit.filter(([, d]) => d > 50).map(([t, d, lod]) => `${Math.round(t - from)}:${Math.round(d)}${lod ? '' : 'F'}`)
+  console.log(`slow orbit frames (ms into the drag:frame ms, F = full mesh up): ${slow.join(' ') || 'none'}`)
+  const frames = inOrbit.map(([, d]) => d).sort((a, c) => a - c)
   const median = frames[Math.floor(frames.length / 2)]
   const p90 = frames[Math.floor(frames.length * 0.9)]
   const orbitLong = await longTasks(app)
   console.log(`orbit: ${frames.length} frames, median ${median.toFixed(1)} ms, p90 ${p90.toFixed(1)} ms, worst ${frames[frames.length - 1].toFixed(0)} ms, long tasks ${orbitLong.map((d) => Math.round(d)).join(', ') || 'none'}`)
   expect(frames.length).toBeGreaterThan(40)
-  expect(median).toBeLessThan(33.4 * slack) // 30 fps
-  expect(p90).toBeLessThan(50 * slack)
+  // frame pacing is the gpu's job. on the ci runners software gl on two shared cores takes 150+ ms to draw even the low res copy
+  // (and the 91 step drag stretches to most of a minute), so there only the main thread is held to account, below
+  if (!process.env.CI) {
+    expect(median).toBeLessThan(33.4 * slack) // 30 fps
+    expect(p90).toBeLessThan(50 * slack)
+  }
   expect(Math.max(0, ...orbitLong)).toBeLessThan(longLimit)
 
   // at rest the full mesh is back

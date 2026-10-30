@@ -22,6 +22,20 @@ export const REST_MS = 180
 interface Swap { full: Object3D; lod: Object3D; /** false while the full mesh is still being sent to the GPU: the low-res one stays up */ ready: boolean }
 const swaps = new Set<Swap>()
 let isMoving = false
+/** Navigation drags in progress. A pause in the middle of one is not a rest: on a slow GPU the full mesh would take seconds to draw. */
+let held = 0
+let heldSince = Infinity
+
+/** Called by the navigation controls when a drag starts; returns the function to call when it ends. */
+export function holdMotion(): () => void {
+  if (held++ === 0) heldSince = navClock.now()
+  let done = false
+  return () => {
+    if (done) return
+    done = true
+    if (--held === 0) heldSince = Infinity
+  }
+}
 
 function applySwap(s: Swap) {
   s.full.visible = !isMoving
@@ -55,7 +69,8 @@ export function MotionTracker() {
     last.current = pose
     const now = navClock.now()
     if (moved) lastMove.current = now
-    const moving = now - lastMove.current < REST_MS
+    // a held drag stays moving once the camera has moved during it, through any pause
+    const moving = (held > 0 && lastMove.current >= heldSince) || now - lastMove.current < REST_MS
     if (moving !== isMoving) {
       isMoving = moving
       for (const s of swaps) applySwap(s)
