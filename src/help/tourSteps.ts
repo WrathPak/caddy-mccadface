@@ -34,7 +34,7 @@ export const TOUR: TourStep[] = [
     target: '.vp',
     side: 'left',
     title: 'The viewport',
-    body: 'This is your model. The wheel zooms, the middle mouse button pans and Shift with it orbits (Settings has other mouse and touchpad styles). The cube in the corner snaps to standard views, and the buttons at the bottom change how things are drawn.',
+    body: 'This is your model. The wheel zooms, the middle mouse button pans and Shift with it orbits (Settings has other mouse and touchpad styles). On a touch screen one finger orbits, two fingers pan, pinch and twist to roll the view, and a double tap fits everything. The cube in the corner snaps to standard views, and the buttons at the bottom change how things are drawn.',
   },
   {
     id: 'timeline',

@@ -147,7 +147,7 @@ export function Bodies() {
       wireframe: displayMode === 'wireframe',
       clippingPlanes: clip,
     })
-    const hi = new MeshBasicMaterial({ color: colors.accent, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: DoubleSide, clippingPlanes: clip })
+    const hi = new MeshBasicMaterial({ color: colors.sel, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: DoubleSide, clippingPlanes: clip })
     const dim = new MeshStandardMaterial({ color: colors.body, roughness: 0.62, metalness: 0.05, side: DoubleSide, transparent: true, opacity: 0.28, depthWrite: false, clippingPlanes: clip })
     const flag = new MeshStandardMaterial({ color: '#d9625a', roughness: 0.55, metalness: 0.05, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes: clip, wireframe: displayMode === 'wireframe' })
     return { base, surf, hi, dim, flag }
@@ -321,7 +321,7 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
         />
         {wholeBody && <mesh geometry={showLod ? lodGeo! : geo} material={mats.hi} raycast={() => null} renderOrder={2} />}
         {overlayGeo && <mesh geometry={overlayGeo} material={mats.hi} raycast={() => null} renderOrder={2} />}
-        {showEdges && <EdgeLines body={body} inst={inst} color={colors.edge} accent={colors.accent} pickable={filter === 'edge' && !sketching && pickable && !snapping && !dragging} clip={mats.base.clippingPlanes ?? []} />}
+        {showEdges && <EdgeLines body={body} inst={inst} color={colors.edge} accent={colors.sel} pickable={filter === 'edge' && !sketching && pickable && !snapping && !dragging} clip={mats.base.clippingPlanes ?? []} />}
       </group>
       {clip && !body.surface && <SectionCap geometry={geo} plane={clip} color={CAP_COLORS[index % CAP_COLORS.length]} order={20 + index * 4} size={capSize} matrix={matrix ?? undefined} />}
     </>
