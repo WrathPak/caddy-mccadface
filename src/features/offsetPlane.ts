@@ -12,6 +12,7 @@ import { PLANE_FEATURES, usePlanes } from '@/sketch/planes'
 import type { PlaneDef } from '@/sketch/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
+import { resetManip, useManip } from '@/viewport/preview'
 
 export const offsetPlaneSchema: ParamSchema = {
   id: 'offsetPlane',
@@ -51,12 +52,25 @@ registerFeature({
     usePlanes.getState().set(ctx.feature.id, plane)
     return { data: { plane }, warning: report.warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
   },
-  preview({ values }) {
+  preview({ values, setValues }) {
+    let cur = values
     const show = (v: ParamValues) => {
-      try { usePlanes.getState().set('preview', offsetPlaneDef(resolveParams(offsetPlaneSchema, v), useDoc.getState().geometry)) } catch { usePlanes.getState().set('preview', null) }
+      cur = v
+      try {
+        const p = resolveParams(offsetPlaneSchema, v)
+        const plane = offsetPlaneDef(p, useDoc.getState().geometry)
+        usePlanes.getState().set('preview', plane)
+        // drag arrow standing on the base plane: pull it to set the distance
+        const d = p.distance as number, n = plane.normal
+        useManip.setState({
+          active: true, origin: [plane.origin[0] - n[0] * d, plane.origin[1] - n[1] * d, plane.origin[2] - n[2] * d], dir: n, tip: d, factor: 1,
+          label: (x) => `${x.toFixed(2)} mm`,
+          onChange: (x) => { cur = { ...cur, distance: x }; setValues(cur) },
+        })
+      } catch { usePlanes.getState().set('preview', null); resetManip() }
     }
     show(values)
-    return { update: show, dispose: () => usePlanes.getState().set('preview', null) }
+    return { update: show, dispose: () => { usePlanes.getState().set('preview', null); resetManip() } }
   },
 })
 
@@ -64,7 +78,9 @@ registerFeature({
 export function startOffsetPlane() {
   const ui = useUi.getState()
   const faces = encodeSelection(ui.selection.filter((r) => r.kind === 'face').slice(0, 1), useDoc.getState().geometry)
-  createFeature('offsetPlane', faces.length ? { base: 'face', face: faces } : {}, 'construct.plane')
+  // a selected origin plane (viewport or Browser) is the base, like a selected face
+  const origin = ui.selection.find((r) => r.kind === 'plane' && ['planeXY', 'planeXZ', 'planeYZ'].includes(r.id))
+  createFeature('offsetPlane', faces.length ? { base: 'face', face: faces } : origin ? { base: origin.id.slice(5) } : {}, 'construct.plane')
 }
 
 /** Construction planes alive at the rollback point: [feature id, name, plane]. */

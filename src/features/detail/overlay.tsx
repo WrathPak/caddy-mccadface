@@ -147,6 +147,7 @@ function EmbossHandle({ view }: { view: EmbossView }) {
         {/* the plate is the grab area for moving; it is invisible but takes the pointer */}
         <mesh
           renderOrder={20}
+          userData={{ handle: true }}
           onPointerDown={drag('move') as never}
           onPointerOver={() => { setHot('move'); gl.domElement.style.cursor = 'grab' }}
           onPointerOut={() => { setHot(null); gl.domElement.style.cursor = '' }}
@@ -159,7 +160,7 @@ function EmbossHandle({ view }: { view: EmbossView }) {
           <meshBasicMaterial color={color} depthTest={false} transparent />
         </mesh>
         <mesh
-          ref={knob} position={[0, h / 2 + 0.6, 0]} renderOrder={23}
+          ref={knob} position={[0, h / 2 + 0.6, 0]} renderOrder={23} userData={{ handle: true }}
           onPointerDown={drag('turn') as never}
           onPointerOver={() => { setHot('turn'); gl.domElement.style.cursor = 'grab' }}
           onPointerOut={() => { setHot(null); gl.domElement.style.cursor = '' }}

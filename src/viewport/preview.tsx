@@ -233,10 +233,14 @@ export function ArrowManipulator() {
       if (!dr) return
       const t = axisParam(rayAt(ev), o, d)
       if (t === null) return
-      const tip = dr.tip0 + (t - dr.t0)
+      // the tool may turn the arrow round mid-drag (Extrude flips Join / Cut): measure on the axis the drag began on, then read the
+      // tip off in whatever direction the arrow points now, so it never jumps
+      const cur = useManip.getState()
+      const flip = new Vector3(...cur.dir).normalize().dot(d) < 0 ? -1 : 1
+      const along = dr.tip0 + (t - dr.t0)
       const st = ev.shiftKey ? 1 : 0.1
-      const v = Math.round((tip * useManip.getState().factor) / st) * st
-      useManip.getState().onChange?.(+v.toFixed(4))
+      const v = Math.round((along * flip * cur.factor) / st) * st
+      cur.onChange?.(+v.toFixed(4))
       invalidate()
     }
     const up = () => {
@@ -266,6 +270,7 @@ export function ArrowManipulator() {
           <mesh
             position={[0, 0, -0.2]}
             rotation={[Math.PI / 2, 0, 0]}
+            userData={{ handle: true }}
             onPointerDown={onDown as never}
             onPointerOver={() => { setHot(true); gl.domElement.style.cursor = 'grab' }}
             onPointerOut={() => { setHot(false); gl.domElement.style.cursor = '' }}

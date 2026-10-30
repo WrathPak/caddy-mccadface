@@ -169,7 +169,8 @@ registerOp<ShellArgs>('shellOp', (a, h) => {
   const shape = h.getBrep(a.key)
   const all = topoOf(shape as unknown as AnyShape).faces
   const list = a.faces.map((i) => all[i]).filter(Boolean)
-  if (!list.length || list.length !== a.faces.length) throw new Error('Some of the selected faces no longer exist')
+  // no faces: the whole body is hollowed into a closed solid with a sealed void
+  if (list.length !== a.faces.length) throw new Error('Some of the selected faces no longer exist')
   if (a.side === 'inside') {
     const [lo, hi] = (shape as unknown as { boundingBox: { bounds: [Vec3, Vec3] } }).boundingBox.bounds
     const minDim = Math.min(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2])
@@ -178,7 +179,13 @@ registerOp<ShellArgs>('shellOp', (a, h) => {
   let out: { shape: Sh; faces: string[][] }
   try {
     // OCC offsets towards the outside for a positive value; 'inside' therefore passes -thickness
-    out = shellNamed(h.getNamed(a.key), a.faces, a.side === 'inside' ? -a.thickness : a.thickness, 0.001, a.fid ?? a.id)
+    const src = h.getNamed(a.key)
+    const fid = a.fid ?? a.id
+    if (!a.faces.length) {
+      // nothing to open: OCC's thick solid then gives only the offset solid, so the wall is the body minus its inner offset (or the outer offset minus the body)
+      if (a.side === 'inside') out = boolNamed('cut', src, shellNamed(src, [], -a.thickness, 0.001, fid), fid)
+      else out = boolNamed('cut', shellNamed(src, [], a.thickness, 0.001, fid), src, fid)
+    } else out = shellNamed(src, a.faces, a.side === 'inside' ? -a.thickness : a.thickness, 0.001, fid)
   } catch (e) {
     throw new Error(`A shell of ${a.thickness} mm is not possible here (${e instanceof Error ? e.message : e})`)
   }

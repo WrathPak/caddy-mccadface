@@ -12,6 +12,7 @@ import { composeTransform, type Body } from '@/kernel/types'
 import { attachBvh, buildBvh } from './bvh'
 import { registerLodSwap, useMotion, useWarm } from './motion'
 import { usePreview } from './preview'
+import { useFaceEdges } from './faceEdges'
 import { useLastPick } from './lastPick'
 import { useVpColors } from './colors'
 import { useSketch } from '@/sketch/store'
@@ -242,6 +243,9 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
   const painting = useHairPaint((s) => s.mode !== 'off')
   const byComponent = filter === 'component' && !!inst.occ
   const pickFaces = filter !== 'edge' && !sketching && !painting && !snapping && !dragging
+  // Fillet / Chamfer in the Edge filter: a face stands for its edges
+  const onFaceEdges = useFaceEdges((s) => s.onFace)
+  const faceEdges = filter === 'edge' && !!onFaceEdges && !sketching && !painting && !snapping && !dragging
   // an open surface always shows its edges: they are what tells a surface from a solid, and what the stitch and extend tools pick
   const showEdges = displayMode !== 'shaded' || filter === 'edge' || !!body.surface
   const bodyMat = flagged ? mats.flag : dimmed ? mats.dim : body.surface ? mats.surf : mats.base
@@ -325,6 +329,7 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
           onPointerMove={
             snapping
               ? (e) => { e.stopPropagation(); const s = snapAt(e); useAssemblyRuntime.getState().setSnapHover(s ? { inst: inst.key, index: s.nearest, near: s.near } : null) }
+              : faceEdges && canPick ? (e) => { if (e.intersections.some((h) => h.object.type === 'LineSegments')) return; e.stopPropagation(); const r = refFor(e); if (!sameRef(useUi.getState().hover, r)) setHover(r) }
               : pickFaces && canPick ? (e) => { e.stopPropagation(); const r = refFor(e); if (!sameRef(useUi.getState().hover, r)) setHover(r) } : undefined
           }
           onPointerOut={() => { setHover(null); if (snapping) useAssemblyRuntime.getState().setSnapHover(null) }}
@@ -337,6 +342,7 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
                   const sp = snapPoints(body)[s.nearest]
                   setSelection([{ kind: 'snap', id: body.id, index: s.nearest, path, snap: snapSpec(body, sp, inst.occ || undefined) }])
                 }
+              : faceEdges && canPick ? (e) => { if (e.intersections.some((h) => h.object.type === 'LineSegments')) return; e.stopPropagation(); onFaceEdges!(refFor(e)) }
               : pickFaces && canPick ? (e) => { e.stopPropagation(); const r = refFor(e); useLastPick.setState((s) => ({ point: [e.point.x, e.point.y, e.point.z], ref: r, seq: s.seq + 1 })); setSelection([r], e.shiftKey || e.ctrlKey) } : undefined
           }
         />

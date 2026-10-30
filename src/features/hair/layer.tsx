@@ -184,7 +184,7 @@ export function HairDirectionOverlay() {
           <lineSegments geometry={shaft} renderOrder={21} raycast={() => null}>
             <lineBasicMaterial color="#ffb347" depthTest={false} transparent />
           </lineSegments>
-          <mesh position={handle} renderOrder={22} onPointerDown={drag as never} onPointerOver={() => { gl.domElement.style.cursor = 'grab' }} onPointerOut={() => { gl.domElement.style.cursor = '' }}>
+          <mesh position={handle} renderOrder={22} userData={{ handle: true }} onPointerDown={drag as never} onPointerOver={() => { gl.domElement.style.cursor = 'grab' }} onPointerOut={() => { gl.domElement.style.cursor = '' }}>
             <sphereGeometry args={[Math.max(0.8, glyphs.size * 0.025), 16, 12]} />
             <meshBasicMaterial color="#ffb347" depthTest={false} transparent />
           </mesh>

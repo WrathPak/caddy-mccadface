@@ -9,10 +9,11 @@ import type { PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel } from '@/kernel/client'
 import type { Body } from '@/kernel/types'
 import type { EdgeFrame } from '@/kernel/model-ops'
-import { useUi } from '@/store/ui'
+import { useUi, type SelectionRef } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
+import { useFaceEdges } from '@/viewport/faceEdges'
 import { clearPreview, resetManip, setPreview, useManip } from '@/viewport/preview'
-import { liveEnv, type Env } from '../modeling'
+import { liveEnv, minDim, niceFloor, workBody, type Env } from '../modeling'
 import { createRunner, watchSelection } from '../previewKit'
 
 type Mode = 'fillet' | 'chamfer'
@@ -63,8 +64,16 @@ function register(mode: Mode, icon: Icon) {
   })
 }
 
+/** A fillet radius / chamfer distance that fits the part: about a twentieth of its smallest dimension (1 mm on an ordinary part). */
+export function sizeFor(bodyIds: string[]): number {
+  const b = workBody(bodyIds)
+  return b ? Math.max(0.05, niceFloor(minDim(b) * 0.05)) : 1
+}
+
 function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: PreviewCtx): PreviewHandle {
   let cur: ParamValues = values
+  // the size follows the part until the person sets one themselves
+  let auto = values.size as number
   const ui = useUi
   const prevFilter = ui.getState().selectionFilter
   ui.getState().setSelectionFilter('edge')
@@ -89,16 +98,35 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
     const out: Body[] = []
     for (const g of groups) out.push((await getKernel().call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size: p.size as number, mode, fid: 'preview' })) as Body)
     if (stale()) return
-    setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), out.map((b) => b.id))
+    // the original stays faint and pickable, so more edges (or faces) can still be clicked while the dialog is open
+    setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), [], out.map((b) => b.id))
   })
   const off = watchSelection(['edge'], () => {
-    cur = { ...cur, edges: encodeSelection(ui.getState().selection.filter((r) => r.kind === 'edge'), useDoc.getState().geometry) }
+    const picked = ui.getState().selection.filter((r) => r.kind === 'edge')
+    cur = { ...cur, edges: encodeSelection(picked, useDoc.getState().geometry) }
+    if (cur.size === auto) { auto = sizeFor(picked.map((r) => r.id)); cur = { ...cur, size: auto } }
     setValues(cur)
+  })
+  // a click on a face takes all of its edges (or lets them all go when they are all picked already)
+  useFaceEdges.setState({
+    onFace: async (face) => {
+      const b = useDoc.getState().geometry.find((x) => x.id === face.id)
+      if (!b || b.kind !== 'brep' || b.surface || face.index === undefined) return
+      let idx: number[]
+      try { idx = (await getKernel().call('faceEdges', { key: b.key, faces: [face.index] })) as number[] } catch { return }
+      const sel = ui.getState().selection
+      const has = (i: number) => sel.some((r) => r.kind === 'edge' && r.id === face.id && r.index === i)
+      const all = idx.length > 0 && idx.every(has)
+      const rest = sel.filter((r) => r.kind === 'edge' && !(all && r.id === face.id && idx.includes(r.index!)))
+      const add: SelectionRef[] = all ? [] : idx.filter((i) => !has(i)).map((index) => ({ kind: 'edge', id: face.id, index, path: face.path }))
+      ui.getState().setSelection([...rest, ...add])
+    },
   })
   runner.schedule()
   return {
     update(v) { cur = v; runner.schedule() },
     dispose() {
+      useFaceEdges.setState({ onFace: null })
       off()
       runner.dispose()
       clearPreview()
@@ -111,8 +139,27 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
 register('fillet', Circle)
 register('chamfer', Polygon)
 
-export function startEdgeMod(mode: Mode) {
+/** Ribbon command: starts from the selected edges, or from the edges of the selected faces (as in Fusion), with a size that fits the part. */
+export async function startEdgeMod(mode: Mode) {
   const ui = useUi.getState()
-  const edges = encodeSelection(ui.selection.filter((r) => r.kind === 'edge'), useDoc.getState().geometry)
-  createFeature(mode, { edges }, mode === 'fillet' ? 'solid.fillet' : 'solid.chamfer')
+  const geometry = useDoc.getState().geometry
+  const edgeSel = ui.selection.filter((r) => r.kind === 'edge')
+  const faceSel = ui.selection.filter((r) => r.kind === 'face')
+  let edges = encodeSelection(edgeSel, geometry)
+  if (!edges.length && faceSel.length) {
+    const byBody = new Map<string, number[]>()
+    for (const f of faceSel) if (f.index !== undefined) byBody.set(f.id, [...(byBody.get(f.id) ?? []), f.index])
+    const picked: SelectionRef[] = []
+    for (const [id, faces] of byBody) {
+      const b = geometry.find((x) => x.id === id)
+      if (!b || b.kind !== 'brep' || b.surface) continue
+      try {
+        const idx = (await getKernel().call('faceEdges', { key: b.key, faces })) as number[]
+        for (const index of idx) picked.push({ kind: 'edge', id, index })
+      } catch { /* no edges: the dialog opens empty */ }
+    }
+    edges = encodeSelection(picked, geometry)
+  }
+  const ids = [...edgeSel, ...faceSel].map((r) => r.id)
+  createFeature(mode, { edges, size: sizeFor(ids) }, mode === 'fillet' ? 'solid.fillet' : 'solid.chamfer')
 }

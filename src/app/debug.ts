@@ -13,6 +13,7 @@ import { useHairPaint } from '@/features/hair/paint'
 import { importFiles, saveDocument } from '@/io/actions'
 import { parseProject, serializeProject } from '@/io/project'
 import { usePreview, useManip } from '@/viewport/preview'
+import { useAngleManip } from '@/viewport/AngleManipulator'
 import { usePlanes } from '@/sketch/planes'
 import { viewportBus } from '@/viewport/bus'
 import { navClock } from '@/viewport/navClock'
@@ -50,7 +51,7 @@ const navTools = {
 
 export function installDebugHandle() {
   ;(window as unknown as { __caddy: unknown }).__caddy = {
-    doc: useDoc, ui: useUi, sketch: useSketch, sketchData: useSketchData, hair: useHairView, preview: usePreview, manip: useManip, planes: usePlanes, paint: useHairPaint, bus: viewportBus, motion: useMotion, lodState, projects: useProjects, plugins: usePlugins, pluginHost: hostOf,
+    doc: useDoc, ui: useUi, sketch: useSketch, sketchData: useSketchData, hair: useHairView, preview: usePreview, manip: useManip, angleManip: useAngleManip, planes: usePlanes, paint: useHairPaint, bus: viewportBus, motion: useMotion, lodState, projects: useProjects, plugins: usePlugins, pluginHost: hostOf,
     ...((window as unknown as { __caddyExtra?: object }).__caddyExtra ?? {}),
     assembly: assemblyDebug, nav: navTools, drawing: drawingDebug, runCommand, allCommands, regenerate, importFiles, saveDocument, serializeProject, parseProject,
   }

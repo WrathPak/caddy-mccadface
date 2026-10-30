@@ -11,6 +11,8 @@ import type { Body } from '@/kernel/types'
 import { useSketchData } from '@/sketch/draw'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
+import { viewportBus } from '@/viewport/bus'
+import { autoOperation, bodySide, profileSamples } from './autoCut'
 import { clearPreview, resetManip, setPreview, useManip, useProfilePick } from '@/viewport/preview'
 import { ctxEnv, combine, liveEnv, profileRef, resolveInputs, type Inputs } from '../modeling'
 import { createRunner, watchSelection } from '../previewKit'
@@ -70,9 +72,40 @@ registerFeature({
   preview: (ctx) => extrudePreview(ctx),
 })
 
+/** Set by the Extrude command: the next dialog is a new extrude (turn the view, follow the arrow with Join / Cut), not an edit. */
+let fresh = false
+
 function extrudePreview({ values, setValues }: PreviewCtx): PreviewHandle {
   let cur = values
   const ui = useUi
+  const isNew = fresh
+  fresh = false
+  // Join / Cut follows the arrow until the user picks an operation themselves (any change we did not make)
+  let auto = isNew && (values.operation ?? 'join') === 'join'
+  let lastOp = values.operation
+  let lastDistance = values.distance as number
+  let lastInp: Inputs | null = null
+  let turned = !isNew
+
+  /** Which side of the profile the material lies on, worked out once per profile / body set. */
+  let sideKey = '', sideVal: -1 | 0 | 1 = 0
+  const sideOf = (inp: Inputs): -1 | 0 | 1 => {
+    if (inp.faces.length && !inp.groups.length) return -1 // a face's normal points out of the body
+    if (!inp.groups.length || inp.faces.length || !inp.anchor || !inp.normal) return 0
+    const geo = useDoc.getState().geometry
+    const key = `${geo.map((b) => b.key).join(',')}|${inp.anchor}|${inp.normal}|${inp.groups.length}`
+    if (key !== sideKey) {
+      const samples = inp.groups.flatMap((g) => g.profiles.flatMap((pr) => profileSamples(g.plane, pr.outer)))
+      sideKey = key
+      sideVal = bodySide(geo, [inp.anchor, ...samples], inp.normal)
+    }
+    return sideVal
+  }
+  const applyAuto = (v: ParamValues): ParamValues => {
+    if (!auto || !lastInp || v.direction !== 'one' || v.distance === lastDistance) return v
+    const out = autoOperation({ facesOnly: !!lastInp.faces.length && !lastInp.groups.length, side: sideOf(lastInp), operation: String(v.operation), distance: Number(v.distance) })
+    return out ? { ...v, operation: out.operation, distance: out.distance } : v
+  }
 
   const manip = (p: ExtrudeP, inp: Inputs) => {
     if (!inp.anchor || !inp.normal) return resetManip()
@@ -97,7 +130,9 @@ function extrudePreview({ values, setValues }: PreviewCtx): PreviewHandle {
     let p: ExtrudeP
     try { p = asP(resolveParams(extrudeSchema, cur)) } catch { clearPreview(); return }
     const inp = resolveInputs(p.profiles, liveEnv())
+    lastInp = inp
     manip(p, inp)
+    if (!turned && inp.normal) { turned = true; viewportBus.emit('tiltFromFacing', { normal: inp.normal }) }
     if (!inp.groups.length && !inp.faces.length) { clearPreview(); return }
     const tool = (await getKernel().call('extrudeTool', toolArgs(p, inp, 'preview', 'preview'))) as Body
     if (stale()) return
@@ -125,7 +160,21 @@ function extrudePreview({ values, setValues }: PreviewCtx): PreviewHandle {
 
   runner.schedule()
   return {
-    update(v) { cur = v; sync(); runner.schedule() },
+    update(v) {
+      let nv = v
+      if (auto) {
+        if (v.operation !== lastOp) auto = false // the user chose
+        else nv = applyAuto(v)
+      }
+      lastOp = nv.operation
+      lastDistance = nv.distance as number
+      cur = nv
+      sync()
+      // the arrow follows at once: it must not lag behind a flip while it is being dragged
+      if (lastInp) { try { manip(asP(resolveParams(extrudeSchema, nv)), lastInp) } catch { /* the runner reports it */ } }
+      runner.schedule()
+      if (nv !== v) setValues(nv)
+    },
     dispose() {
       off()
       runner.dispose()
@@ -138,6 +187,7 @@ function extrudePreview({ values, setValues }: PreviewCtx): PreviewHandle {
 
 /** Ribbon command (E): preselect the selected faces / sketch profiles. */
 export function startExtrude() {
+  fresh = true
   const ui = useUi.getState()
   const doc = useDoc.getState()
   const profiles: string[] = []

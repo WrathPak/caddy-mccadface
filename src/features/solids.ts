@@ -3,7 +3,7 @@ import { Cylinder, Package, Path, Shapes, Unite } from '@phosphor-icons/react'
 import { registerFeature } from '@/doc/registry'
 import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
-import { RefError, RefReport, bodyIdsOf, decodeRef, encodeSelection, resolveFace } from '@/doc/refs'
+import { RefError, RefReport, bodyIdsOf, decodeRef, encodeSelection, faceSigs, resolveFace } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
 import type { PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel, type KernelClient } from '@/kernel/client'
@@ -17,8 +17,8 @@ import { originPlane, toWorld } from '@/sketch/plane'
 import type { SketchData, Vec2 } from '@/sketch/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
-import { clearPreview, setPreview, useProfilePick } from '@/viewport/preview'
-import { combine, ctxEnv, liveEnv, profileRef, resolveInputs, type Env } from './modeling'
+import { clearPreview, resetManip, setPreview, useManip, useProfilePick } from '@/viewport/preview'
+import { combine, ctxEnv, liveEnv, minDim, niceFloor, profileRef, resolveInputs, workBody, type Env } from './modeling'
 import { createRunner } from './previewKit'
 
 // ---------------------------------------------------------------- Cylinder
@@ -331,14 +331,20 @@ export const shellSchema: ParamSchema = {
   id: 'shell',
   title: 'Shell',
   params: [
-    { type: 'selection-ref', key: 'faces', help: 'The faces that become openings. Click them in the viewport. Everything else is hollowed out.', label: 'Faces to remove', accepts: ['face'], multiple: true, required: true, pick: true, default: [] },
+    { type: 'selection-ref', key: 'faces', help: 'The faces that become openings. Click them in the viewport. Everything else is hollowed out.', label: 'Faces to remove', accepts: ['face'], multiple: true, required: true, pick: true, default: [], visibleWhen: (v) => !((v.bodies as string[] | undefined)?.length) },
+    { type: 'selection-ref', key: 'bodies', help: 'Or pick whole bodies to hollow them into a closed solid with a sealed void inside (no openings). Click a body, or leave this empty and pick faces instead.', label: 'Bodies (closed hollow)', accepts: ['body'], multiple: true, required: true, pick: true, default: [], visibleWhen: (v) => !((v.faces as string[] | undefined)?.length) },
     { type: 'number', key: 'thickness', help: 'Wall thickness left after hollowing, in mm.', label: 'Thickness', unit: 'mm', min: 0.001, step: 0.5, default: 2 },
     { type: 'enum', key: 'side', help: 'Inside: the wall grows into the body, keeping its outer size. Outside: the wall grows outward, keeping the inner size.', label: 'Direction', display: 'segmented', default: 'inside', options: [{ value: 'inside', label: 'Inside' }, { value: 'outside', label: 'Outside' }] },
   ],
 }
 
-function shellGroups(refs: string[], bodies: Body[], report = new RefReport()): { body: Body; faces: number[] }[] {
+function shellGroups(refs: string[], bodies: Body[], report = new RefReport(), whole: string[] = []): { body: Body; faces: number[] }[] {
   const by = new Map<string, { body: Body; faces: number[] }>()
+  for (const id of bodyIdsOf(whole)) {
+    const b = bodies.find((x) => x.id === id)
+    if (!b) throw new RefError('A body to hollow no longer exists. Pick it again.', whole)
+    if (!by.has(b.id)) by.set(b.id, { body: b, faces: [] })
+  }
   for (const s of refs) {
     const ref = decodeRef(s)
     const r = ref && ref.kind === 'face' ? resolveFace(ref, bodies, report) : null
@@ -346,14 +352,14 @@ function shellGroups(refs: string[], bodies: Body[], report = new RefReport()): 
     const g = by.get(r.body.id) ?? by.set(r.body.id, { body: r.body, faces: [] }).get(r.body.id)!
     if (!g.faces.includes(r.index)) g.faces.push(r.index)
   }
-  if (!by.size) throw new Error('Select the faces to remove')
+  if (!by.size) throw new Error('Select the faces to remove, or a body to hollow')
   for (const g of by.values()) if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Shell needs a solid body' + (g.body.surface ? ': this one is an open surface, thicken it instead' : ', not a mesh'))
   return [...by.values()]
 }
 
 async function runShell(kernel: KernelClient, p: ParamValues, bodies: Body[], idOf?: (b: Body) => string, fid = 'preview', report = new RefReport()): Promise<Body[]> {
   const out: Body[] = []
-  for (const g of shellGroups(p.faces as string[], bodies, report)) {
+  for (const g of shellGroups(p.faces as string[], bodies, report, (p.bodies as string[] | undefined) ?? [])) {
     out.push((await kernel.call('shellOp', { id: idOf ? idOf(g.body) : g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, thickness: p.thickness as number, side: p.side as string, fid })) as Body)
   }
   return out
@@ -369,23 +375,70 @@ registerFeature({
     const bodies = await runShell(ctx.kernel, p, ctx.bodies, undefined, ctx.feature.id, report)
     return { bodies, warning: report.warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
   },
-  preview({ values }) {
+  preview({ values, setValues }) {
     let cur = values
+    // the wall thickness follows the part until the person sets one themselves
+    let auto = values.thickness as number
+    const manip = (p: ParamValues, bodies: Body[]) => {
+      try {
+        const ref = decodeRef((p.faces as string[])[0] ?? '')
+        const hit = ref && ref.kind === 'face' ? resolveFace(ref, bodies) : null
+        if (!hit) return resetManip()
+        const sg = faceSigs(hit.body)[hit.index]
+        const sgn = p.side === 'outside' ? 1 : -1
+        useManip.setState({
+          active: true, origin: sg.centroid, dir: [sg.normal[0] * sgn, sg.normal[1] * sgn, sg.normal[2] * sgn], tip: p.thickness as number, factor: 1,
+          label: (v) => `${v.toFixed(2)} mm`,
+          onChange: (v) => { cur = { ...cur, thickness: Math.max(0.05, v) }; auto = -1; setValues(cur) },
+        })
+      } catch { resetManip() }
+    }
     const runner = createRunner(async (stale) => {
       let p: ParamValues
-      try { p = resolveParams(shellSchema, cur) } catch { clearPreview(); return }
+      try { p = resolveParams(shellSchema, cur) } catch { clearPreview(); resetManip(); return }
       const bodies = useDoc.getState().geometry
+      manip(p, bodies)
       let out: Body[]
       try { out = await runShell(getKernel(), p, bodies, (b) => 'preview-' + b.id) } catch { clearPreview(); return }
       if (stale()) return
       setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), out.map((b) => b.id.replace('preview-', '')))
     })
     runner.schedule()
-    return { update(v) { cur = v; runner.schedule() }, dispose() { runner.dispose(); clearPreview() } }
+    return {
+      update(v) {
+        // the first face picked sizes the wall to its body, unless a thickness was typed
+        const picked = [...((v.faces as string[]) ?? []), ...((v.bodies as string[] | undefined) ?? [])]
+        const had = [...((cur.faces as string[]) ?? []), ...((cur.bodies as string[] | undefined) ?? [])]
+        if (!had.length && picked.length && v.thickness === auto) {
+          const t = shellThickness(bodyIdsOf(picked))
+          auto = t
+          v = { ...v, thickness: t }
+          cur = v
+          setValues(v)
+        }
+        if (v.thickness !== auto) auto = -1
+        cur = v
+        runner.schedule()
+      },
+      dispose() { runner.dispose(); clearPreview(); resetManip() },
+    }
   },
 })
 
+/** A wall that fits the part: 2 mm on an ordinary part, thinner on a small one, thicker on a big one. */
+export function shellThickness(bodyIds: string[]): number {
+  const b = workBody(bodyIds)
+  return b ? Math.max(0.05, niceFloor(Math.min(minDim(b) * 0.15, Math.max(2, minDim(b) * 0.04)))) : 2
+}
+
 export function startShell() {
-  const faces = encodeSelection(useUi.getState().selection.filter((r) => r.kind === 'face'), useDoc.getState().geometry)
-  createFeature('shell', { faces }, 'solid.shell')
+  const sel = useUi.getState().selection
+  const geometry = useDoc.getState().geometry
+  const faceSel = sel.filter((r) => r.kind === 'face')
+  const bodySel = faceSel.length ? [] : sel.filter((r) => r.kind === 'body')
+  createFeature('shell', {
+    faces: encodeSelection(faceSel, geometry),
+    bodies: [...new Set(bodySel.map((r) => r.id))],
+    thickness: shellThickness([...faceSel, ...bodySel].map((r) => r.id)),
+  }, 'solid.shell')
 }
