@@ -214,6 +214,7 @@ export const GUIDES: Guide[] = [
           'The part you are editing is the active component. New features go into it.',
           'Click Activate Root to go back to the top level.',
           'Copy Component and Paste as Instance add more of the same part. Instances share their shape.',
+          'Right-click a component and choose Material and description. The parts list of a drawing shows them, and counts every instance of the component.',
         ],
       },
       {
@@ -504,7 +505,7 @@ export const GUIDES: Guide[] = [
           'Click Base View and place a front, top or right view of the model.',
           'Add Projected, Section or Detail views from the first one.',
           'Add dimensions with the tools in the Dimension group. Click a view, then the points to measure.',
-          'Add notes, datums and a parts list in the Annotate group.',
+          'Add notes, datums, balloons and a parts list in the Annotate group. For an assembly the parts list has one row per component.',
           'Export as PDF, DXF or SVG.',
         ],
       },
@@ -533,7 +534,9 @@ export const GUIDES: Guide[] = [
         steps: [
           'Note and Leader place text. Leader adds an arrow.',
           'GD&T, Datum and Finish place tolerance and surface symbols.',
-          'Balloon and Parts List number the parts and list them with quantities.',
+          'Parts List places a table of the parts of the model: item number, quantity, part name, material and description. In an assembly each component is one row, and copies of the same component are counted together.',
+          'Balloon points at a part and shows its item number from the parts list. Pick the part in the balloon dialog.',
+          'The table follows the model: add, remove or copy a component and the rows and quantities change. Material and description come from the component: right-click it in the Browser and choose Material and description.',
         ],
       },
       {
