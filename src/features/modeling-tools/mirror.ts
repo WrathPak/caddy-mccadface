@@ -74,13 +74,27 @@ function mirrorPreview({ values, setValues }: PreviewCtx): PreviewHandle {
   return { update(v) { cur = v; runner.schedule() }, dispose() { off(); runner.dispose(); clearPreview() } }
 }
 
+/**
+ * Ribbon command: takes what is selected. Bodies plus a plane or a flat face mirror those bodies across it; faces alone are the
+ * faces to mirror; a lone body in the document is taken when nothing is selected.
+ */
 export function startMirror() {
   const ui = useUi.getState()
   const d = useDoc.getState()
   const faces = ui.selection.filter((r) => r.kind === 'face')
   const bodies = ui.selection.filter((r) => r.kind === 'body')
+  const plane = ui.selection.find((r) => r.kind === 'plane')
   const init: ParamValues = {}
-  if (faces.length) { init.source = 'faces'; init.faces = encodeSelection(faces, d.geometry) }
-  else if (bodies.length) init.bodies = bodies.map((b) => b.id)
+  const solids = d.geometry.filter((b) => b.kind === 'brep' && !b.surface)
+  if (bodies.length) {
+    init.bodies = [...new Set(bodies.map((b) => b.id))]
+    if (plane) init.plane = [plane.id]
+    else if (faces.length) init.plane = encodeSelection(faces.slice(0, 1), d.geometry)
+  } else if (faces.length && !plane) { init.source = 'faces'; init.faces = encodeSelection(faces, d.geometry) }
+  else if (faces.length && plane) { init.source = 'faces'; init.faces = encodeSelection(faces, d.geometry); init.plane = [plane.id] }
+  else if (solids.length === 1) {
+    init.bodies = [solids[0].id]
+    if (plane) init.plane = [plane.id]
+  }
   createFeature('mirror', init, 'solid.mirror')
 }

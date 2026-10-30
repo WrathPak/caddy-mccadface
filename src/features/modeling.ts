@@ -120,3 +120,24 @@ export async function combine(ctx: FeatureCtx, tool: Body, op: string, explicit:
 }
 
 export const kernelNow = () => getKernel()
+
+/** Smallest real dimension of a body (open surfaces and flat things ignore their zero thickness). */
+export function minDim(b: Body): number {
+  const bb = bbox(b.mesh.positions)
+  const d = [0, 1, 2].map((k) => bb.max[k] - bb.min[k]).filter((x) => x > 1e-6)
+  return d.length ? Math.min(...d) : 0
+}
+
+/** Largest 1 / 2 / 5 x 10^k that is not above `x` (a starting size that reads as a number a person would type). */
+export function niceFloor(x: number): number {
+  if (!(x > 0)) return 0
+  const e = Math.pow(10, Math.floor(Math.log10(x)))
+  const m = x / e
+  return +((m >= 5 ? 5 : m >= 2 ? 2 : 1) * e).toPrecision(2)
+}
+
+/** The body a tool is about to work on: the one holding the first picked thing, else the lone body of the document. */
+export function workBody(pickedBodyIds: string[]): Body | undefined {
+  const g = useDoc.getState().geometry.filter((b) => b.kind === 'brep' && !b.surface)
+  return g.find((b) => b.id === pickedBodyIds[0]) ?? (g.length === 1 ? g[0] : undefined)
+}

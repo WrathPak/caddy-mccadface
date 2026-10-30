@@ -1,6 +1,7 @@
 import './bvh'
 import { useRef } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { Canvas, events } from '@react-three/fiber'
+import { handlesOnly, ownedGesture } from './handles'
 import { ArrowsOut, Cube, CubeFocus, GridFour, Eye, Planet, Sun, Crosshair } from '@phosphor-icons/react'
 import { useUi, type DisplayMode } from '@/store/ui'
 import { Scene } from './Scene'
@@ -41,8 +42,9 @@ export function Viewport() {
         dpr={dprRange(pixelRatio, coarse)}
         gl={{ antialias: true, stencil: true, powerPreference: 'high-performance' }}
         raycaster={{ params: { Line: { threshold: 1.2 }, Mesh: {}, Points: { threshold: 1 }, LOD: {}, Sprite: {} } }}
+        events={(store) => ({ ...events(store), filter: handlesOnly })}
         onCreated={({ gl }) => { gl.localClippingEnabled = true }}
-        onPointerMissed={(e) => e.button === 0 && useHairPaint.getState().mode === 'off' && clear()}
+        onPointerMissed={(e) => e.button === 0 && !ownedGesture() && useHairPaint.getState().mode === 'off' && clear()}
       >
         <Scene />
       </Canvas>

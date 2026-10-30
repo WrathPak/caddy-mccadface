@@ -236,6 +236,32 @@ function patternPreview({ values, setValues }: PreviewCtx): PreviewHandle {
   }
 }
 
+/** Extent of the picked faces / bodies along X and Y: a grid spacing that clears one instance (1.5 x its size) instead of a fixed 20 mm. */
+function spacingFor(init: ParamValues, bodies: Body[]): ParamValues {
+  const min: Vec3 = [Infinity, Infinity, Infinity], max: Vec3 = [-Infinity, -Infinity, -Infinity]
+  const grow = (p: Float32Array, i: number) => { for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], p[i + k]); max[k] = Math.max(max[k], p[i + k]) } }
+  if (init.source === 'bodies') {
+    for (const b of bodies.filter((x) => (init.bodies as string[]).includes(x.id))) for (let i = 0; i < b.mesh.positions.length; i += 3) grow(b.mesh.positions, i)
+  } else if (init.source === 'faces') {
+    for (const s of init.faces as string[]) {
+      const r = decodeRef(s)
+      const b = r?.kind === 'face' ? bodies.find((x) => x.id === r.bodyId) : undefined
+      if (!r || r.kind !== 'face' || !b) continue
+      const m = b.mesh
+      for (let t = 0; t < m.faceIds.length; t++) {
+        if (m.faceIds[t] !== r.index) continue
+        for (let c = 0; c < 3; c++) grow(m.positions, m.indices[t * 3 + c] * 3)
+      }
+    }
+  } else return {}
+  const out: ParamValues = {}
+  const nice = (x: number) => (x < 1e-6 ? undefined : Math.max(1, +(x * 1.5).toPrecision(2)))
+  const dx = nice(max[0] - min[0]), dy = nice(max[1] - min[1])
+  if (dx) out.distance1 = dx
+  if (dy) out.distance2 = dy
+  return out
+}
+
 /** Ribbon command: starts from the selection (faces / bodies), else from the selected timeline feature. */
 export function startPattern() {
   const ui = useUi.getState()
@@ -244,7 +270,7 @@ export function startPattern() {
   const bodies = ui.selection.filter((r) => r.kind === 'body')
   const init: ParamValues = {}
   if (faces.length) { init.source = 'faces'; init.faces = encodeSelection(faces, d.geometry) }
-  else if (bodies.length) { init.source = 'bodies'; init.bodies = bodies.map((b) => b.id) }
+  else if (bodies.length) { init.source = 'bodies'; init.bodies = [...new Set(bodies.map((b) => b.id))] }
   else if (d.selectedFeatureId && d.features.some((f) => f.id === d.selectedFeatureId && f.type !== 'sketch')) init.features = [d.selectedFeatureId]
-  createFeature('pattern', init, 'solid.pattern')
+  createFeature('pattern', { ...init, ...spacingFor(init, d.geometry) }, 'solid.pattern')
 }

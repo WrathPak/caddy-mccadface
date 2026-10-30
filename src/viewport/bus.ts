@@ -10,6 +10,11 @@ export interface ViewportEvents {
   view: ViewDir
   /** snap to an arbitrary view direction (unit vector from target toward camera) */
   viewVec: [number, number, number]
+  /**
+   * a tool is about to work on a plane with this normal: when the view looks straight at that plane (within `within` degrees, from
+   * either side), tilt it about the screen axes by about `deg` towards the home view so depth shows. Any other view stays as it is.
+   */
+  tiltFromFacing: { normal: [number, number, number]; within?: number; deg?: number }
   /** turn the view one 90 degree step (relative to the current / pending view) */
   step: StepKind
   /** drag-orbit by a pointer delta in pixels (the ViewCube drag) */

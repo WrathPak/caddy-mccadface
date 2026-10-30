@@ -16,6 +16,7 @@ import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
 import { useLastPick } from '@/viewport/lastPick'
 import { clearPreview, setPreview } from '@/viewport/preview'
+import { minDim, niceFloor, workBody } from '../modeling'
 import { createRunner } from '../previewKit'
 import { liveRefEnv, resolvePoint, useConstruct, type CosmeticThread, type RefEnv } from './geo'
 import { HOLE_PRESETS, tapDrill } from './holePresets'
@@ -182,8 +183,33 @@ registerFeature({
   preview: (ctx) => holePreview(ctx),
 })
 
+/**
+ * Starting sizes that fit the part: the usual 6 mm hole (11 mm counterbore, 12 mm countersink, 10 mm deep) on a part big enough for
+ * it, smaller on a thin one so the default never swallows it. Only the sizes the person has not changed are replaced.
+ */
+export function holeSizes(body: Body | undefined): ParamValues {
+  const out: ParamValues = { dia: 6, cbDia: 11, cbDepth: 6, cskDia: 12, depth: 10, major: 6, threadLength: 10 }
+  if (!body) return out
+  const m = minDim(body)
+  if (!(m > 0)) return out
+  const nice = (x: number) => (x >= 10 ? +x.toPrecision(2) : niceFloor(x))
+  const dia = Math.min(6, m * 0.3 >= 6 ? 6 : Math.max(0.1, niceFloor(m * 0.3)))
+  const depth = Math.min(10, m / 2 >= 10 ? 10 : Math.max(0.5, nice(m / 2)))
+  return { dia, cbDia: +(dia * 11 / 6).toPrecision(2), cbDepth: Math.max(0.1, +dia.toPrecision(2)), cskDia: +(dia * 2).toPrecision(2), depth, major: dia >= 1 ? dia : 6, threadLength: depth }
+}
+
 function holePreview({ values, setValues }: PreviewCtx): PreviewHandle {
   let cur = values
+  // the sizes last set by the dialog itself: whatever still equals them has not been touched by the person
+  let base: ParamValues = { dia: 6, cbDia: 11, cbDepth: 6, cskDia: 12, depth: 10, major: 6, threadLength: 10 }
+  for (const k of Object.keys(base)) if (typeof values[k] === 'number') base[k] = values[k]
+  const fitTo = (body: Body | undefined) => {
+    const fit = holeSizes(body)
+    const next = { ...cur }
+    for (const k of Object.keys(base)) if (cur[k] === base[k]) next[k] = fit[k]
+    base = { ...fit, ...Object.fromEntries(Object.keys(base).filter((k) => cur[k] !== base[k]).map((k) => [k, base[k]])) }
+    cur = next
+  }
   let seq = useLastPick.getState().seq
   const markerClick = (id: string) => {
     cur = { ...cur, places: (cur.places as string[]).filter((s) => parseFaceHole(s)?.k !== id) }
@@ -216,6 +242,7 @@ function holePreview({ values, setValues }: PreviewCtx): PreviewHandle {
     const [u, v] = toLocal(pl, s.point)
     const ref = { kind: 'face' as const, bodyId: body.id, featureId: body.featureId, index: s.ref.index, sig: sg, name: body.mesh.faceNames?.[s.ref.index]?.[0] }
     const places = [...(cur.places as string[])]
+    if (!places.length && cur.preset === 'custom') fitTo(body)
     const k = 'a' + Math.random().toString(36).slice(2, 7)
     places.push(JSON.stringify({ hole: 1, k, face: encodeRef(ref), u: +u.toFixed(4), v: +v.toFixed(4) }))
     cur = { ...cur, places }
@@ -232,5 +259,6 @@ function holePreview({ values, setValues }: PreviewCtx): PreviewHandle {
 export function startHole() {
   const ui = useUi.getState()
   const places = ui.selection.filter((r) => r.kind === 'sketch').map((r) => r.id)
-  createFeature('hole', places.length ? { places } : {}, 'solid.hole')
+  const fit = holeSizes(workBody([]))
+  createFeature('hole', { ...fit, ...(places.length ? { places } : {}) }, 'solid.hole')
 }

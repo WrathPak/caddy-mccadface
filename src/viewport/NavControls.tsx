@@ -357,6 +357,22 @@ export function NavControls() {
       }),
       viewportBus.on('view', (d) => goTo({ q: lookQuat(DIRS[d]) })),
       viewportBus.on('viewVec', ([x, y, z]) => goTo({ q: lookQuat(new Vector3(x, y, z)) })),
+      viewportBus.on('tiltFromFacing', ({ normal, within = 10, deg = 30 }) => {
+        const q = goalQ()
+        const n = new Vector3(...normal).normalize()
+        if (Math.abs(new Vector3(0, 0, 1).applyQuaternion(q).dot(n)) < Math.cos(MathUtils.degToRad(within))) return
+        // pitch about the screen's horizontal axis, turn about its vertical one; of the four ways, the one that ends nearest the home view
+        let best: Quaternion | null = null, bestScore = -Infinity
+        for (const sy of [1, -1]) for (const sp of [1, -1]) {
+          const q2 = q.clone()
+            .multiply(new Quaternion().setFromAxisAngle(AY, MathUtils.degToRad(deg * 0.8) * sy))
+            .multiply(new Quaternion().setFromAxisAngle(AX, MathUtils.degToRad(deg) * sp))
+            .normalize()
+          const score = new Vector3(0, 0, 1).applyQuaternion(q2).dot(HOME_DIR)
+          if (score > bestScore + 1e-9) { best = q2; bestScore = score }
+        }
+        if (best) goTo({ q: best })
+      }),
       viewportBus.on('step', (k) => {
         const [axis, ang] = STEPS[k]
         goTo({ q: goalQ().multiply(new Quaternion().setFromAxisAngle(axis, ang)).normalize() }, 320)

@@ -483,4 +483,19 @@ registerOp<{ key: string; edges: number[] }>('edgeFrames', (a, h) => {
   return out
 })
 
+/** B-rep edge indices bounding the given faces (so Fillet / Chamfer can start from a selected face, like Fusion). */
+registerOp<{ key: string; faces: number[] }>('faceEdges', (a, h) => {
+  const topo = topoOf(h.getBrep(a.key) as unknown as AnyShape)
+  const out = new Set<number>()
+  for (const fi of a.faces) {
+    const f = topo.faces[fi]
+    if (!f) continue
+    for (const e of f.edges) {
+      const i = topo.edgeHashes.indexOf(e.hashCode)
+      if (i >= 0) out.add(i)
+    }
+  }
+  return [...out].sort((x, y) => x - y)
+})
+
 import './sketch-ops'
