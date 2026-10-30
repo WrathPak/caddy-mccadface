@@ -67,5 +67,8 @@ export default defineConfig({
     }),
   ],
   worker: { format: 'es' },
+  // these are only imported from the kernel workers, which the dependency scanner doesn't crawl. found late, they made vite re-bundle and reload
+  // the page under whatever was running (the first spec of a cold dev server lost its document)
+  optimizeDeps: { include: ['manifold-3d', 'replicad-opencascadejs', 'opentype.js'] },
   build: { target: 'es2022', chunkSizeWarningLimit: 4000 },
 })
