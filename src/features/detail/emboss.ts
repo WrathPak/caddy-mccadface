@@ -6,11 +6,14 @@ import { registerFeature } from '@/doc/registry'
 import { useDoc } from '@/doc/store'
 import type { PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel } from '@/kernel/client'
+import { frameAt, spin } from '@/kernel/generators/surface'
 import type { EmbossOpArgs, EmbossPreview, EmbossSource } from '@/kernel/detail-ops'
 import type { Body } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
+import { resetManip } from '@/viewport/preview'
 import { createRunner } from '../previewKit'
+import { showArrows } from '../handleKit'
 import { regionFromSelection } from '../hair/region'
 import { bindRegion, centroidOf, decodeImage, isSvg, surfaceOf } from './common'
 import { DEFAULT_FONT, FONTS, loadFontBytes } from './fonts'
@@ -140,7 +143,7 @@ function embossPreview({ values, setValues }: PreviewCtx): PreviewHandle {
   const runner = createRunner(async (stale) => {
     try {
       const v = resolveParams(embossSchema, cur) as unknown as EmbossValues
-      if (!v.region.length) { useDetailView.setState({ emboss: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: null }); return }
+      if (!v.region.length) { useDetailView.setState({ emboss: null, readout: null, busy: false }); resetManip(); useUi.setState({ inspectorNotice: null }); return }
       useDetailView.setState({ busy: true })
       const blobs = useDoc.getState().blobs
       const { args, centre } = await embossArgs(v, geometry(), (id) => blobs[id], true)
@@ -158,10 +161,17 @@ function embossPreview({ values, setValues }: PreviewCtx): PreviewHandle {
         readout: `${res.width.toFixed(1)} x ${res.height.toFixed(1)} mm${res.wrapped === 'cylinder' ? ', wrapped around the cylinder' : ''}${notes}`,
         busy: false,
       })
+      // the depth arrow stands just off the right edge of the artwork (the middle belongs to the plate that moves it): up out of the
+      // surface for an emboss, down into it for an engrave
+      const f = spin(frameAt(res.point, res.normal, [0, 0, 1]), v.rotation)
+      const reach = Math.max(res.width, 2) / 2 + 0.9
+      const edge: V3 = [res.point[0] + f.x[0] * reach, res.point[1] + f.x[1] * reach, res.point[2] + f.x[2] * reach]
+      const up = v.mode === 'emboss' ? res.normal : ([-res.normal[0], -res.normal[1], -res.normal[2]] as V3)
+      showArrows([{ origin: edge, dir: up, key: 'depth', min: 0.05 }], v as unknown as ParamValues, put)
       useUi.setState({ inspectorNotice: null })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      if (!stale()) { useDetailView.setState({ emboss: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: msg }) }
+      if (!stale()) { useDetailView.setState({ emboss: null, readout: null, busy: false }); resetManip(); useUi.setState({ inspectorNotice: msg }) }
     }
   }, 220)
   runner.schedule()
@@ -177,6 +187,7 @@ function embossPreview({ values, setValues }: PreviewCtx): PreviewHandle {
       runner.dispose()
       faces.dispose()
       clearDetailView()
+      resetManip()
       useUi.setState({ inspectorNotice: null })
     },
   }

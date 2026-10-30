@@ -8,12 +8,13 @@ import { useDoc } from '@/doc/store'
 import type { FeatureCtx, PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel, type KernelClient } from '@/kernel/client'
 import type { CylinderOfFace, ThreadOpArgs } from '@/kernel/detail-ops'
-import type { Body, TopoMesh } from '@/kernel/types'
+import type { Body, TopoMesh, Vec3 } from '@/kernel/types'
 import { ISO_SIZES, isoProfile, nearestIso, type ThreadProfile } from '@/kernel/threads'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
-import { clearPreview, setPreview } from '@/viewport/preview'
+import { clearPreview, resetManip, setPreview } from '@/viewport/preview'
 import { createRunner } from '../previewKit'
+import { showArrows } from '../handleKit'
 import { withProgress } from './progress'
 import { clearDetailView, useDetailView } from './store'
 
@@ -131,7 +132,7 @@ registerFeature({
   preview: (ctx) => threadPreview(ctx),
 })
 
-function threadPreview({ values }: PreviewCtx): PreviewHandle {
+function threadPreview({ values, setValues }: PreviewCtx): PreviewHandle {
   let cur: ParamValues = values
   let hidden: string | null = null
   const hide = (id: string | null) => {
@@ -142,7 +143,7 @@ function threadPreview({ values }: PreviewCtx): PreviewHandle {
   const runner = createRunner(async (stale) => {
     try {
       const v = resolveParams(threadSchema, cur) as unknown as ThreadValues
-      if (!v.face.length) { hide(null); useDetailView.setState({ texture: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: null }); return }
+      if (!v.face.length) { hide(null); resetManip(); useDetailView.setState({ texture: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: null }); return }
       useDetailView.setState({ busy: true })
       const bodies = useDoc.getState().geometry
       const { body } = faceOf(v, bodies)
@@ -152,7 +153,16 @@ function threadPreview({ values }: PreviewCtx): PreviewHandle {
       if (stale()) return
       hidden = body.id
       setPreview([], [body.id])
-      const full = op.length > 0 ? Math.min(op.length, info.v1 - info.v0) : info.v1 - info.v0
+      const span = info.v1 - info.v0
+      const full = op.length > 0 ? Math.min(op.length, span) : span
+      // the length arrow stands at the end the thread starts from and runs along the face (0 means all of it)
+      const end = v.fromEnd === 'end'
+      const dir: Vec3 = end ? [-info.dir[0], -info.dir[1], -info.dir[2]] : info.dir
+      const along = end ? info.v1 : info.v0
+      showArrows(
+        [{ origin: [info.origin[0] + info.dir[0] * along, info.origin[1] + info.dir[1] * along, info.origin[2] + info.dir[2] * along], dir, key: 'length', min: 1, max: span }],
+        { ...v, length: full } as unknown as ParamValues, (patch) => { cur = { ...cur, ...patch }; setValues(cur) },
+      )
       useDetailView.setState({
         texture: { mesh, bodyId: body.id },
         readout: `${name} ${info.external ? 'outside' : 'inside'} thread, ${(full / op.profile.pitch).toFixed(1)} turns${note ? ' | ' + note : ''}`,
@@ -161,7 +171,7 @@ function threadPreview({ values }: PreviewCtx): PreviewHandle {
       useUi.setState({ inspectorNotice: null })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      if (!stale()) { hide(null); useDetailView.setState({ texture: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: msg }) }
+      if (!stale()) { hide(null); resetManip(); useDetailView.setState({ texture: null, readout: null, busy: false }); useUi.setState({ inspectorNotice: msg }) }
     }
   }, 120)
   runner.schedule()
@@ -171,6 +181,7 @@ function threadPreview({ values }: PreviewCtx): PreviewHandle {
       runner.dispose()
       clearPreview()
       clearDetailView()
+      resetManip()
       useUi.setState({ inspectorNotice: null })
     },
   }

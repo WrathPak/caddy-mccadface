@@ -20,6 +20,7 @@ import type { ParamSchema, ParamValues } from '@/ui/schema'
 import { clearPreview, resetManip, setPreview, useManip, useProfilePick } from '@/viewport/preview'
 import { combine, ctxEnv, liveEnv, minDim, niceFloor, profileRef, resolveInputs, workBody, type Env } from './modeling'
 import { createRunner } from './previewKit'
+import { showArrows } from './handleKit'
 
 // ---------------------------------------------------------------- Cylinder
 
@@ -48,16 +49,25 @@ registerFeature({
     const body = (await ctx.kernel.call('cylinderTool', cylinderArgs(p, ctx.newBodyId(), ctx.feature.name))) as Body
     return { bodies: [body] }
   },
-  preview({ values }) {
+  preview({ values, setValues }) {
     let cur: ParamValues = values
     const runner = createRunner(async (stale) => {
       let p: ParamValues
-      try { p = resolveParams(cylinderSchema, cur) } catch { clearPreview(); return }
+      try { p = resolveParams(cylinderSchema, cur) } catch { clearPreview(); resetManip(); return }
+      // the height arrow runs up the axis from the middle of the base, the radius arrow out from the middle of the axis to the wall
+      const n = originPlane((p.plane as 'XY' | 'XZ' | 'YZ') ?? 'XY').normal
+      const base = p.position as Vec3
+      const side: Vec3 = Math.abs(n[0]) > 0.9 ? [0, 1, 0] : [1, 0, 0]
+      const h = p.height as number
+      showArrows([
+        { origin: base, dir: n, key: 'height', min: 0.001 },
+        { origin: [base[0] + n[0] * h / 2, base[1] + n[1] * h / 2, base[2] + n[2] * h / 2], dir: side, key: 'radius', min: 0.001 },
+      ], p, (patch) => { cur = { ...cur, ...patch }; setValues(cur) })
       const body = (await getKernel().call('cylinderTool', cylinderArgs(p, 'preview', 'preview'))) as Body
       if (!stale()) setPreview([{ mesh: body.mesh, kind: 'add' }])
     })
     runner.schedule()
-    return { update(v) { cur = v; runner.schedule() }, dispose() { runner.dispose(); clearPreview() } }
+    return { update(v) { cur = v; runner.schedule() }, dispose() { runner.dispose(); clearPreview(); resetManip() } }
   },
 })
 

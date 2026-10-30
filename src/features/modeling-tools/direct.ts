@@ -11,11 +11,13 @@ import { getKernel } from '@/kernel/client'
 import type { DraftArgs, SplitTool, SurfaceTarget } from '@/kernel/modeling-ops'
 import type { EdgeFrame } from '@/kernel/model-ops'
 import type { Body, Vec3 } from '@/kernel/types'
-import { mul3, norm3 } from '@/kernel/xform'
+import { cross3, dot3, mul3, norm3, sub3, add3 } from '@/kernel/xform'
 import { useUi } from '@/store/ui'
 import type { NumberParam, ParamSchema, ParamValues, SelectionRefParam } from '@/ui/schema'
 import { clearPreview, resetManip, setPreview, useManip } from '@/viewport/preview'
+import { resetAngleManip } from '@/viewport/AngleManipulator'
 import { createRunner } from '../previewKit'
+import { arcRadius, showAngle, type AngleSpec } from '../handleKit'
 import { liveRefEnv, resolveDirection, resolvePlane, type RefEnv } from './geo'
 import { facesOf, type FaceArg } from './source'
 
@@ -32,6 +34,8 @@ interface Direct {
   build(p: ParamValues, env: BuildEnv, report: RefReport): Promise<Built>
   /** the arrow to drag in the viewport: origin, direction and which parameter it edits */
   manip?(p: ParamValues, env: RefEnv): Promise<{ origin: Vec3; dir: Vec3; key: string } | null>
+  /** the rotary handle to drag in the viewport (angles) */
+  angleManip?(p: ParamValues, env: RefEnv): Promise<AngleSpec | null>
   /** the selection filter to switch to while the dialog is open */
   filter?: 'face' | 'body' | 'edge'
 }
@@ -66,7 +70,7 @@ function directPreview(d: Direct, { values, setValues }: PreviewCtx): PreviewHan
   if (d.filter) ui.getState().setSelectionFilter(d.filter)
   const runner = createRunner(async (stale) => {
     let p: ParamValues
-    try { p = resolveParams(d.schema, cur) } catch { clearPreview(); resetManip(); return }
+    try { p = resolveParams(d.schema, cur) } catch { clearPreview(); resetManip(); resetAngleManip(); return }
     const env = { ...liveRefEnv(), fid: 'preview' }
     try {
       if (d.manip) {
@@ -79,6 +83,10 @@ function directPreview(d: Direct, { values, setValues }: PreviewCtx): PreviewHan
           })
         } else if (!m) resetManip()
       }
+      if (d.angleManip) {
+        const a = await d.angleManip(p, env)
+        if (!stale()) showAngle(a, p, (patch) => { cur = { ...cur, ...patch }; setValues(cur) })
+      }
       const r = await d.build(p, env, new RefReport())
       if (stale()) return
       // the original stays in the scene, faint but pickable, so faces and edges can still be added or removed
@@ -88,7 +96,7 @@ function directPreview(d: Direct, { values, setValues }: PreviewCtx): PreviewHan
   runner.schedule()
   return {
     update(v) { cur = v; runner.schedule() },
-    dispose() { runner.dispose(); clearPreview(); resetManip(); if (d.filter) ui.getState().setSelectionFilter(before) },
+    dispose() { runner.dispose(); clearPreview(); resetManip(); resetAngleManip(); if (d.filter) ui.getState().setSelectionFilter(before) },
   }
 }
 
@@ -297,6 +305,28 @@ register({
       bodies.push(await call<Body>(env, 'draftFaces', args))
     }
     return { bodies }
+  },
+  // the arc turns about the line where the first face meets the neutral plane, starting along the face towards the pull direction
+  // (a positive angle tilts the face the way that narrows the body along the pull direction)
+  async angleManip(p, env) {
+    const planeRef = (p.plane as string[])[0]
+    if (!planeRef || !(p.faces as string[])[0]) return null
+    const plane = await resolvePlane(planeRef, env, new RefReport())
+    const pullRef = (p.pull as string[])[0]
+    let pull: Vec3 = pullRef ? await resolveDirection(pullRef, env, new RefReport()) : plane.normal
+    if (p.flip) pull = mul3(pull, -1)
+    pull = norm3(pull)
+    const f = faceFrame(p.faces as string[], env)
+    if (!f) return null
+    const n = norm3(f.dir)
+    const u = sub3(pull, mul3(n, dot3(pull, n)))
+    if (Math.hypot(...u) < 1e-3) return null
+    const up = norm3(u)
+    const pn = norm3(plane.normal)
+    const den = dot3(up, pn)
+    if (Math.abs(den) < 1e-3) return null
+    const t = -dot3(sub3(f.origin, plane.origin), pn) / den
+    return { origin: add3(f.origin, mul3(up, t)), axis: norm3(cross3(n, up)), start: up, radius: arcRadius(env.bodies), key: 'angle', min: -45, max: 45, step: 0.5, nonZero: false }
   },
 })
 

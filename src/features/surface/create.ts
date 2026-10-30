@@ -84,7 +84,9 @@ registerSurfaceTool({
     const dir: Vec3 | null = WORLD[p.axis as string] ?? (inp.plane ? inp.plane.normal : null)
     if (!inp.anchor || !dir) return null
     const sym = p.direction === 'sym'
-    return { origin: inp.anchor, dir, key: 'distance', factor: sym ? 2 : 1 }
+    const first = { origin: inp.anchor, dir, key: 'distance', factor: sym ? 2 : 1 }
+    // two sides: a second arrow runs the other way for the second distance
+    return p.direction === 'two' ? [first, { origin: inp.anchor, dir: [-dir[0], -dir[1], -dir[2]] as Vec3, key: 'distance2', min: 0 }] : first
   },
 })
 
@@ -143,6 +145,41 @@ registerSurfaceTool({
     const ax = axisFor(p, inp, env, report)
     const args: SurfaceRevolveArgs = { id: env.newId(), name: env.name, curves: inp.curves, axisOrigin: ax.origin, axisDir: norm3(ax.dir), angle: p.angle as number }
     return { bodies: [await call<Body>(env, 'surfaceRevolve', args)], kind: 'add' }
+  },
+  async angleManip(p, env) {
+    const inp = resolveCurves(p.curves as string[], env)
+    if (!inp.curves.length) return null
+    let ax
+    try { ax = axisFor(p, inp, env, new RefReport()) } catch { return null }
+    const o = ax.origin, d = norm3(ax.dir)
+    // the knob starts where the curves are farthest from the axis, like the solid Revolve
+    let far: Vec3 | null = null, foot: Vec3 = o, best = 1e-6
+    const consider = (q: Vec3) => {
+      const w: Vec3 = [q[0] - o[0], q[1] - o[1], q[2] - o[2]]
+      const along = w[0] * d[0] + w[1] * d[1] + w[2] * d[2]
+      const r: Vec3 = [w[0] - d[0] * along, w[1] - d[1] * along, w[2] - d[2] * along]
+      const len = Math.hypot(...r)
+      if (len > best + 1e-9) { best = len; far = r; foot = [o[0] + d[0] * along, o[1] + d[1] * along, o[2] + d[2] * along] }
+    }
+    for (const c of inp.curves) {
+      if (c.kind === 'chain') {
+        for (const s of c.segs) { consider(s.a); consider(s.b); if (s.k === 'a') consider(s.m) }
+      } else {
+        const body = env.bodies.find((b) => b.key === c.key)
+        if (!body) continue
+        const sgs = edgeSigs(body)
+        for (const i of c.edges) {
+          const sg = sgs[i]
+          if (!sg) continue
+          const h = sg.length / 2
+          consider(sg.midpoint)
+          consider([sg.midpoint[0] + sg.direction[0] * h, sg.midpoint[1] + sg.direction[1] * h, sg.midpoint[2] + sg.direction[2] * h])
+          consider([sg.midpoint[0] - sg.direction[0] * h, sg.midpoint[1] - sg.direction[1] * h, sg.midpoint[2] - sg.direction[2] * h])
+        }
+      }
+    }
+    if (!far) return null
+    return { origin: foot, axis: d, start: norm3(far), radius: best }
   },
 })
 

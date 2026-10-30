@@ -7,7 +7,7 @@ import { RefError, encodeSelection } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
 import type { PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel } from '@/kernel/client'
-import type { Body } from '@/kernel/types'
+import type { Body, Vec3 } from '@/kernel/types'
 import { useSketchData } from '@/sketch/draw'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
@@ -16,6 +16,7 @@ import { autoOperation, bodySide, profileSamples } from './autoCut'
 import { clearPreview, resetManip, setPreview, useManip, useProfilePick } from '@/viewport/preview'
 import { ctxEnv, combine, liveEnv, profileRef, resolveInputs, type Inputs } from '../modeling'
 import { createRunner, watchSelection } from '../previewKit'
+import { showArrow } from '../handleKit'
 
 export const extrudeSchema: ParamSchema = {
   id: 'extrude',
@@ -124,6 +125,9 @@ function extrudePreview({ values, setValues }: PreviewCtx): PreviewHandle {
         setValues(next)
       },
     })
+    // two sides: a second arrow runs the other way for the second distance
+    const back: Vec3 = [-inp.normal[0] * sgn, -inp.normal[1] * sgn, -inp.normal[2] * sgn]
+    showArrow(1, p.direction === 'two' ? { origin: inp.anchor, dir: back, key: 'distance2', min: 0 } : null, p as unknown as ParamValues, (patch) => { cur = { ...cur, ...patch }; setValues(cur) })
   }
 
   const runner = createRunner(async (stale) => {

@@ -48,6 +48,23 @@ export function centroidOf(positions: Float32Array, indices: Uint32Array): V3 {
   return [+p[0].toFixed(3), +p[1].toFixed(3), +p[2].toFixed(3)]
 }
 
+/** A point on the triangle soup (see `centroidOf`) and the unit normal of the triangle nearest to it, from the winding (outward). */
+export function surfaceFrame(positions: Float32Array, indices: Uint32Array): { point: V3; normal: V3 } {
+  const point = centroidOf(positions, indices)
+  let best = Infinity, normal: V3 = [0, 0, 1]
+  for (let t = 0; t < indices.length; t += 3) {
+    const i = indices[t] * 3, j = indices[t + 1] * 3, k = indices[t + 2] * 3
+    const ux = positions[j] - positions[i], uy = positions[j + 1] - positions[i + 1], uz = positions[j + 2] - positions[i + 2]
+    const vx = positions[k] - positions[i], vy = positions[k + 1] - positions[i + 1], vz = positions[k + 2] - positions[i + 2]
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, nl = Math.hypot(nx, ny, nz)
+    if (nl < 1e-12) continue
+    const mx = (positions[i] + positions[j] + positions[k]) / 3, my = (positions[i + 1] + positions[j + 1] + positions[k + 1]) / 3, mz = (positions[i + 2] + positions[j + 2] + positions[k + 2]) / 3
+    const d = Math.hypot(point[0] - mx, point[1] - my, point[2] - mz)
+    if (d < best) { best = d; normal = [nx / nl, ny / nl, nz / nl] }
+  }
+  return { point, normal }
+}
+
 /**
  * Connects a dialog's `region` value to the Face / Brush / Fill toolbar and the cyan highlight (the same tools the Hair dialog uses).
  * `put` receives the new region whenever a stroke ends; call `sync` with the dialog's region whenever it changes.

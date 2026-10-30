@@ -1,9 +1,11 @@
 /** Section Analysis: a live clipping plane through the bodies, shown in the viewport until it is removed. */
 import { resolveParams } from '@/doc/params'
 import { useDoc } from '@/doc/store'
-import { bbox } from '@/kernel/types'
+import { bbox, type Vec3 } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
+import { resetManip } from '@/viewport/preview'
+import { showArrows } from './handleKit'
 
 export const sectionSchema: ParamSchema = {
   id: 'section',
@@ -26,6 +28,25 @@ function centerOf(axis: 'X' | 'Y' | 'Z'): number {
   return Number.isFinite(lo) ? +((lo + hi) / 2).toFixed(3) : 0
 }
 
+/** The offset arrow stands on the plane through the origin, in the middle of the model, and carries the section plane with it. */
+function sectionArrow(v: ParamValues, move: (offset: number) => void) {
+  try {
+    const p = resolveParams(sectionSchema, v)
+    const k = { X: 0, Y: 1, Z: 2 }[p.axis as 'X' | 'Y' | 'Z']
+    const lo: Vec3 = [Infinity, Infinity, Infinity], hi: Vec3 = [-Infinity, -Infinity, -Infinity]
+    for (const b of useDoc.getState().geometry) {
+      const bb = bbox(b.mesh.positions)
+      for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], bb.min[i]); hi[i] = Math.max(hi[i], bb.max[i]) }
+    }
+    if (!Number.isFinite(lo[0])) return resetManip()
+    const origin: Vec3 = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2]
+    origin[k] = 0
+    const dir: Vec3 = [0, 0, 0]
+    dir[k] = 1
+    showArrows([{ origin, dir, key: 'offset' }], p, (patch) => move(patch.offset as number))
+  } catch { resetManip() }
+}
+
 export function startSection() {
   const ui = useUi.getState()
   ui.inspector?.onCancel()
@@ -37,7 +58,17 @@ export function startSection() {
       useUi.getState().setSection({ on: true, axis: p.axis as 'X' | 'Y' | 'Z', offset: p.offset as number, flip: !!p.flip })
     } catch { /* invalid expression: keep the previous plane */ }
   }
+  // dragging the arrow edits the offset in the open dialog, like typing it
+  const drag = (offset: number) => {
+    const insp = useUi.getState().inspector
+    if (!insp) return
+    const next = { ...insp.values, offset }
+    useUi.getState().openInspector({ ...insp, values: next })
+    apply(next)
+    sectionArrow(next, drag)
+  }
   const close = () => {
+    resetManip()
     useUi.getState().closeInspector()
     useUi.getState().setActiveTool(null)
   }
@@ -51,9 +82,11 @@ export function startSection() {
       const next = v.axis !== prev.axis && prev.on ? { ...v, offset: centerOf(v.axis as 'X' | 'Y' | 'Z') } : v
       apply(next)
       if (next !== v) useUi.getState().openInspector({ ...useUi.getState().inspector!, values: next })
+      sectionArrow(next, drag)
     },
     onOk: close,
     onCancel: () => { useUi.getState().setSection({ on: false }); close() },
   })
   apply(start)
+  sectionArrow(start, drag)
 }
