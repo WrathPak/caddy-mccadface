@@ -232,3 +232,23 @@ test('every registered command runs without throwing (empty doc, then with a bod
   await runAll('body')
   await app.shot('after-all-commands')
 })
+
+test('a preview that pushes values while a number is being typed keeps the typed text and the focus', async ({ app, page }) => {
+  await app.open()
+  await app.ev((c) => c.runCommand('solid.box'))
+  const input = page.locator('.field', { has: page.locator('.field-label', { hasText: 'Width' }) }).locator('input').first()
+  await input.click()
+  await input.fill('37')
+  // what a preview does mid-edit (a logo finishing loading and centring itself, a handle settling): the same dialog, new values
+  await app.ev((c) => {
+    const s = c.ui.getState().inspector
+    c.ui.getState().openInspector({ ...s, values: { ...s.values, depth: 21 } })
+  })
+  await expect(input).toBeFocused()
+  await expect(input).toHaveValue('37')
+  await input.press('Tab')
+  await app.ok()
+  const p = await app.ev((c) => c.doc.getState().features[0].params)
+  expect(p.width).toBe(37)
+  expect(p.depth).toBe(21)
+})
