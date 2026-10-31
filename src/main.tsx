@@ -16,9 +16,18 @@ import { startDevice } from './app/device'
 import { App } from './app/App'
 import { installDebugHandle } from './app/debug'
 import { DEBUG_HANDLE } from './app/flags'
+import { markUpdateReady, setUpdater, watchForTakeover, watchForUpdates } from './app/updates'
 
-// the service worker would cache across e2e runs and is pointless in dev
-if (import.meta.env.PROD && !DEBUG_HANDLE) registerSW({ immediate: true })
+// the service worker would cache across e2e runs and is pointless in dev.
+// A new version waits (registerType 'prompt'): the status bar offers it, and nothing reloads or swaps the page until that is clicked
+if (import.meta.env.PROD && !DEBUG_HANDLE) {
+  setUpdater(registerSW({
+    immediate: true,
+    onNeedRefresh: markUpdateReady,
+    onRegisteredSW: (_url, reg) => { if (reg) watchForUpdates(reg) },
+  }))
+  watchForTakeover()
+}
 if (DEBUG_HANDLE) installDebugHandle()
 document.documentElement.dataset.theme = 'dark'
 startDevice()

@@ -7,6 +7,7 @@ import { formatParam, setUserParams } from '@/doc/params'
 import type { UserParam } from '@/doc/types'
 import { discardRecovery, importFiles, initPersistence, recover, useRecovery } from '@/io/actions'
 import { Modal } from './Modal'
+import { AutosaveCard } from './AutosavePrompts'
 
 export const useParamsDialog = create<{ open: boolean; set: (o: boolean) => void }>((set) => ({ open: false, set: (open) => set({ open }) }))
 
@@ -24,7 +25,8 @@ function RecoveryPrompt() {
         </>
       }
     >
-      CADdy McCADFace found an autosaved copy of <b>{r.name}</b> from {new Date(r.savedAt).toLocaleString()}. It was not saved to a file.
+      CADdy McCADFace found an autosaved copy of <b>{r.name}</b> from {new Date(r.savedAt).toLocaleString()}
+      {r.source === 'folder' ? ', in your autosave folder (newer than the copy kept in this browser)' : ''}. It was not saved to a file.
     </Modal>
   )
 }
@@ -108,6 +110,7 @@ export function DocUi() {
   return (
     <>
       <RecoveryPrompt />
+      <AutosaveCard />
       <ParametersDialog />
     </>
   )

@@ -5,6 +5,8 @@
 export interface WritableLike {
   write(data: Blob | BufferSource): Promise<void>
   close(): Promise<void>
+  /** drops what was written so far and leaves the file as it was (a real FileSystemWritableFileStream has it) */
+  abort?(): Promise<void>
 }
 
 export interface FileLike {

@@ -10,7 +10,7 @@ import { useSketchData } from '@/sketch/draw'
 import { useUi } from '@/store/ui'
 import { useHairView } from '@/features/hair/store'
 import { useHairPaint } from '@/features/hair/paint'
-import { importFiles, saveDocument } from '@/io/actions'
+import { flushAutosave, importFiles, openProjectFile, saveDocument, useRecovery } from '@/io/actions'
 import { parseProject, serializeProject } from '@/io/project'
 import { usePreview, useManip, MANIP_SLOTS } from '@/viewport/preview'
 import { useAngleManip, ANGLE_SLOTS } from '@/viewport/AngleManipulator'
@@ -22,6 +22,10 @@ import { useProjects } from '@/projects/store'
 import { usePlugins, hostOf } from '@/api/pluginStore'
 import { drawingDebug } from '@/drawing/debug'
 import { assemblyDebug } from '@/assembly/debug'
+import * as updates from './updates'
+import { useToast } from '@/ui/Modal'
+import { useSettings } from '@/settings/settings'
+import { useDiskAutosave } from '@/io/diskAutosave'
 
 const frameHook: { redraw: (() => void) | null } = { redraw: null }
 
@@ -53,6 +57,7 @@ export function installDebugHandle() {
   ;(window as unknown as { __caddy: unknown }).__caddy = {
     doc: useDoc, ui: useUi, sketch: useSketch, sketchData: useSketchData, hair: useHairView, preview: usePreview, manip: useManip, manips: MANIP_SLOTS, angleManip: useAngleManip, angleManips: ANGLE_SLOTS, planes: usePlanes, paint: useHairPaint, bus: viewportBus, motion: useMotion, lodState, projects: useProjects, plugins: usePlugins, pluginHost: hostOf,
     ...((window as unknown as { __caddyExtra?: object }).__caddyExtra ?? {}),
+    toast: useToast, settings: useSettings, updates, diskAutosave: useDiskAutosave, flushAutosave, openProjectFile, recovery: useRecovery,
     assembly: assemblyDebug, nav: navTools, drawing: drawingDebug, runCommand, allCommands, regenerate, importFiles, saveDocument, serializeProject, parseProject,
   }
 }

@@ -102,7 +102,8 @@ export const useProjects = create<ProjectsState>((set_, get_) => {
       if (!win.showDirectoryPicker) return toast('This browser cannot pick a folder. Chrome and Edge can.', 'error')
       try {
         const h = await win.showDirectoryPicker({ id: 'caddy-projects', mode: 'readwrite' })
-        await set(ROOT_KEY, h)
+        // remembered for the next session; if the browser will not store it (blocked storage), the folder still works for this one
+        try { await set(ROOT_KEY, h) } catch (e) { console.warn('[projects] could not remember the folder', e) }
         bump({ root: h, access: 'granted', selected: null, query: '' })
         await get_().refresh()
       } catch (e) {

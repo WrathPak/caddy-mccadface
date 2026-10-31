@@ -25,6 +25,8 @@ export const WORKSPACES: { id: string; label: string }[] = [
   { id: 'render', label: 'Render' },
 ]
 export const AUTOSAVE_CHOICES = [15, 30, 60, 120, 300]
+/** How many autosaved copies of a document the autosave folder keeps. */
+export const AUTOSAVE_VERSION_CHOICES = [1, 2, 3, 5, 10]
 /** How sharp the viewport is drawn: the cap on the device pixel ratio. Auto keeps phones and tablets at 1.5 so they stay smooth. */
 export type PixelRatio = 'auto' | '1' | '1.5' | '2' | 'native'
 export const PIXEL_RATIOS: { value: PixelRatio; label: string }[] = [
@@ -48,6 +50,9 @@ interface Persisted {
   selectionColor: string
   autosave: boolean
   autosaveSeconds: number
+  diskAutosave: boolean
+  autosaveVersions: number
+  autosaveFolderAsked: boolean
   tooltips: boolean
   beginnerTips: boolean
   tourSeen: boolean
@@ -66,6 +71,9 @@ const DEFAULTS: Persisted = {
   selectionColor: '',
   autosave: true,
   autosaveSeconds: 30,
+  diskAutosave: true,
+  autosaveVersions: 3,
+  autosaveFolderAsked: false,
   tooltips: true,
   beginnerTips: true,
   tourSeen: false,
@@ -94,6 +102,9 @@ function load(): Persisted {
       selectionColor: validSelectionColor(v.selectionColor),
       autosave: v.autosave !== false,
       autosaveSeconds: AUTOSAVE_CHOICES.includes(v.autosaveSeconds as number) ? (v.autosaveSeconds as number) : DEFAULTS.autosaveSeconds,
+      diskAutosave: v.diskAutosave !== false,
+      autosaveVersions: AUTOSAVE_VERSION_CHOICES.includes(v.autosaveVersions as number) ? (v.autosaveVersions as number) : DEFAULTS.autosaveVersions,
+      autosaveFolderAsked: v.autosaveFolderAsked === true,
       tooltips: v.tooltips !== false,
       beginnerTips: v.beginnerTips !== false,
       tourSeen: v.tourSeen === true,
@@ -112,6 +123,12 @@ interface SettingsState {
   selectionColor: string
   autosave: boolean
   autosaveSeconds: number
+  /** Also keep autosaved copies in a folder on the computer (Chrome and Edge), on top of the copy in the browser. */
+  diskAutosave: boolean
+  /** How many autosaved copies of a document the folder keeps. */
+  autosaveVersions: number
+  /** The first-launch card about the autosave folder was answered (folder picked, or Not now). */
+  autosaveFolderAsked: boolean
   tooltips: boolean
   beginnerTips: boolean
   tourSeen: boolean
@@ -124,6 +141,9 @@ interface SettingsState {
   setGridDensity: (d: GridDensity) => void
   setAutosave: (on: boolean) => void
   setAutosaveSeconds: (s: number) => void
+  setDiskAutosave: (on: boolean) => void
+  setAutosaveVersions: (n: number) => void
+  setAutosaveFolderAsked: (asked: boolean) => void
   setTooltips: (on: boolean) => void
   setBeginnerTips: (on: boolean) => void
   setTourSeen: (seen: boolean) => void
@@ -146,6 +166,9 @@ export const useSettings = create<SettingsState>((set, get) => {
     selectionColor: init.selectionColor,
     autosave: init.autosave,
     autosaveSeconds: init.autosaveSeconds,
+    diskAutosave: init.diskAutosave,
+    autosaveVersions: init.autosaveVersions,
+    autosaveFolderAsked: init.autosaveFolderAsked,
     tooltips: init.tooltips,
     beginnerTips: init.beginnerTips,
     tourSeen: init.tourSeen,
@@ -165,6 +188,9 @@ export const useSettings = create<SettingsState>((set, get) => {
     },
     setAutosave: (autosave) => set({ autosave }),
     setAutosaveSeconds: (autosaveSeconds) => set({ autosaveSeconds }),
+    setDiskAutosave: (diskAutosave) => set({ diskAutosave }),
+    setAutosaveVersions: (autosaveVersions) => set({ autosaveVersions }),
+    setAutosaveFolderAsked: (autosaveFolderAsked) => set({ autosaveFolderAsked }),
     setTooltips: (tooltips) => set({ tooltips }),
     setBeginnerTips: (beginnerTips) => set({ beginnerTips }),
     setTourSeen: (tourSeen) => set({ tourSeen }),
@@ -173,7 +199,7 @@ export const useSettings = create<SettingsState>((set, get) => {
       const s = get()
       s.setThemeMode(d.themeMode)
       s.setGridDensity(d.gridDensity)
-      set({ pixelRatio: d.pixelRatio, selectionColor: d.selectionColor, defaultWorkspace: d.defaultWorkspace, autosave: d.autosave, autosaveSeconds: d.autosaveSeconds, tooltips: d.tooltips, beginnerTips: d.beginnerTips })
+      set({ pixelRatio: d.pixelRatio, selectionColor: d.selectionColor, defaultWorkspace: d.defaultWorkspace, autosave: d.autosave, autosaveSeconds: d.autosaveSeconds, diskAutosave: d.diskAutosave, autosaveVersions: d.autosaveVersions, tooltips: d.tooltips, beginnerTips: d.beginnerTips })
       useUi.setState({ units: d.units, showGrid: d.showGrid, showOrigin: d.showOrigin, ssao: defaultSsao(), displayMode: d.displayMode })
     },
   }
@@ -195,6 +221,9 @@ function save() {
     selectionColor: s.selectionColor,
     autosave: s.autosave,
     autosaveSeconds: s.autosaveSeconds,
+    diskAutosave: s.diskAutosave,
+    autosaveVersions: s.autosaveVersions,
+    autosaveFolderAsked: s.autosaveFolderAsked,
     tooltips: s.tooltips,
     beginnerTips: s.beginnerTips,
     tourSeen: s.tourSeen,

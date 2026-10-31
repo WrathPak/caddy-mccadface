@@ -2,7 +2,9 @@ import { useState, type ReactNode } from 'react'
 import { GearSix } from '@phosphor-icons/react'
 import { create } from 'zustand'
 import { useUi, type DisplayMode } from '@/store/ui'
-import { AUTOSAVE_CHOICES, PIXEL_RATIOS, WORKSPACES, useSettings, type PixelRatio, type ThemeMode } from '@/settings/settings'
+import { canPickFolder, useProjects } from '@/projects/store'
+import { useDiskAutosave } from '@/io/diskAutosave'
+import { AUTOSAVE_CHOICES, AUTOSAVE_VERSION_CHOICES, PIXEL_RATIOS, WORKSPACES, useSettings, type PixelRatio, type ThemeMode } from '@/settings/settings'
 import { useHelp } from '@/help/helpStore'
 import { NAV_PRESETS, ORBIT_SPEEDS, useNavSettings } from '@/viewport/navSettings'
 import type { GridDensity } from '@/viewport/gridMath'
@@ -40,6 +42,42 @@ function Row({ label, help, children, id }: { label: string; help: string; child
   )
 }
 
+/** Autosave to a folder on the computer, on top of the copy in the browser. Chrome and Edge only: other browsers get one line saying so. */
+function AutosaveFolder() {
+  const s = useSettings()
+  const root = useProjects((p) => p.root)
+  const access = useProjects((p) => p.access)
+  const lastAt = useDiskAutosave((d) => d.lastAt)
+  if (!canPickFolder()) {
+    return (
+      <Row id="autosave-folder" label="Autosave folder" help="This browser cannot save to a folder on your computer, so autosave keeps its copy in the browser only. Chrome and Edge can also keep copies in a folder.">
+        <span className="set-help">Browser only</span>
+      </Row>
+    )
+  }
+  return (
+    <>
+      <Row id="disk-autosave" label="Keep copies in a folder" help="Keeps recent copies in an Autosave folder inside your projects folder, on top of the copy kept in this browser.">
+        <Checkbox checked={s.diskAutosave} onChange={s.setDiskAutosave} ariaLabel="Keep copies in a folder" />
+      </Row>
+      {s.diskAutosave && (
+        <>
+          <Row id="autosave-folder" label="Autosave folder"
+            help={`${root ? `Copies go in the Autosave folder inside "${root.name}", the same folder the Projects panel shows.` : 'No folder picked yet. Pick the folder you keep your projects in.'}${lastAt ? ` Last copy at ${new Date(lastAt).toLocaleTimeString()}.` : ''}`}>
+            <span className="mono" data-testid="autosave-folder-name" style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{root ? root.name : 'None'}</span>
+            {root && access === 'prompt' && <button type="button" className="btn" data-testid="settings-reconnect" onClick={() => void useProjects.getState().reconnect()}>Reconnect</button>}
+            <button type="button" className="btn" data-testid="autosave-change-folder" onClick={() => void useProjects.getState().chooseFolder()}>{root ? 'Change' : 'Pick folder'}</button>
+          </Row>
+          <Row id="autosave-versions" label="Copies to keep" help="How many recent copies of each document stay in the folder. Older ones are removed.">
+            <Select value={String(s.autosaveVersions)} onChange={(v) => s.setAutosaveVersions(Number(v))}
+              options={AUTOSAVE_VERSION_CHOICES.map((n) => ({ value: String(n), label: String(n) }))} />
+          </Row>
+        </>
+      )}
+    </>
+  )
+}
+
 function General() {
   const units = useUi((s) => s.units)
   const setUnits = useUi((s) => s.setUnits)
@@ -55,7 +93,7 @@ function General() {
       <Row id="theme" label="Theme" help="Dark is the default. System follows your computer's light or dark setting.">
         <Segmented value={s.themeMode} onChange={(v) => s.setThemeMode(v as ThemeMode)} options={[{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }, { value: 'system', label: 'System' }]} />
       </Row>
-      <Row id="autosave" label="Autosave" help="Keeps a recovery copy in this browser while you have unsaved changes, so a crash or a closed tab does not lose your work. It is not a saved file.">
+      <Row id="autosave" label="Autosave" help="Keeps a recovery copy while you have unsaved changes, so a crash or a closed tab does not lose your work. It is not your saved file.">
         <Checkbox checked={s.autosave} onChange={s.setAutosave} ariaLabel="Autosave" />
       </Row>
       {s.autosave && (
@@ -64,6 +102,7 @@ function General() {
             options={AUTOSAVE_CHOICES.map((n) => ({ value: String(n), label: n < 60 ? `${n} seconds` : n === 60 ? '1 minute' : `${n / 60} minutes` }))} />
         </Row>
       )}
+      {s.autosave && <AutosaveFolder />}
     </>
   )
 }
