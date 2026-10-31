@@ -165,6 +165,15 @@ describe('holes', () => {
     near(vol(r), 16000 - 2 * Math.PI * 9 * 10)
   })
 
+  it('the preview of a through-all drill is the material it removes: inside the body, nothing sticking out of either side', async () => {
+    const b = mkBox('b', [40, 40, 10])
+    const r = await run('holes', { id: 'b', name: 'b', key: b.key, holes: [place('a', -10, 0), place('b', 10, 0)], spec: spec({ depth: null }), fid: 'f2', toolOnly: true })
+    const bb = bbox(r)
+    expect(bb.min[2]).toBeGreaterThan(-1e-6)
+    expect(bb.max[2]).toBeLessThan(10 + 1e-6)
+    near(vol(r), 2 * Math.PI * 9 * 10)
+  })
+
   it('counterbore', async () => {
     const b = mkBox('b', [40, 40, 10])
     const r = await run('holes', { id: 'b', name: 'b', key: b.key, holes: [place('a', 0, 0)], spec: spec({ kind: 'cbore', cbDia: 10, cbDepth: 3, depth: null }), fid: 'f2' })

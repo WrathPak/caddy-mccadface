@@ -1,4 +1,4 @@
-import { memo, useCallback, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import * as CM from '@radix-ui/react-context-menu'
 import { CaretDown, CaretRight, DotOutline, Cube, Eye, EyeSlash, FileText, Folder, GridFour, LineSegment, PencilSimpleLine, Planet, Parallelogram, SelectionBackground } from '@phosphor-icons/react'
@@ -9,6 +9,7 @@ import { ConfigurationsGroup } from '@/features/modeling-tools/ConfigUi'
 import { ComponentsSection, JointsSection } from '@/assembly/ComponentTree'
 import { ownerOf } from '@/assembly/instances'
 import { ROOT } from '@/assembly/types'
+import { useSketchPick } from '@/sketch/create'
 import { Tip } from './Tooltip'
 
 /** What a row in the Browser is, for its tooltip. */
@@ -123,9 +124,11 @@ const Row = memo(function Row({ id, name, depth, kind, icon, open, onToggle, col
   )
 })
 
-function Group({ label, depth, icon, children, defaultOpen = true }: { label: string; depth: number; icon: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
+function Group({ label, depth, icon, children, defaultOpen = true, openWhen = false }: { label: string; depth: number; icon: ReactNode; children: ReactNode; defaultOpen?: boolean; openWhen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
   const toggle = useCallback(() => setOpen((o) => !o), [])
+  // opens by itself while `openWhen` holds (the planes while a sketch waits for one), then stays as the person leaves it
+  useEffect(() => { if (openWhen) setOpen(true) }, [openWhen])
   return (
     <>
       <Row id={'g:' + label} name={label} depth={depth} icon={icon} open={open} onToggle={toggle} />
@@ -142,6 +145,7 @@ function Items({ items, depth, kind, coll, icon, path }: { items: TreeEntity[]; 
 export function BrowserTree() {
   // only what the tree lists: the whole store would redraw it when a blob is added, the regeneration starts or ends, and so on
   const doc = useDoc(useShallow((s) => ({ name: s.name, assembly: s.assembly, geometry: s.geometry, bodies: s.bodies, surfaces: s.surfaces, meshes: s.meshes, sketches: s.sketches, features: s.features })))
+  const pickingPlane = useSketchPick((s) => s.picking)
   const a = doc.assembly
   const owner = new Map(doc.geometry.map((b) => [b.id, ownerOf(b, a)]))
   const inDef = (def: string) => (f: { component?: string }) => (f.component ?? ROOT) === def
@@ -186,7 +190,7 @@ export function BrowserTree() {
       <div className="panel-scroll" style={{ paddingTop: 2 }}>
         <Group label={`Document: ${doc.name}`} depth={0} icon={ICON.FileText}>
           <Group label="Origin" depth={1} icon={ICON.Planet}>
-            <Group label="Planes" depth={2} icon={ICON.Folder} defaultOpen={false}>
+            <Group label="Planes" depth={2} icon={ICON.Folder} defaultOpen={false} openWhen={pickingPlane}>
               {['XY', 'XZ', 'YZ'].map((p) => <Row key={p} id={'plane' + p} name={p + ' plane'} depth={3} kind="plane" icon={ICON.Parallelogram} />)}
               {doc.features.filter((f) => PLANE_FEATURES.has(f.type) && inDef(ROOT)(f)).map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="plane" coll="sketches" icon={ICON.Parallelogram} />)}
             </Group>

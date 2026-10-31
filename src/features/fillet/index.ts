@@ -70,8 +70,45 @@ export function sizeFor(bodyIds: string[]): number {
   return b ? Math.max(0.05, niceFloor(minDim(b) * 0.05)) : 1
 }
 
+type Groups = { body: Body; edges: number[] }[]
+const callEdgeMod = (g: { body: Body; edges: number[] }, size: number, mode: Mode) =>
+  getKernel().call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size, mode, fid: 'preview' }) as Promise<Body>
+
+/** Does the fillet / chamfer build at `size` on every picked body? */
+async function buildsAt(groups: Groups, size: number, mode: Mode): Promise<boolean> {
+  try {
+    for (const g of groups) await callEdgeMod(g, size, mode)
+    return true
+  } catch { return false }
+}
+
+/**
+ * The largest size that still builds, found by bisection between a tiny size and the one that failed (about eight kernel runs,
+ * each on the picked edges only). 0 when not even a tiny size builds; null when `stale` says the dialog has moved on.
+ */
+export async function largestSize(groups: Groups, failed: number, mode: Mode, stale: () => boolean): Promise<number | null> {
+  const tiny = Math.min(failed / 50, 0.05)
+  if (!(await buildsAt(groups, tiny, mode))) return stale() ? null : 0
+  let lo = tiny, hi = failed
+  for (let i = 0; i < 8; i++) {
+    if (stale()) return null
+    const mid = (lo + hi) / 2
+    if (await buildsAt(groups, mid, mode)) lo = mid
+    else hi = mid
+  }
+  if (stale()) return null
+  // rounded down to what the box shows, then checked once more so the number promised is one that really builds
+  const r = Math.floor(lo * 100) / 100
+  return r > 0 && (await buildsAt(groups, r, mode)) ? r : lo
+}
+
+const NAME: Record<Mode, { noun: string; size: string }> = { fillet: { noun: 'Fillet', size: 'radius' }, chamfer: { noun: 'Chamfer', size: 'distance' } }
+const mm = (v: number) => `${+v.toFixed(2)} mm`
+
 function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: PreviewCtx): PreviewHandle {
   let cur: ParamValues = values
+  // the largest size known to build on the edges now picked (found when a size fails); the drag arrow stops there
+  let fit: { key: string; max: number } | null = null
   // the size follows the part until the person sets one themselves
   let auto = values.size as number
   const ui = useUi
@@ -79,9 +116,11 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
   ui.getState().setSelectionFilter('edge')
   const runner = createRunner(async (stale) => {
     let p: ParamValues
-    try { p = resolveParams(schema, cur) } catch { clearPreview(); return }
-    let groups
-    try { groups = resolveEdges(p.edges as string[], liveEnv()) } catch { clearPreview(); resetManip(); return }
+    try { p = resolveParams(schema, cur) } catch { clearPreview(); ui.setState({ inspectorNotice: null }); return }
+    let groups: Groups
+    try { groups = resolveEdges(p.edges as string[], liveEnv()) } catch { clearPreview(); resetManip(); ui.setState({ inspectorNotice: null }); return }
+    const key = JSON.stringify(p.edges)
+    if (fit && fit.key !== key) fit = null
     // drag arrow on the first selected edge: pulling it away from the edge grows the radius / distance
     try {
       const first = groups[0]
@@ -91,13 +130,34 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
         useManip.setState({
           active: true, origin: f.mid, dir: f.dir, tip: p.size as number, factor: 1,
           label: (v) => `${v.toFixed(2)} mm`,
-          onChange: (v) => { cur = { ...cur, size: Math.max(0.05, v) }; setValues(cur) },
+          onChange: (v) => { cur = { ...cur, size: Math.min(fit && fit.key === key && fit.max > 0 ? fit.max : Infinity, Math.max(0.05, v)) }; setValues(cur) },
         })
       }
     } catch { resetManip() }
     const out: Body[] = []
-    for (const g of groups) out.push((await getKernel().call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size: p.size as number, mode, fid: 'preview' })) as Body)
+    const size = p.size as number
+    let failure: string | null = null
+    // a size above the one known to fail is not tried again
+    if (fit && fit.key === key && size > fit.max + 1e-9) failure = 'known'
+    else {
+      try { for (const g of groups) out.push(await callEdgeMod(g, size, mode)) } catch (e) { failure = e instanceof Error ? e.message : String(e) }
+    }
     if (stale()) return
+    if (failure !== null) {
+      // say so in the dialog, with the biggest size that does work, and stop showing a stale preview of some other size
+      clearPreview()
+      const known = fit && fit.key === key ? fit.max : await largestSize(groups, size, mode, stale)
+      if (known === null || stale()) return
+      fit = { key, max: known }
+      const { noun, size: word } = NAME[mode]
+      ui.setState({
+        inspectorNotice: known > 0
+          ? `${noun} of ${mm(size)} is not possible on these edges: it is more than the part can take there. The largest ${word} that works is ${mm(known)}.`
+          : `${noun} is not possible on these edges at any ${word}${failure !== 'known' ? ` (${failure.replace(/^.*\((.*)\)$/, '$1')})` : ''}. Try other edges, or change the shape first.`,
+      })
+      return
+    }
+    ui.setState({ inspectorNotice: null })
     // the original stays faint and pickable, so more edges (or faces) can still be clicked while the dialog is open
     setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), [], out.map((b) => b.id))
   })
@@ -131,6 +191,7 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
       runner.dispose()
       clearPreview()
       resetManip()
+      ui.setState({ inspectorNotice: null })
       ui.getState().setSelectionFilter(prevFilter)
     },
   }

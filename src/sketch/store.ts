@@ -182,8 +182,11 @@ export function commit(fn: (m: SketchModel) => string | void, opts: { strict?: b
 
 /** The drafts of a polyline, one per point placed: "Undo point" (the touch layout has no Escape) steps back through them. */
 const draftStack: Draft[] = []
+/** A dimension just placed whose value box opens when the mouse button comes up. */
+let pendingDim: string | null = null
 
 function resetTransient(extra: Partial<SketchState> = {}) {
+  pendingDim = null
   draftStack.length = 0
   woken.clear()
   lastDir = null
@@ -523,6 +526,11 @@ export function pointerDown(raw: Vec2, wpp: number, mods: Mods, px: Vec2) {
 
 export function pointerUp(raw: Vec2, wpp: number, mods: Mods) {
   wppNow = wpp
+  if (pendingDim) {
+    const id = pendingDim
+    pendingDim = null
+    if (get().model.constraints.some((c) => c.id === id)) editDim(id, true)
+  }
   if (drag) { dragEnd(raw, mods); return }
   if (boxStart) {
     const b = get().box
@@ -752,7 +760,9 @@ function place(at: Vec2, mods: Mods) {
   let newId = ''
   const ok = commit((m) => { newId = addConstraint(m, d).id }, { strict: true })
   set({ picks: [], placing: null })
-  if (ok) editDim(newId, true)
+  // the value box opens when the button comes up: the browser moves the focus to the canvas as part of the press, which would
+  // take it straight back from a box opened here
+  if (ok) pendingDim = newId
 }
 
 // ---- trim
@@ -964,8 +974,8 @@ function downDraw(raw: Vec2, mods: Mods) {
         const p2 = pointFor(m, sn)
         const l = addLine(m, p1, p2, constr)
         if (!useTyped && !constr) applyRelations(m, l.id, p1, p2, sn.rel)
-        if (sn.h && !sn.pointId && !constr) addConstraint(m, { type: 'horizontal', refs: [l.id] })
-        else if (sn.v && !sn.pointId && !constr) addConstraint(m, { type: 'vertical', refs: [l.id] })
+        if (sn.h && !constr) addConstraint(m, { type: 'horizontal', refs: [l.id] })
+        else if (sn.v && !constr) addConstraint(m, { type: 'vertical', refs: [l.id] })
         const len = textOf(tt, 'len'), ang = textOf(tt, 'ang')
         if (len !== undefined && vals.len !== undefined) typedDim(m, 'distance', [p1, p2], len)
         if (ang !== undefined && vals.ang !== undefined) {

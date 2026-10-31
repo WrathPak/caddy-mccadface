@@ -8,7 +8,7 @@
  */
 import { closestOnSegment, cross, dist, dot, intersectCircleCircle, intersectLineCircle, intersectLineLine, norm, sub, add, mul, perp, polar } from './geom'
 import { circleOf, entityById, lineEnds, pos, tangentOf } from './model'
-import { snap as baseSnap, type Guide, type Snap, type SnapCtx } from './snap'
+import { gridStep, gridValue, snap as baseSnap, type Guide, type Snap, type SnapCtx } from './snap'
 import type { SnapFlags } from './snapSettings'
 import type { SketchModel, Vec2 } from './types'
 
@@ -117,7 +117,8 @@ export function inferSnap(raw: Vec2, ctx: InferCtx): Snap {
   const base = baseSnap(raw, { ...ctx, grid: false, anchor: undefined })
   const pointy = base.kind === 'point' || base.kind === 'origin' || base.kind === 'center' || base.kind === 'mid'
   if (flags.coincident) {
-    if (pointy) return { ...base, guides: [] }
+    // landing on an existing point (closing a loop, say) still gets the relations of the segment that reaches it
+    if (pointy) return { ...base, ...(ctx.anchor ? relationsTo(base.pos, ctx.anchor, ctx) : {}), guides: [] }
     const g = geometricPoints(m, raw, px(9), ex)
     if (g) return g
     if (base.kind === 'on' && (!ctx.anchor || !flags.tangent)) return { ...base, guides: [] }
@@ -135,6 +136,44 @@ export function inferSnap(raw: Vec2, ctx: InferCtx): Snap {
   if (!flags.tracking) rest.guides = rest.guides.filter((g) => A && dist(g.from, A) < 1e-9)
   if (!flags.horizontalVertical) { rest.h = rest.v = undefined }
   return rest
+}
+
+/**
+ * Relations a segment from `A` to a point that is already there (a snap onto an existing point or the origin) already has: the
+ * first of perpendicular / parallel to the line it continues from, horizontal / vertical, then to other lines the cursor has been
+ * over, within a few pixels. The point itself stays where it is, so the new constraints are what the solver bends to fit.
+ */
+function relationsTo(target: Vec2, A: Vec2, ctx: InferCtx): Partial<Snap> {
+  const { model: m, wpp, flags } = ctx
+  if (dist(target, A) < 1e-9) return {}
+  const tol = 6 * wpp
+  const adjacent: { id: string; a: Vec2; b: Vec2 }[] = []
+  const others: { id: string; a: Vec2; b: Vec2 }[] = []
+  for (const l of lineRefs(m, ctx)) {
+    const e = entityById(m, l.id)
+    const touches = !!ctx.anchorId && e?.type === 'line' && (e.p1 === ctx.anchorId || e.p2 === ctx.anchorId)
+    ;(touches ? adjacent : others).push(l)
+  }
+  const cands: Cand[] = []
+  const lineRels = (ls: { id: string; a: Vec2; b: Vec2 }[]) => {
+    for (const l of ls) {
+      const d = norm(sub(l.b, l.a))
+      if (flags.perpendicular) cands.push({ dir: perp(d), rel: { type: 'perpendicular', ref: l.id } })
+      if (flags.parallel) cands.push({ dir: d, rel: { type: 'parallel', ref: l.id } })
+    }
+  }
+  lineRels(adjacent)
+  if (flags.horizontalVertical) cands.push({ dir: [1, 0], rel: { type: 'horizontal' } }, { dir: [0, 1], rel: { type: 'vertical' } })
+  lineRels(others)
+  const v = sub(target, A)
+  const hit = cands.find((c) => Math.abs(cross(c.dir, v)) < tol)
+  if (!hit) return {}
+  const refs: string[] = 'ref' in hit.rel ? [hit.rel.ref] : []
+  return {
+    rel: [hit.rel], refs,
+    h: hit.rel.type === 'horizontal' ? true : undefined, v: hit.rel.type === 'vertical' ? true : undefined,
+    hint: RELATION_TEXT[hit.rel.type], dir: hit.dir,
+  }
 }
 
 /** Relations of a segment from `A` toward the cursor with the reference geometry. */
@@ -219,10 +258,24 @@ function onArc(m: SketchModel, e: { c: string; s: string; e: string }, p: Vec2):
 
 const ex = (ctx: InferCtx, id: string) => !!ctx.exclude?.has(id)
 
-/** Put the point on the ray, match lengths if one is close, and describe what was inferred. */
+/**
+ * Put the point on the ray, round its length to the grid, match lengths if one is close, and describe what was inferred.
+ *
+ * With snapping on, the point slides along the ray in grid steps (a horizontal / vertical ray lands on the grid lines themselves),
+ * so a line drawn with an inferred direction still comes out a round length instead of wherever the cursor happened to be.
+ */
 function place(raw: Vec2, A: Vec2, c: Cand, ctx: InferCtx): Snap {
   const { model: m, wpp, flags } = ctx
-  const t = dot(sub(raw, A), c.dir)
+  const rawT = dot(sub(raw, A), c.dir)
+  let t = rawT
+  const gridOn = flags.grid && ctx.grid
+  const g = gridStep(wpp)
+  if (gridOn) {
+    // along a horizontal / vertical ray the end lands on the grid lines themselves, along any other the length is rounded
+    const axis = Math.abs(c.dir[1]) < 1e-9 ? 0 : Math.abs(c.dir[0]) < 1e-9 ? 1 : null
+    const snapped = axis === null ? gridValue(rawT, g, 6 * wpp) : (gridValue(A[axis] + c.dir[axis] * rawT, g, 6 * wpp) - A[axis]) / c.dir[axis]
+    if (Math.abs(snapped) > 1e-9) t = snapped
+  }
   let p = add(A, mul(c.dir, t))
   const rel: Rel[] = [c.rel]
   const refs: string[] = 'ref' in c.rel ? [c.rel.ref] : []
@@ -233,18 +286,18 @@ function place(raw: Vec2, A: Vec2, c: Cand, ctx: InferCtx): Snap {
     const e = entityById(m, c.rel.ref)
     if (e?.type === 'line') { const [a, b] = lineEnds(m, e); guides[0] = { from: dist(a, p) < dist(b, p) ? b : a, to: add(p, mul(c.dir, (t >= 0 ? 1 : -1) * 28 * wpp)) } }
   }
+  // equal length is for a length the grid cannot give: with snapping on, two edges that both come out round are just two round edges
+  // (offering "equal" for those made short neighbours equal by accident), and only lines the cursor has been over or that end at the start count
   if (flags.equal) {
-    const len = Math.abs(t)
-    for (const e of m.entities) {
-      if (e.type !== 'line' || ex(ctx, e.id)) continue
-      const [a, b] = lineEnds(m, e)
-      const L = dist(a, b)
-      if (L > 1e-9 && Math.abs(L - len) < 6 * wpp && L > 8 * wpp) {
-        p = add(A, mul(c.dir, Math.sign(t || 1) * L))
-        rel.push({ type: 'equal', ref: e.id })
-        refs.push(e.id)
-        break
-      }
+    const len = Math.abs(rawT)
+    for (const l of lineRefs(m, ctx)) {
+      const L = dist(l.a, l.b)
+      if (!(Math.abs(L - len) < 3 * wpp && L > 24 * wpp)) continue
+      if (gridOn && Math.abs(L - Math.round(L / g) * g) < 1e-6) continue
+      p = add(A, mul(c.dir, Math.sign(rawT || 1) * L))
+      rel.push({ type: 'equal', ref: l.id })
+      refs.push(l.id)
+      break
     }
   }
   return {

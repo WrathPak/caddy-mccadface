@@ -48,6 +48,8 @@ export async function newDocument() {
   resetHistory()
   resetProjectSections()
   void del(AUTOSAVE_KEY)
+  // a new document starts from the home view, not wherever the last one was left
+  viewportBus.emit('resetView', undefined)
 }
 
 async function frameWhenReady() {

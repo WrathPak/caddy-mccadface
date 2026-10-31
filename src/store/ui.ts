@@ -102,6 +102,21 @@ interface UiState {
 
 const sameRef = (a: SelectionRef, b: SelectionRef) => a.kind === b.kind && a.id === b.id && a.index === b.index && (a.path ?? '') === (b.path ?? '')
 
+/**
+ * After a dialog closes (OK, Cancel, Enter, Escape) no button may be left holding the keyboard focus: the OK button is gone and a
+ * ribbon button that took the focus back would sit in the way of the shortcuts. Text boxes are left alone. Done again a frame
+ * later, because a menu or tooltip that closes along with the dialog hands the focus back to its trigger after the fact.
+ */
+function releaseButtonFocus() {
+  if (typeof document === 'undefined') return
+  const release = () => {
+    const a = document.activeElement as HTMLElement | null
+    if (a && a !== document.body && a.matches('button, [role="button"], [role="tab"]') && a.closest('.ribbon, [data-inspector-root]')) a.blur()
+  }
+  release()
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(release)
+}
+
 export const useUi = create<UiState>((set, get) => ({
   workspace: 'solid',
   sketchMode: false,
@@ -167,7 +182,10 @@ export const useUi = create<UiState>((set, get) => ({
     }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   openInspector: (inspector) => set({ inspector }),
-  closeInspector: () => set({ inspector: null }),
+  closeInspector: () => {
+    set({ inspector: null })
+    releaseButtonFocus()
+  },
   setStats: (p) => set(p),
   setSection: (p) => set((s) => ({ section: { ...s.section, ...p } })),
   isolate: (id, all) =>
