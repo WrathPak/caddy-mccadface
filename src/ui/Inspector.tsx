@@ -189,8 +189,9 @@ const KIND_OF: Record<string, string> = { body: 'body', mesh: 'body', face: 'fac
 export function Inspector() {
   const session = useUi((s) => s.inspector)
   if (!session) return <div className="panel" data-tour="inspector"><div className="panel-title">Inspector</div><div className="empty">Select a feature or start a tool to edit its parameters.</div></div>
-  // a fresh form per session object: its initial state is the session's values (never an empty object)
-  return <InspectorForm key={sessionKey(session)} session={session} />
+  // a fresh form per dialog: its initial state is the session's values (never an empty object). Values a preview pushes into the
+  // same dialog update the form in place, so a box being typed in keeps its text and its focus
+  return <InspectorForm key={session.formId ?? sessionKey(session)} session={session} />
 }
 
 const sessionIds = new WeakMap<object, number>()
@@ -205,6 +206,13 @@ function InspectorForm({ session }: { session: InspectorSession }) {
   const [values, setValues] = useState<ParamValues>(() => ({ ...schemaDefaults(session.schema), ...session.values }))
 
   const latest = useRef(values)
+  const shown = useRef(session.values)
+  if (shown.current !== session.values) {
+    shown.current = session.values
+    const next = { ...schemaDefaults(session.schema), ...session.values }
+    latest.current = next
+    setValues(next)
+  }
   const [active, setActive] = useState<string | null>(null)
   const activeRef = useRef<string | null>(null)
   const prevFilter = useRef(useUi.getState().selectionFilter)

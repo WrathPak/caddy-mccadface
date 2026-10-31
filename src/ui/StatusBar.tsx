@@ -3,6 +3,7 @@ import { useUi, type SelectionFilter } from '@/store/ui'
 import { useHairView } from '@/features/hair/store'
 import { useDoc } from '@/doc/store'
 import { SettingsButton } from './SettingsDialog'
+import { ReconnectCell, UpdateCell } from './AutosavePrompts'
 import { Tip } from './Tooltip'
 import { SnapPopover } from '@/sketch/SnapPopover'
 import { useDevice } from '@/app/device'
@@ -61,6 +62,8 @@ export function StatusBar() {
         </span>
       )}
       <span className="grow" />
+      <ReconnectCell />
+      <UpdateCell />
       <TrisCell />
       <KernelCell />
       <SettingsButton />

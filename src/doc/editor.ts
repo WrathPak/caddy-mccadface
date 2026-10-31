@@ -5,7 +5,10 @@ import { getFeature } from './registry'
 import { useDoc } from './store'
 import type { FeatureDef, PreviewHandle } from './types'
 
+let formSeq = 0
+
 function openSession(def: FeatureDef, start: ParamValues, tool: string, onOk: (v: ParamValues) => void, restore?: () => void, featureId?: string) {
+  const formId = ++formSeq
   const ui = useUi.getState()
   ui.inspector?.onCancel() // only one dialog at a time
   let handle: PreviewHandle | void
@@ -22,6 +25,7 @@ function openSession(def: FeatureDef, start: ParamValues, tool: string, onOk: (v
     schema: def.schema,
     values,
     featureId,
+    formId,
     onChange: (v: ParamValues) => handle?.update(v),
     onOk: (v: ParamValues) => {
       // the dialog disables OK while required selections are missing; never create a feature in an error state from an empty dialog

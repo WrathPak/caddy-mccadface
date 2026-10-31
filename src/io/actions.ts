@@ -11,7 +11,9 @@ import { downloadFile, MODEL_EXTS, pickFiles, pickProject, writeProject, type Fi
 import { commitSavedHistory, loadProject, resetProjectSections, serializeProject } from './project'
 import { resetHistory } from '@/history/store'
 import { readFileBytes, rememberSource } from './meshImport'
-import { shouldAutosave, worthRecovering } from './autosave'
+import { hasContent, shouldAutosave, worthRecovering } from './autosave'
+import { readFolderCopy, tidyFolder, writeDiskCopy } from './diskAutosave'
+import { useProjects } from '@/projects/store'
 import { useSettings } from '@/settings/settings'
 import { parseProject } from './projectParse'
 import { write3mf } from './threemf'
@@ -47,7 +49,7 @@ export async function newDocument() {
   useDoc.getState().newDocument()
   resetHistory()
   resetProjectSections()
-  void del(AUTOSAVE_KEY)
+  void clearRecoveryState()
   // a new document starts from the home view, not wherever the last one was left
   viewportBus.emit('resetView', undefined)
 }
@@ -84,7 +86,7 @@ async function openProjectBytes(bytes: Uint8Array, name: string, h: FileHandleLi
   handle = h
   useDoc.setState({ name: baseName(name) })
   setExternalHost(name)
-  void del(AUTOSAVE_KEY)
+  void clearRecoveryState()
   await frameWhenReady()
   // linked components are read again from their files: a newer file raises the update notice
   void restoreExternals()
@@ -108,7 +110,7 @@ export async function saveDocument(asNew = false, note?: string) {
     setExternalHost(h?.name ?? (name + '.caddy'))
     void persistExternalHandles()
     useDoc.getState().markClean()
-    void del(AUTOSAVE_KEY)
+    void clearRecoveryState()
     toast(h ? `Saved ${h.name}` : 'Downloaded project file')
   } catch (e) {
     fail('Save failed', e)
@@ -256,9 +258,23 @@ export async function exportBodies(format: 'stl' | '3mf' | 'step', scope: 'selec
 
 // ---------------- autosave + recovery
 const AUTOSAVE_KEY = 'caddy-autosave'
-interface AutosaveRecord { bytes: Uint8Array; name: string; savedAt: number }
+/** When the last recovery copy was let go of (the project was saved, opened, started over or the copy discarded). Folder copies older than this are not offered. */
+const CLEARED_KEY = 'caddy-autosave-cleared'
+/** A folder copy has to beat the browser copy by this much to be the one offered: both come from the same autosave, a moment apart. */
+const SAME_SAVE_MS = 5000
+export interface AutosaveRecord { bytes: Uint8Array; name: string; savedAt: number; /** where the copy was found */ source?: 'browser' | 'folder' }
 
 export const useRecovery = create<{ record: AutosaveRecord | null }>(() => ({ record: null }))
+
+/** Nothing is waiting to be recovered: the browser copy goes, and the copies already in the folder stop being offered (they stay there as backups). */
+async function clearRecoveryState() {
+  try {
+    // a write that is still going must not land after this and bring a stale copy back
+    await running?.catch(() => {})
+    await set(CLEARED_KEY, Date.now())
+    await del(AUTOSAVE_KEY)
+  } catch { /* IndexedDB unavailable */ }
+}
 
 export async function recover() {
   const r = useRecovery.getState().record
@@ -274,42 +290,103 @@ export async function recover() {
 }
 export function discardRecovery() {
   useRecovery.setState({ record: null })
-  void del(AUTOSAVE_KEY)
+  void clearRecoveryState()
 }
 
-/** Call once at startup: offer crash recovery, then autosave every 30 s while there are unsaved edits. */
-export async function initPersistence() {
-  // (the e2e fixture sets this flag so a test never meets the recovery prompt of an earlier page load)
-  if ((window as unknown as { __e2eNoAutosave?: boolean }).__e2eNoAutosave) return
+/** The e2e fixture sets this flag so a test never meets the recovery prompt or the folder card of an earlier page load. */
+export const autosaveOffForTests = () => !!(window as unknown as { __e2eNoAutosave?: boolean }).__e2eNoAutosave
+
+const readable = (bytes: Uint8Array) => {
+  try { return worthRecovering(parseProject(bytes).data) } catch { return false } // unreadable: not worth a prompt
+}
+
+/** The copy worth offering after a crash: the browser's, or the folder's when that one is newer. Null when there is nothing. */
+async function findRecovery(): Promise<AutosaveRecord | null> {
+  let best: AutosaveRecord | null = null
   try {
     const r = await get<AutosaveRecord>(AUTOSAVE_KEY)
     if (r?.bytes) {
       // a copy with nothing in it is not worth a prompt
-      let keep = false
-      try { keep = worthRecovering(parseProject(r.bytes).data) } catch { /* unreadable: drop it */ }
-      if (keep) useRecovery.setState({ record: r })
+      if (readable(r.bytes)) best = { ...r, source: 'browser' }
       else void del(AUTOSAVE_KEY)
     }
   } catch { /* IndexedDB unavailable */ }
+  let cleared = 0
+  try { cleared = (await get<number>(CLEARED_KEY)) ?? 0 } catch { /* none */ }
+  const f = await readFolderCopy()
+  if (f && f.savedAt > cleared && f.savedAt > (best ? best.savedAt + SAME_SAVE_MS : 0) && readable(f.bytes)) {
+    best = { bytes: f.bytes, name: f.name, savedAt: f.savedAt, source: 'folder' }
+  }
+  return best
+}
+
+// one write at a time, and a write asked for while another runs happens once, right after it
+let running: Promise<void> | null = null
+let queued: Promise<void> | null = null
+let queuedForce = false
+function runCopy(force: boolean): Promise<void> {
+  if (running) {
+    queuedForce ||= force
+    return (queued ??= running.then(() => {
+      const f = queuedForce
+      queued = null
+      queuedForce = false
+      return runCopy(f)
+    }))
+  }
+  running = writeCopy(force).catch(() => {}).finally(() => { running = null })
+  return running
+}
+
+/**
+ * The autosave write: the browser copy first (always there), then the folder copy. Only for real unsaved edits.
+ * `force` writes even when autosave is switched off, for the moment before the page reloads for an update.
+ */
+async function writeCopy(force: boolean) {
+  const st = useSettings.getState()
+  const d = useDoc.getState()
+  if ((!st.autosave && !force) || !shouldAutosave(d) || useRecovery.getState().record) return
+  const name = d.name
+  const bytes = await serializeProject(false)
+  // saved, or emptied, while the file was being packed: nothing to keep after all
+  if (!shouldAutosave(useDoc.getState())) return
+  try {
+    await set(AUTOSAVE_KEY, { bytes, name, savedAt: Date.now() } satisfies AutosaveRecord)
+  } catch { /* quota or private mode */ }
+  if (st.autosave && st.diskAutosave) await writeDiskCopy(bytes, name, handle as unknown as { isSameEntry?: (o: unknown) => Promise<boolean> } | null)
+}
+
+/** Write the autosave now and wait until it is stored. The update button does this before it reloads the page. */
+export const flushAutosave = () => runCopy(true)
+
+/** Call once at startup: offer crash recovery, then autosave every 30 s while there are unsaved edits. */
+export async function initPersistence() {
+  if (autosaveOffForTests()) return
+  // the projects folder (if one was picked) comes back first, so its autosave copies can be offered next to the browser's
+  try { await useProjects.getState().init() } catch { /* no folder */ }
+  void tidyFolder()
+  const found = await findRecovery()
+  if (found) useRecovery.setState({ record: found })
+  let folderChecked = useProjects.getState().access === 'granted'
+  // the folder is behind a "reconnect" click: once it is back, look for a newer copy in it (only while the document is still untouched)
+  useProjects.subscribe((s, p) => {
+    if (folderChecked || s.access !== 'granted' || p.access === 'granted') return
+    folderChecked = true
+    const d = useDoc.getState()
+    if (useRecovery.getState().record || d.dirty || hasContent(d)) return
+    void findRecovery().then((r) => { if (r && !useRecovery.getState().record && !useDoc.getState().dirty) useRecovery.setState({ record: r }) })
+  })
   // Settings > General sets whether to autosave and how often; it is read again on every check, so a change applies at once
   let last = Date.now()
-  const writeCopy = async () => {
-    const st = useSettings.getState()
-    const d = useDoc.getState()
-    if (!st.autosave || !shouldAutosave(d) || useRecovery.getState().record) return
-    try {
-      await set(AUTOSAVE_KEY, { bytes: await serializeProject(false), name: d.name, savedAt: Date.now() } satisfies AutosaveRecord)
-    } catch { /* quota or private mode */ }
-  }
   setInterval(() => {
     if (Date.now() - last < useSettings.getState().autosaveSeconds * 1000) return
     last = Date.now()
-    void writeCopy()
+    void runCopy(false)
   }, 2000)
   // a phone puts a page to sleep (and may throw it away) the moment you switch apps, long before the next timer: save as it goes
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'hidden') return
     last = Date.now()
-    void writeCopy()
+    void runCopy(false)
   })
 }

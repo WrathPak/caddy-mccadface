@@ -36,6 +36,8 @@ export interface InspectorSession {
   onCancel: () => void
   /** the pointer or keyboard focus moved into a schema group that has an id */
   onActiveGroup?: (id: string) => void
+  /** sessions of one dialog share this: a preview that pushes new values updates the open form instead of rebuilding it */
+  formId?: number
 }
 
 interface UiState {

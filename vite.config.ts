@@ -38,7 +38,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': a new service worker installs and then waits. Nothing swaps or reloads the page until the person clicks "Update ready"
+      // (src/app/updates.ts); never clicked, it takes over once every tab is closed. 'autoUpdate' would skip waiting and reload under them.
+      registerType: 'prompt',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'CADdy McCADFace',
@@ -63,6 +65,10 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2,wasm}'],
         maximumFileSizeToCacheInBytes: 64 * 1024 * 1024,
+        // the new worker waits, and the old one keeps serving its own precache (lazy chunks too) until the person switches
+        skipWaiting: false,
+        clientsClaim: false,
+        cleanupOutdatedCaches: true,
       },
     }),
   ],
