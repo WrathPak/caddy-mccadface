@@ -6,7 +6,7 @@
  * startup and saves them whenever they change. The rest (autosave, tooltips, tips, tour) lives in `useSettings`.
  */
 import { create } from 'zustand'
-import { useUi, type DisplayMode, type Theme, type Workspace } from '@/store/ui'
+import { useUi, type DisplayMode, type Projection, type Theme, type Workspace } from '@/store/ui'
 import { setGridDensity, type GridDensity } from '@/viewport/gridMath'
 import { isCoarse } from '@/app/device'
 
@@ -44,6 +44,7 @@ interface Persisted {
   showGrid: boolean
   ssao: boolean
   displayMode: DisplayMode
+  projection: Projection
   gridDensity: GridDensity
   pixelRatio: PixelRatio
   showOrigin: boolean
@@ -65,6 +66,8 @@ const DEFAULTS: Persisted = {
   showGrid: true,
   ssao: true,
   displayMode: 'shadedEdges',
+  // orthographic keeps boxes square at any zoom, as the usual CAD apps open
+  projection: 'orthographic',
   gridDensity: 'normal',
   pixelRatio: 'auto',
   showOrigin: true,
@@ -96,6 +99,7 @@ function load(): Persisted {
       showGrid: v.showGrid !== false,
       ssao: typeof v.ssao === 'boolean' ? v.ssao : defaultSsao(),
       displayMode: oneOf(v.displayMode, ['shaded', 'shadedEdges', 'wireframe', 'xray'], DEFAULTS.displayMode),
+      projection: oneOf(v.projection, ['perspective', 'orthographic'], DEFAULTS.projection),
       gridDensity: oneOf(v.gridDensity, ['fine', 'normal', 'coarse'], DEFAULTS.gridDensity),
       pixelRatio: oneOf(v.pixelRatio, ['auto', '1', '1.5', '2', 'native'], DEFAULTS.pixelRatio),
       showOrigin: v.showOrigin !== false,
@@ -200,7 +204,7 @@ export const useSettings = create<SettingsState>((set, get) => {
       s.setThemeMode(d.themeMode)
       s.setGridDensity(d.gridDensity)
       set({ pixelRatio: d.pixelRatio, selectionColor: d.selectionColor, defaultWorkspace: d.defaultWorkspace, autosave: d.autosave, autosaveSeconds: d.autosaveSeconds, diskAutosave: d.diskAutosave, autosaveVersions: d.autosaveVersions, tooltips: d.tooltips, beginnerTips: d.beginnerTips })
-      useUi.setState({ units: d.units, showGrid: d.showGrid, showOrigin: d.showOrigin, ssao: defaultSsao(), displayMode: d.displayMode })
+      useUi.setState({ units: d.units, showGrid: d.showGrid, showOrigin: d.showOrigin, ssao: defaultSsao(), displayMode: d.displayMode, projection: d.projection })
     },
   }
 })
@@ -215,6 +219,7 @@ function save() {
     showGrid: u.showGrid,
     ssao: u.ssao,
     displayMode: u.displayMode,
+    projection: u.projection,
     gridDensity: s.gridDensity,
     pixelRatio: s.pixelRatio,
     showOrigin: u.showOrigin,
@@ -239,13 +244,13 @@ export function startSettings() {
   const init = load()
   setGridDensity(init.gridDensity)
   const ui = useUi.getState()
-  useUi.setState({ units: init.units, showGrid: init.showGrid, showOrigin: init.showOrigin, ssao: init.ssao, displayMode: init.displayMode })
+  useUi.setState({ units: init.units, showGrid: init.showGrid, showOrigin: init.showOrigin, ssao: init.ssao, displayMode: init.displayMode, projection: init.projection })
   ui.setTheme(resolveTheme(init.themeMode))
   const ws = init.defaultWorkspace
   if (ws !== 'solid') ui.setWorkspace(ws as Workspace)
   useSettings.subscribe(save)
   useUi.subscribe((s, p) => {
-    if (s.units !== p.units || s.showGrid !== p.showGrid || s.showOrigin !== p.showOrigin || s.ssao !== p.ssao || s.displayMode !== p.displayMode) save()
+    if (s.units !== p.units || s.showGrid !== p.showGrid || s.showOrigin !== p.showOrigin || s.ssao !== p.ssao || s.displayMode !== p.displayMode || s.projection !== p.projection) save()
     // a theme change from anywhere that is not the setting itself (a plugin, a test) becomes the explicit choice
     if (s.theme !== p.theme && resolveTheme(useSettings.getState().themeMode) !== s.theme) useSettings.setState({ themeMode: s.theme })
   })

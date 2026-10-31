@@ -81,11 +81,14 @@ test('display modes, projection, AO, grid / origin toggles and the theme switch'
     await page.waitForTimeout(150)
     if (ids[i] === 'wireframe' || ids[i] === 'xray') await app.shot('mode-' + ids[i])
   }
-  await bar.getByRole('button', { name: /Persp/ }).click()
+  // orthographic is the default; the button flips to perspective and back
   expect(await app.ev((c) => c.ui.getState().projection)).toBe('orthographic')
-  await page.waitForTimeout(250)
   await app.shot('mode-ortho')
   await bar.getByRole('button', { name: /Ortho/ }).click()
+  expect(await app.ev((c) => c.ui.getState().projection)).toBe('perspective')
+  await page.waitForTimeout(250)
+  await app.shot('mode-persp')
+  await bar.getByRole('button', { name: /Persp/ }).click()
   await bar.getByRole('button', { name: /AO/ }).click()
   expect(await app.ev((c) => c.ui.getState().ssao)).toBe(false)
   await bar.getByRole('button', { name: /AO/ }).click()

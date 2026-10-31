@@ -54,6 +54,7 @@ function maxStep(p: number[]): { step: number; at: number } {
 
 test('perspective ground grid fades smoothly into the background towards the horizon (no hard plane edge)', async ({ app, page }) => {
   await app.open()
+  await app.ev((c) => c.ui.getState().setProjection('perspective'))
   await app.ev((c) => c.ui.setState({ showOrigin: false })) // the origin marker would sit on the sampled column
   const vp = (await page.locator('.vp canvas').boundingBox())!
   await page.mouse.move(vp.x + vp.width * 0.5, vp.y + vp.height * 0.5)
@@ -78,6 +79,26 @@ test('perspective ground grid fades smoothly into the background towards the hor
     expect(step, `${label}: biggest brightness step between rows (at row ${at} of ${height}, peak ${peak}, rows around: ${prof.slice(Math.max(0, at - 4), at + 6).join(',')})`).toBeLessThan(Math.max(6, peak * 0.2))
     // and the far end really tapers: the first visible rows are faint, not already at full strength
     expect(prof[first + 2], `${label}: the grid fades in from the horizon`).toBeLessThan(peak * 0.5)
+    await app.shot('grid-horizon-' + label.replace(/\W+/g, '-'))
+  }
+})
+
+test('orthographic ground grid never ends in a hard edge, even looking along the ground', async ({ app, page }) => {
+  await app.open()
+  expect(await app.ev((c) => c.ui.getState().projection)).toBe('orthographic')
+  await app.ev((c) => c.ui.setState({ showOrigin: false }))
+  for (const [label, elevDeg] of [['ortho grazing', 3], ['ortho low', 8], ['ortho tilted', 25]] as [string, number][]) {
+    const e = (elevDeg * Math.PI) / 180
+    await app.ev((c, v) => c.bus.emit('viewVec', v), [0, -Math.cos(e), Math.sin(e)]) // eslint-disable-line
+    await app.cameraStable()
+    await page.waitForTimeout(300)
+    const { rows, height } = await centreColumn(app)
+    const prof = smooth(rows)
+    const peak = Math.max(...prof)
+    // looking along the ground the grid fades away; tilted further it is plainly there
+    if (elevDeg >= 25) expect(peak, `${label}: the grid is visible`).toBeGreaterThan(15)
+    const { step, at } = maxStep(prof)
+    expect(step, `${label}: biggest brightness step between rows (at row ${at} of ${height}, peak ${peak})`).toBeLessThan(Math.max(6, peak * 0.2))
     await app.shot('grid-horizon-' + label.replace(/\W+/g, '-'))
   }
 })
