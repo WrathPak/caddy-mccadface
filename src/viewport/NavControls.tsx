@@ -13,7 +13,8 @@ import { useSketch } from '@/sketch/store'
 import { useHairPaint } from '@/features/hair/paint'
 import { useAssemblyRuntime } from '@/assembly/runtime'
 
-export const FOV = 40
+/** A narrow lens: 40 degrees made a box filling the view lean like a wide-angle photo. 25 is about what other CAD apps use. */
+export const FOV = 25
 const Z = new Vector3(0, 0, 1)
 const AX = new Vector3(1, 0, 0)
 const AY = new Vector3(0, 1, 0)
@@ -24,7 +25,8 @@ const dirOf = (az: number, el: number) => new Vector3(Math.cos(el) * Math.cos(az
 const HOME_DIR = dirOf(-Math.PI / 4, MathUtils.degToRad(32))
 /** The view a fresh page opens with. */
 const HOME_TARGET = new Vector3(0, 0, 10)
-const HOME_DIST = 190
+// about what the old 40 degree lens framed from 190: the narrower lens stands further back to see the same
+const HOME_DIST = 300
 
 const DIRS: Record<ViewDir, Vector3> = {
   home: HOME_DIR,

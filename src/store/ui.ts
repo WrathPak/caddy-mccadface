@@ -122,7 +122,7 @@ export const useUi = create<UiState>((set, get) => ({
   sketchMode: false,
   activeTool: null,
   displayMode: 'shadedEdges',
-  projection: 'perspective',
+  projection: 'orthographic',
   ssao: true,
   aoActive: false,
   setAoActive: (aoActive) => set((s) => (s.aoActive === aoActive ? s : { aoActive })),
