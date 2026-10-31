@@ -10,15 +10,16 @@ vi.mock('@/kernel/client', async () => {
   return { getKernel: () => api as never }
 })
 
-import { measureArea, measureVolume, type AnyShape } from 'replicad'
+import { iterTopo, measureArea, measureVolume, type AnyShape } from 'replicad'
 import { initOcc } from '@/kernel/occ'
 import { getBrep } from '@/kernel/store'
+import { openEdges } from '@/kernel/naming'
 import type { Body } from '@/kernel/types'
 import { clearCache, regenerate } from '@/doc/engine'
 import { encodeRef, refFromSelection } from '@/doc/refs'
 import { useDoc, type Feature } from '@/doc/store'
 import { useSketchData } from '@/sketch/draw'
-import { addLine, addPoint } from '@/sketch/model'
+import { addArc, addLine, addPoint } from '@/sketch/model'
 import { ensureSolver } from '@/sketch/solver'
 import { emptyModel, type PlaneDef } from '@/sketch/types'
 import '@/features/basic'
@@ -132,6 +133,104 @@ describe('extend corners and thicken closed shells', () => {
     expect(body(patch).surface).toBe(true)
     // the corner is closed: the rim is the two far edges, the two rim edges of the corner patch, and what was never touched
     expect(body(patch).freeEdges).toBe(8)
+  })
+
+  /** A one-curve sketch on the XZ plane (local x = world X, local y = world Z), to spin around the world Z axis. */
+  const XZ: PlaneDef = { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, -1, 0] }
+  const profile = (build: (m: ReturnType<typeof emptyModel>) => void) => {
+    const m = emptyModel()
+    build(m)
+    return { sketch: JSON.stringify({ plane: XZ, face: null, model: m }) }
+  }
+  /** Edge refs of the body's edges whose two ends both satisfy `on` (world coordinates). */
+  function edgesIn(b: Body, on: (x: number, y: number, z: number) => boolean): string[] {
+    const out = new Set<number>()
+    const e = b.mesh.edges, ids = b.mesh.edgeIds!
+    for (let s = 0; s < e.length / 6; s++) if (on(e[s * 6], e[s * 6 + 1], e[s * 6 + 2]) && on(e[s * 6 + 3], e[s * 6 + 4], e[s * 6 + 5])) out.add(ids[s])
+    return [...out].map((index) => encodeRef(refFromSelection({ kind: 'edge', id: b.id, index }, [b])!))
+  }
+  /** One connected sheet whose open edges form closed loops: nothing is left open where a corner was closed. */
+  function oneSheet(b: Body) {
+    const shape = getBrep(b.key) as unknown as AnyShape
+    expect(Array.from(iterTopo(shape.wrapped as never, 'shell')).length).toBe(1)
+    const ends = new Map<string, number>()
+    const q = (p: { x: number; y: number; z: number }) => [p.x, p.y, p.z].map((v) => Math.round(v * 1e3)).join(',')
+    for (const e of openEdges(shape)) for (const p of [e.startPoint, e.endPoint]) ends.set(q(p), (ends.get(q(p)) ?? 0) + 1)
+    expect([...ends.values()].every((n) => n === 2)).toBe(true)
+  }
+  const spread = (b: Body, f: (x: number, y: number, z: number) => number) => {
+    const m = b.mesh.positions
+    let lo = Infinity, hi = -Infinity
+    for (let i = 0; i < m.length; i += 3) { const r = f(m[i], m[i + 1], m[i + 2]); lo = Math.min(lo, r); hi = Math.max(hi, r) }
+    return [lo, hi]
+  }
+
+  it('extending two edges that meet on a cylinder wall closes the corner on the cylinder, natural and tangent', async () => {
+    // a quarter wall of radius 5 and height 10
+    const sk = await add('sketch', profile((m) => { addLine(m, addPoint(m, 5, 0), addPoint(m, 5, 10)) }))
+    const wall = await add('surfaceRevolve', { curves: [chainRef(sk)], axis: 'worldZ', angle: 90 })
+    expect(feat(wall).state, feat(wall).error).toBe('ok')
+    expect(body(wall).freeEdges).toBe(4)
+    const patch = area(body(wall))
+    near(patch, (Math.PI / 2) * 5 * 10, 2e-3)
+    // the top arc and the straight edge on the Y axis meet at (0, 5, 10)
+    const edges = [...edgesIn(body(wall), (_x, _y, z) => Math.abs(z - 10) < 1e-6), ...edgesIn(body(wall), (x) => Math.abs(x) < 1e-6)]
+    expect(edges.length).toBe(2)
+    const nat = await add('surfaceExtend', { edges, distance: 2, mode: 'natural' })
+    expect(feat(nat).state, feat(nat).error).toBe('ok')
+    // the cylinder unrolls flat: the arc strip, the straight strip and the 2 x 2 corner
+    near(area(body(wall)), patch + (Math.PI / 2) * 5 * 2 + 10 * 2 + 4, 5e-3)
+    expect(body(wall).freeEdges).toBe(8)
+    oneSheet(body(wall))
+    const [lo, hi] = spread(body(wall), (x, y) => Math.hypot(x, y))
+    expect(lo).toBeGreaterThan(5 - 0.02)
+    expect(hi).toBeLessThan(5 + 0.02)
+
+    // the same extension, tangent: the sheet is still closed at the corner
+    await edit(nat, { edges, distance: 2, mode: 'tangent' })
+    expect(feat(nat).state, feat(nat).error).toBe('ok')
+    expect(body(wall).freeEdges).toBe(8)
+    oneSheet(body(wall))
+    expect(area(body(wall))).toBeGreaterThan(patch + 2 * 15)
+  })
+
+  it('extending two edges that meet on a sphere window closes the corner, natural and tangent, and follows an edit of the profile', async () => {
+    // a lat-long window of a sphere of radius 10: an arc from 30 to 60 degrees of latitude, spun 90 degrees
+    const arc = (r: number) => profile((m) => {
+      const c = addPoint(m, 0, 0)
+      const a = (deg: number) => addPoint(m, r * Math.cos((deg * Math.PI) / 180), r * Math.sin((deg * Math.PI) / 180))
+      addArc(m, c, a(30), a(60))
+    })
+    const sk = await add('sketch', arc(10))
+    const win = await add('surfaceRevolve', { curves: [chainRef(sk)], axis: 'worldZ', angle: 90 })
+    expect(feat(win).state, feat(win).error).toBe('ok')
+    // the parallel at the top of the window (z = 10 sin 60) and the meridian on the Y axis
+    const top = 10 * Math.sin(Math.PI / 3)
+    const edges = [...edgesIn(body(win), (_x, _y, z) => Math.abs(z - top) < 1e-4), ...edgesIn(body(win), (x) => Math.abs(x) < 1e-6)]
+    expect(edges.length).toBe(2)
+    const ext = await add('surfaceExtend', { edges, distance: 1.5, mode: 'natural' })
+    expect(feat(ext).state, feat(ext).error).toBe('ok')
+    expect(body(win).freeEdges).toBe(8)
+    oneSheet(body(win))
+    const [lo, hi] = spread(body(win), (x, y, z) => Math.hypot(x, y, z))
+    expect(lo).toBeGreaterThan(10 - 0.03)
+    expect(hi).toBeLessThan(10 + 0.03)
+
+    await edit(ext, { edges, distance: 1.5, mode: 'tangent' })
+    expect(feat(ext).state, feat(ext).error).toBe('ok')
+    expect(body(win).freeEdges).toBe(8)
+    oneSheet(body(win))
+    expect(spread(body(win), (x, y, z) => Math.hypot(x, y, z))[1]).toBeGreaterThan(10 + 0.01) // it left the sphere along its tangents
+
+    // the profile is edited: the edges are found again by name and the corner closes on the new, bigger sphere
+    await edit(ext, { edges, distance: 1.5, mode: 'natural' })
+    await edit(sk, arc(12))
+    expect(states().every((s) => s === 'ok'), JSON.stringify(doc().features.map((f) => f.error))).toBe(true)
+    expect(body(win).freeEdges).toBe(8)
+    oneSheet(body(win))
+    const [lo2, hi2] = spread(body(win), (x, y, z) => Math.hypot(x, y, z))
+    expect(lo2).toBeGreaterThan(12 - 0.04)
+    expect(hi2).toBeLessThan(12 + 0.04)
   })
 
   it('a closed surface thickens into a hollow solid', async () => {

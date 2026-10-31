@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import * as CM from '@radix-ui/react-context-menu'
 import { CaretDown, CaretRight, DotOutline, Cube, Eye, EyeSlash, FileText, Folder, GridFour, LineSegment, PencilSimpleLine, Planet, Parallelogram, SelectionBackground } from '@phosphor-icons/react'
 import { useUi, type EntityKind } from '@/store/ui'
@@ -22,6 +23,20 @@ const KIND_HELP: Partial<Record<EntityKind, string>> = {
   component: 'A part of an assembly. Click to select it.',
 }
 
+/** The icons of the rows, made once: a new element on every render would make every row look changed to `memo`. */
+const ICON = {
+  Cube: <Cube size={13} />,
+  DotOutline: <DotOutline size={13} />,
+  FileText: <FileText size={13} />,
+  Folder: <Folder size={13} />,
+  GridFour: <GridFour size={13} />,
+  LineSegment: <LineSegment size={13} />,
+  Parallelogram: <Parallelogram size={13} />,
+  PencilSimpleLine: <PencilSimpleLine size={13} />,
+  Planet: <Planet size={13} />,
+  SelectionBackground: <SelectionBackground size={13} />,
+}
+
 interface RowProps {
   id: string
   name: string
@@ -40,7 +55,8 @@ interface RowProps {
   activate?: string
 }
 
-function Row({ id, name, depth, kind, icon, open, onToggle, coll, eye = true, path, activate }: RowProps) {
+// memo: an edit changes a row or two, not the whole tree, and a row (with its tooltips and its context menu) costs a few milliseconds
+const Row = memo(function Row({ id, name, depth, kind, icon, open, onToggle, coll, eye = true, path, activate }: RowProps) {
   const hidden = useUi((s) => !!s.hiddenIds[id])
   const toggleHidden = useUi((s) => s.toggleHidden)
   const selected = useUi((s) => !!kind && s.selection.some((r) => r.id === id && r.kind === kind && (r.path === undefined || r.path === (path ?? ''))))
@@ -106,15 +122,16 @@ function Row({ id, name, depth, kind, icon, open, onToggle, coll, eye = true, pa
       </CM.Portal>
     </CM.Root>
   )
-}
+})
 
 function Group({ label, depth, icon, children, defaultOpen = true, openWhen = false }: { label: string; depth: number; icon: ReactNode; children: ReactNode; defaultOpen?: boolean; openWhen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
+  const toggle = useCallback(() => setOpen((o) => !o), [])
   // opens by itself while `openWhen` holds (the planes while a sketch waits for one), then stays as the person leaves it
   useEffect(() => { if (openWhen) setOpen(true) }, [openWhen])
   return (
     <>
-      <Row id={'g:' + label} name={label} depth={depth} icon={icon} open={open} onToggle={() => setOpen(!open)} />
+      <Row id={'g:' + label} name={label} depth={depth} icon={icon} open={open} onToggle={toggle} />
       {open && children}
     </>
   )
@@ -126,7 +143,8 @@ function Items({ items, depth, kind, coll, icon, path }: { items: TreeEntity[]; 
 
 /** Document > Origin (planes, axes) > Bodies > Surfaces > Sketches > Meshes > Components (each with its own bodies and sketches) > Joints */
 export function BrowserTree() {
-  const doc = useDoc()
+  // only what the tree lists: the whole store would redraw it when a blob is added, the regeneration starts or ends, and so on
+  const doc = useDoc(useShallow((s) => ({ name: s.name, assembly: s.assembly, geometry: s.geometry, bodies: s.bodies, surfaces: s.surfaces, meshes: s.meshes, sketches: s.sketches, features: s.features })))
   const pickingPlane = useSketchPick((s) => s.picking)
   const a = doc.assembly
   const owner = new Map(doc.geometry.map((b) => [b.id, ownerOf(b, a)]))
@@ -146,22 +164,22 @@ export function BrowserTree() {
     return (
       <>
         {def !== ROOT && (
-          <Group label="Origin" depth={depth} icon={<Planet size={13} />} defaultOpen={false}>
-            {['XY', 'XZ', 'YZ'].map((p) => <Row key={p} id={'plane' + p} name={p + ' plane'} depth={depth + 1} kind="plane" icon={<Parallelogram size={13} />} activate={path} />)}
-            {['X', 'Y', 'Z'].map((a) => <Row key={a} id={'axis' + a} name={a + ' axis'} depth={depth + 1} kind="axis" icon={<LineSegment size={13} />} activate={path} />)}
+          <Group label="Origin" depth={depth} icon={ICON.Planet} defaultOpen={false}>
+            {['XY', 'XZ', 'YZ'].map((p) => <Row key={p} id={'plane' + p} name={p + ' plane'} depth={depth + 1} kind="plane" icon={ICON.Parallelogram} activate={path} />)}
+            {['X', 'Y', 'Z'].map((a) => <Row key={a} id={'axis' + a} name={a + ' axis'} depth={depth + 1} kind="axis" icon={ICON.LineSegment} activate={path} />)}
           </Group>
         )}
         {(planes.length + axes.length + points.length > 0) && (
-          <Group label="Construction" depth={depth} icon={<Folder size={13} />} defaultOpen={false}>
-            {planes.map((f) => <Row key={f.id} id={f.id} name={f.name} depth={depth + 1} kind="plane" coll="sketches" icon={<Parallelogram size={13} />} />)}
-            {axes.map((f) => <Row key={f.id} id={f.id} name={f.name} depth={depth + 1} kind="axis" coll="sketches" icon={<LineSegment size={13} />} />)}
-            {points.map((f) => <Row key={f.id} id={f.id} name={f.name} depth={depth + 1} kind="point" coll="sketches" icon={<DotOutline size={13} />} />)}
+          <Group label="Construction" depth={depth} icon={ICON.Folder} defaultOpen={false}>
+            {planes.map((f) => <Row key={f.id} id={f.id} name={f.name} depth={depth + 1} kind="plane" coll="sketches" icon={ICON.Parallelogram} />)}
+            {axes.map((f) => <Row key={f.id} id={f.id} name={f.name} depth={depth + 1} kind="axis" coll="sketches" icon={ICON.LineSegment} />)}
+            {points.map((f) => <Row key={f.id} id={f.id} name={f.name} depth={depth + 1} kind="point" coll="sketches" icon={ICON.DotOutline} />)}
           </Group>
         )}
-        {bodies.length > 0 && <Group label="Bodies" depth={depth} icon={<Folder size={13} />}><Items items={bodies} depth={depth + 1} kind="body" coll="bodies" icon={<Cube size={13} />} path={path} /></Group>}
-        {surfaces.length > 0 && <Group label="Surfaces" depth={depth} icon={<Folder size={13} />}><Items items={surfaces} depth={depth + 1} kind="body" coll="surfaces" icon={<SelectionBackground size={13} />} path={path} /></Group>}
-        {sketches.length > 0 && <Group label="Sketches" depth={depth} icon={<Folder size={13} />}><Items items={sketches} depth={depth + 1} kind="sketch" coll="sketches" icon={<PencilSimpleLine size={13} />} path={path} /></Group>}
-        {meshes.length > 0 && <Group label="Meshes" depth={depth} icon={<Folder size={13} />}><Items items={meshes} depth={depth + 1} kind="mesh" coll="meshes" icon={<GridFour size={13} />} path={path} /></Group>}
+        {bodies.length > 0 && <Group label="Bodies" depth={depth} icon={ICON.Folder}><Items items={bodies} depth={depth + 1} kind="body" coll="bodies" icon={ICON.Cube} path={path} /></Group>}
+        {surfaces.length > 0 && <Group label="Surfaces" depth={depth} icon={ICON.Folder}><Items items={surfaces} depth={depth + 1} kind="body" coll="surfaces" icon={ICON.SelectionBackground} path={path} /></Group>}
+        {sketches.length > 0 && <Group label="Sketches" depth={depth} icon={ICON.Folder}><Items items={sketches} depth={depth + 1} kind="sketch" coll="sketches" icon={ICON.PencilSimpleLine} path={path} /></Group>}
+        {meshes.length > 0 && <Group label="Meshes" depth={depth} icon={ICON.Folder}><Items items={meshes} depth={depth + 1} kind="mesh" coll="meshes" icon={ICON.GridFour} path={path} /></Group>}
       </>
     )
   }
@@ -170,32 +188,32 @@ export function BrowserTree() {
     <div className="panel" data-tour="browser">
 
       <div className="panel-scroll" style={{ paddingTop: 2 }}>
-        <Group label={`Document: ${doc.name}`} depth={0} icon={<FileText size={13} />}>
-          <Group label="Origin" depth={1} icon={<Planet size={13} />}>
-            <Group label="Planes" depth={2} icon={<Folder size={13} />} defaultOpen={false} openWhen={pickingPlane}>
-              {['XY', 'XZ', 'YZ'].map((p) => <Row key={p} id={'plane' + p} name={p + ' plane'} depth={3} kind="plane" icon={<Parallelogram size={13} />} />)}
-              {doc.features.filter((f) => PLANE_FEATURES.has(f.type) && inDef(ROOT)(f)).map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="plane" coll="sketches" icon={<Parallelogram size={13} />} />)}
+        <Group label={`Document: ${doc.name}`} depth={0} icon={ICON.FileText}>
+          <Group label="Origin" depth={1} icon={ICON.Planet}>
+            <Group label="Planes" depth={2} icon={ICON.Folder} defaultOpen={false} openWhen={pickingPlane}>
+              {['XY', 'XZ', 'YZ'].map((p) => <Row key={p} id={'plane' + p} name={p + ' plane'} depth={3} kind="plane" icon={ICON.Parallelogram} />)}
+              {doc.features.filter((f) => PLANE_FEATURES.has(f.type) && inDef(ROOT)(f)).map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="plane" coll="sketches" icon={ICON.Parallelogram} />)}
             </Group>
-            <Group label="Axes" depth={2} icon={<Folder size={13} />} defaultOpen={false}>
-              {['X', 'Y', 'Z'].map((a) => <Row key={a} id={'axis' + a} name={a + ' axis'} depth={3} kind="axis" icon={<LineSegment size={13} />} />)}
-              {doc.features.filter((f) => f.type === 'constructAxis' && inDef(ROOT)(f)).map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="axis" coll="sketches" icon={<LineSegment size={13} />} />)}
+            <Group label="Axes" depth={2} icon={ICON.Folder} defaultOpen={false}>
+              {['X', 'Y', 'Z'].map((a) => <Row key={a} id={'axis' + a} name={a + ' axis'} depth={3} kind="axis" icon={ICON.LineSegment} />)}
+              {doc.features.filter((f) => f.type === 'constructAxis' && inDef(ROOT)(f)).map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="axis" coll="sketches" icon={ICON.LineSegment} />)}
             </Group>
           </Group>
-          <Group label="Points" depth={1} icon={<Folder size={13} />} defaultOpen={false}>
-            {doc.features.filter((f) => f.type === 'constructPoint' && inDef(ROOT)(f)).map((f) => <Row key={f.id} id={f.id} name={f.name} depth={2} kind="point" coll="sketches" icon={<DotOutline size={13} />} />)}
+          <Group label="Points" depth={1} icon={ICON.Folder} defaultOpen={false}>
+            {doc.features.filter((f) => f.type === 'constructPoint' && inDef(ROOT)(f)).map((f) => <Row key={f.id} id={f.id} name={f.name} depth={2} kind="point" coll="sketches" icon={ICON.DotOutline} />)}
           </Group>
           <ConfigurationsGroup depth={1} />
-          <Group label="Bodies" depth={1} icon={<Folder size={13} />}>
-            <Items items={bodiesOf(ROOT)} depth={2} kind="body" coll="bodies" icon={<Cube size={13} />} />
+          <Group label="Bodies" depth={1} icon={ICON.Folder}>
+            <Items items={bodiesOf(ROOT)} depth={2} kind="body" coll="bodies" icon={ICON.Cube} />
           </Group>
-          <Group label="Surfaces" depth={1} icon={<Folder size={13} />}>
-            <Items items={surfacesOf(ROOT)} depth={2} kind="body" coll="surfaces" icon={<SelectionBackground size={13} />} />
+          <Group label="Surfaces" depth={1} icon={ICON.Folder}>
+            <Items items={surfacesOf(ROOT)} depth={2} kind="body" coll="surfaces" icon={ICON.SelectionBackground} />
           </Group>
-          <Group label="Sketches" depth={1} icon={<Folder size={13} />}>
-            <Items items={sketchesOf(ROOT)} depth={2} kind="sketch" coll="sketches" icon={<PencilSimpleLine size={13} />} />
+          <Group label="Sketches" depth={1} icon={ICON.Folder}>
+            <Items items={sketchesOf(ROOT)} depth={2} kind="sketch" coll="sketches" icon={ICON.PencilSimpleLine} />
           </Group>
-          <Group label="Meshes" depth={1} icon={<Folder size={13} />}>
-            <Items items={meshesOf(ROOT)} depth={2} kind="mesh" coll="meshes" icon={<GridFour size={13} />} />
+          <Group label="Meshes" depth={1} icon={ICON.Folder}>
+            <Items items={meshesOf(ROOT)} depth={2} kind="mesh" coll="meshes" icon={ICON.GridFour} />
           </Group>
           <ComponentsSection depth={1} content={content} />
           <JointsSection depth={1} />

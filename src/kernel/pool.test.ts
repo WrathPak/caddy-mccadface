@@ -67,6 +67,17 @@ describe('compute api', () => {
     expect(parts[0].topo.positions[3]).toBeCloseTo(t.positions[3] * 2, 4)
   })
 
+  it('a big import comes with its GPU pieces ready, a small one without', async () => {
+    const big = await importMesh({ source: writeStl([heightfield(200)]), format: 'stl', scale: 1, creaseDeg: 20 }) // 80000 triangles
+    expect(big[0].display.chunks!.length).toBe(Math.ceil(80_000 / 24_000))
+    expect(big[0].display.chunks!.reduce((n, c) => n + c.indices.length / 3, 0)).toBe(80_000)
+    const small = await importMesh({ source: writeStl([heightfield(20)]), format: 'stl', scale: 1, creaseDeg: 20 })
+    expect(small[0].display.chunks).toBeUndefined()
+    // the api moves every buffer it hands back (pieces included) instead of copying it
+    const moved = await computeApi.importMesh({ source: writeStl([heightfield(200)]), format: 'stl', scale: 1, creaseDeg: 20 })
+    expect(moved[0].display.chunks!.length).toBe(4)
+  })
+
   it('decimates through the api', async () => {
     const t = heightfield(100)
     const lod = await computeApi.lod({ positions: t.positions, indices: t.indices, target: 3000 })

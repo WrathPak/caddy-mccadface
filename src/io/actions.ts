@@ -10,7 +10,7 @@ import { viewportBus } from '@/viewport/bus'
 import { downloadFile, MODEL_EXTS, pickFiles, pickProject, writeProject, type FileHandleLike } from './files'
 import { commitSavedHistory, loadProject, resetProjectSections, serializeProject } from './project'
 import { resetHistory } from '@/history/store'
-import { rememberSource } from './meshImport'
+import { readFileBytes, rememberSource } from './meshImport'
 import { shouldAutosave, worthRecovering } from './autosave'
 import { useSettings } from '@/settings/settings'
 import { parseProject } from './projectParse'
@@ -120,7 +120,7 @@ export async function importFiles(files: File[]) {
   for (const f of files) {
     const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase()
     try {
-      const bytes = new Uint8Array(await f.arrayBuffer())
+      const bytes = await readFileBytes(f)
       const d = useDoc.getState()
       if (ext === '.caddy') {
         if (!confirmDiscard()) continue

@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { test, expect, addSketch, XY, type App } from './helpers'
+import { test, expect, addSketch, XY, XZ, type App } from './helpers'
 
 /** What the specs need to know about a body: its kind, whether it is an open surface, how many edges are open, the surface area. */
 interface Info { id: string; name: string; kind: string; surface: boolean; free: number | undefined; faces: number; area: number; tris: number }
@@ -583,4 +583,92 @@ test('surface workspace: extending two neighbouring edges fills the corner, and 
     return hi - lo
   }, pieces[0])
   expect(Math.abs(across - 14) < 0.01 || Math.abs(across - 10) < 0.01).toBe(true) // 2 mm outward makes 14 across, inward keeps the 10
+})
+
+test('surface workspace: extending two edges that meet on a cylinder wall and on a sphere window closes the corner, natural and tangent', async ({ app }) => {
+  test.setTimeout(150_000)
+  await app.open()
+  await app.tab('Surface')
+  const add = async (type: string, params: Record<string, unknown>) => {
+    const id = await app.ev((c, a) => c.doc.getState().addFeature(a.type, a.params), { type, params })
+    await app.idle()
+    return id as string
+  }
+  /** Edge indices of a body whose two ends both satisfy `on` (the source of a boolean expression in x, y, z). */
+  const edgesWhere = (id: string, on: string): Promise<number[]> => app.ev((c, a) => {
+    const f = new Function('x', 'y', 'z', 'return ' + a.on) as (x: number, y: number, z: number) => boolean // eslint-disable-line
+    const b = c.doc.getState().geometry.find((x: any) => x.id === a.id) // eslint-disable-line
+    const e = b.mesh.edges, ids = b.mesh.edgeIds
+    const out = new Set<number>()
+    for (let s = 0; s < e.length / 6; s++) if (f(e[s * 6], e[s * 6 + 1], e[s * 6 + 2]) && f(e[s * 6 + 3], e[s * 6 + 4], e[s * 6 + 5])) out.add(ids[s])
+    return [...out]
+  }, { id, on })
+  /** The range of an expression in x, y, z over the vertices of a body. */
+  const spread = (id: string, of: string): Promise<[number, number]> => app.ev((c, a) => {
+    const f = new Function('x', 'y', 'z', 'return ' + a.of) as (x: number, y: number, z: number) => number // eslint-disable-line
+    const p = c.doc.getState().geometry.find((x: any) => x.id === a.id).mesh.positions // eslint-disable-line
+    let lo = Infinity, hi = -Infinity
+    for (let i = 0; i < p.length; i += 3) { const v = f(p[i], p[i + 1], p[i + 2]); lo = Math.min(lo, v); hi = Math.max(hi, v) }
+    return [lo, hi]
+  }, { id, of })
+  const extend = async (id: string, edges: number[], mode: 'Natural' | 'Tangent', distance: string) => {
+    await select(app, edges.map((index) => ({ kind: 'edge', id, index })))
+    await app.ribbon('Extend').first().click()
+    await expect(title(app)).toHaveText('Extend')
+    await app.field('Distance', distance)
+    await app.inspector().getByRole('radio', { name: mode, exact: true }).click()
+    await app.ok()
+    const f = (await app.features()).at(-1)!
+    expect(f.state, f.error).toBe('ok')
+  }
+  const undo = async () => { await app.ev((c) => c.doc.getState().undo()); await app.idle() }
+
+  // a quarter of a cylinder wall: radius 5, 10 tall. The top arc and the straight edge on the Y axis meet at a corner
+  const line = (await chainsOf(app, await addSketch(app, XZ, [{ k: 'line', a: [5, 0], b: [5, 10] }])))[0]
+  const wall = await add('surfaceRevolve', { curves: [line.ref], axis: 'worldZ', angle: 90 })
+  const patch = (await info(app, wall)).area
+  near(patch, (Math.PI / 2) * 5 * 10, 0.01)
+  const pair = [...(await edgesWhere(wall, 'Math.abs(z - 10) < 1e-4')), ...(await edgesWhere(wall, 'Math.abs(x) < 1e-4'))]
+  expect(pair.length).toBe(2)
+
+  await extend(wall, pair, 'Natural', '2')
+  let w = await info(app, wall)
+  near(w.area, patch + (Math.PI / 2) * 5 * 2 + 10 * 2 + 4, 0.01) // the arc strip, the straight strip and the 2 x 2 corner: a cylinder unrolls flat
+  expect(w.faces).toBe(4)
+  expect(w.free).toBe(8) // the rim only: nothing is open at the corner
+  const [lo, hi] = await spread(wall, 'Math.hypot(x, y)')
+  expect(lo).toBeGreaterThan(5 - 0.02)
+  expect(hi).toBeLessThan(5 + 0.02)
+  await undo()
+  expect((await info(app, wall)).free).toBe(4)
+
+  await extend(wall, pair, 'Tangent', '2')
+  w = await info(app, wall)
+  expect(w.faces).toBe(4)
+  expect(w.free).toBe(8)
+  expect(w.area).toBeGreaterThan(patch + 2 * 15)
+  await undo()
+
+  // a lat-long window of a sphere of radius 10: doubly curved, so the corner patch has to follow the sphere
+  const arc = (await chainsOf(app, await addSketch(app, XZ, [{ k: 'arc', c: [0, 0], s: [10 * Math.cos(Math.PI / 6), 10 * Math.sin(Math.PI / 6)], e: [10 * Math.cos(Math.PI / 3), 10 * Math.sin(Math.PI / 3)] }])))[0]
+  const win = await add('surfaceRevolve', { curves: [arc.ref], axis: 'worldZ', angle: 90 })
+  const top = 10 * Math.sin(Math.PI / 3)
+  const corner = [...(await edgesWhere(win, `Math.abs(z - ${top}) < 1e-3`)), ...(await edgesWhere(win, 'Math.abs(x) < 1e-4'))]
+  expect(corner.length).toBe(2)
+
+  await extend(win, corner, 'Natural', '1.5')
+  const s = await info(app, win)
+  expect(s.faces).toBe(4)
+  expect(s.free).toBe(8)
+  const [slo, shi] = await spread(win, 'Math.hypot(x, y, z)')
+  expect(slo).toBeGreaterThan(10 - 0.03)
+  expect(shi).toBeLessThan(10 + 0.03)
+  await undo()
+
+  await extend(win, corner, 'Tangent', '1.5')
+  const t = await info(app, win)
+  expect(t.faces).toBe(4)
+  expect(t.free).toBe(8)
+  expect((await spread(win, 'Math.hypot(x, y, z)'))[1]).toBeGreaterThan(10 + 0.01) // straight off the sphere along its tangents
+  expect(await states(app)).not.toContain('error')
 })

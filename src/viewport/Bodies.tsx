@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Line } from '@react-three/drei'
-import type { ThreeEvent } from '@react-three/fiber'
+import { useThree, type ThreeEvent } from '@react-three/fiber'
 import {
-  Box3, BufferAttribute, BufferGeometry, DoubleSide, LineSegments, Material, Matrix4, Mesh, MeshBasicMaterial, Object3D, MeshStandardMaterial, Sphere, Vector3, type Plane,
+  Box3, BufferAttribute, BufferGeometry, DoubleSide, LineSegments, Material, Matrix4, Mesh, MeshBasicMaterial, MeshNormalMaterial, Object3D, MeshStandardMaterial, OrthographicCamera, Scene, Sphere, Vector3,
+  WebGLRenderTarget, type Plane, type WebGLRenderer,
 } from 'three'
 import { useUi, type SelectionRef } from '@/store/ui'
 import { useDoc } from '@/doc/store'
 import { useMove } from '@/features/move'
 import { useHairPaint } from '@/features/hair/paint'
-import { composeTransform, type Body } from '@/kernel/types'
+import { composeTransform, type Body, type MeshChunk } from '@/kernel/types'
 import { attachBvh, buildBvh } from './bvh'
+import { CHUNK_TRIS, CHUNKED_MIN_TRIS, chunker } from '@/kernel/bigmesh'
 import { registerLodSwap, useMotion, useWarm } from './motion'
 import { usePreview } from './preview'
 import { useFaceEdges } from './faceEdges'
@@ -52,44 +54,46 @@ function applyKnownBounds(g: BufferGeometry, bounds: Body['mesh']['bounds']) {
   g.boundingSphere = box.getBoundingSphere(new Sphere())
 }
 
-/** Triangles per piece of a big mesh's drawn geometry. */
-const CHUNK_TRIS = 40_000
+/** How long after the viewport starts the shader warm-up speck stays up. */
+const BOOT_WARM_MS = 2500
+/** How long one task sends pieces to the GPU before it gives the main thread back. */
+const UPLOAD_SLICE_MS = 20
 /** Never drawn: the mesh that only exists for picking. */
 const HIDDEN = new MeshBasicMaterial({ visible: false })
+const isBig = (b: Body) => b.mesh.indices.length / 3 > CHUNKED_MIN_TRIS
+
+/** A piece of a big mesh as geometry. */
+function chunkGeometry(c: MeshChunk, bounds: Body['mesh']['bounds']): BufferGeometry {
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(c.positions, 3))
+  g.setAttribute('normal', new BufferAttribute(c.normals, 3))
+  g.setIndex(new BufferAttribute(c.indices, 1))
+  applyKnownBounds(g, bounds)
+  return g
+}
 
 /**
- * Makes own, compact geometries for runs of a body's triangles. The vertex remap table (one int per vertex of the whole mesh)
- * is allocated once and only the entries a chunk touched are reset, so the cost of a chunk follows its size and not the
- * mesh's: allocating and clearing it per chunk was most of the main-thread time of a 3 million triangle import.
+ * Sends geometries to the GPU without drawing a frame. three uploads a geometry the first time it is drawn, so each is drawn once
+ * into a one pixel render target, with a material that reads the attributes the real one does (position, normal, index). A frame
+ * of the whole scene is what an upload would otherwise ride on, and under a slow CPU a frame is long before it carries anything:
+ * the page has to composite, lay out and paint the canvas, take the ambient occlusion passes, and so on.
  */
-function chunker(b: Body): (t0: number, t1: number) => BufferGeometry {
-  const m = b.mesh
-  const remap = new Int32Array(m.positions.length / 3).fill(-1)
-  return (t0, t1) => {
-    const n = (t1 - t0) * 3
-    const idx = new Uint32Array(n)
-    const verts = new Uint32Array(n) // at most one new vertex per index
-    let nv = 0
-    for (let i = 0; i < n; i++) {
-      const v = m.indices[t0 * 3 + i]
-      let r = remap[v]
-      if (r < 0) { r = remap[v] = nv; verts[nv++] = v }
-      idx[i] = r
-    }
-    const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3)
-    for (let i = 0; i < nv; i++) {
-      const v = verts[i]
-      remap[v] = -1
-      const o = v * 3, d = i * 3
-      pos[d] = m.positions[o]; pos[d + 1] = m.positions[o + 1]; pos[d + 2] = m.positions[o + 2]
-      nrm[d] = m.normals[o]; nrm[d + 1] = m.normals[o + 1]; nrm[d + 2] = m.normals[o + 2]
-    }
-    const g = new BufferGeometry()
-    g.setAttribute('position', new BufferAttribute(pos, 3))
-    g.setAttribute('normal', new BufferAttribute(nrm, 3))
-    g.setIndex(new BufferAttribute(idx, 1))
-    applyKnownBounds(g, m.bounds)
-    return g
+function makeUploader(gl: WebGLRenderer) {
+  const target = new WebGLRenderTarget(1, 1)
+  const material = new MeshNormalMaterial()
+  const mesh = new Mesh(undefined, material)
+  mesh.frustumCulled = false
+  const scene = new Scene()
+  scene.add(mesh)
+  const camera = new OrthographicCamera(-1, 1, 1, -1, -1, 1)
+  return {
+    send(g: BufferGeometry) {
+      mesh.geometry = g
+      const prev = gl.getRenderTarget()
+      gl.setRenderTarget(target)
+      try { gl.render(scene, camera) } finally { gl.setRenderTarget(prev) }
+    },
+    dispose() { target.dispose(); material.dispose() },
   }
 }
 
@@ -100,7 +104,8 @@ function buildLodGeometry(b: Body): BufferGeometry | null {
   const g = new BufferGeometry()
   g.setAttribute('position', new BufferAttribute(l.positions, 3))
   g.setAttribute('normal', new BufferAttribute(l.normals, 3))
-  g.setIndex(new BufferAttribute(l.indices, 1))
+  // fewer than 65536 vertices: half the bytes to send, and the driver checks every index
+  g.setIndex(new BufferAttribute(l.positions.length / 3 < 65536 ? new Uint16Array(l.indices) : l.indices, 1))
   applyKnownBounds(g, b.mesh.bounds)
   return g
 }
@@ -123,7 +128,11 @@ interface Mats { base: Material; /** surface bodies (open shells): a tinted mate
 
 /** Renders the document's bodies (kernel output) with hover pre-highlight and filter-aware picking. One body is drawn once per instance of its component. */
 export function Bodies() {
-  const instances = useInstances()
+  const current = useInstances()
+  // a big mesh arriving is a lot of scene to build: rendered at low priority React hands the main thread back every few
+  // milliseconds in between, where a normal update would do all of it in one task. Small edits are not held back.
+  const deferred = useDeferredValue(current)
+  const instances = current.some((i) => isBig(i.body)) ? deferred : current
   const colors = useVpColors()
   const displayMode = useUi((s) => s.displayMode)
   const hiddenUi = useUi((s) => s.hiddenIds)
@@ -164,10 +173,17 @@ export function Bodies() {
     return { base, surf, hi, dim, flag }
   }, [displayMode, colors, clip])
 
+  // the shaders are linked (and the environment lighting uploaded) once the app has settled, in a task nobody is waiting on:
+  // linking them in the frame that first draws a body costs a long task, and software GL takes the better part of a second
   const warm = useWarm((s) => s.on)
+  const [boot, setBoot] = useState(true)
+  useEffect(() => {
+    const t = window.setTimeout(() => setBoot(false), BOOT_WARM_MS)
+    return () => clearTimeout(t)
+  }, [])
   return (
     <>
-      {warm && instances.length === 0 && <ShaderWarmup material={mats.base} />}
+      {(warm || boot) && instances.length === 0 && <ShaderWarmup material={mats.base} />}
       <group name="bodies">
         {instances.map((i, n) => (instanceHidden(i, hidden) ? null : (
           <BodyView
@@ -211,9 +227,11 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
   useEffect(() => () => lodGeo?.dispose(), [lodGeo])
   const geo = useMemo(() => buildGeometry(body), [body])
   useEffect(() => () => geo.dispose(), [geo])
-  // a big mesh is drawn from pieces of about CHUNK_TRIS triangles, one made and sent to the GPU per frame, so no single frame
-  // carries the whole upload; `geo` (never drawn then) still serves picking, the highlight and sections
-  const chunked = body.mesh.indices.length / 3 > CHUNK_TRIS * 1.2
+  // a big mesh is drawn from pieces of about CHUNK_TRIS triangles, sent to the GPU a few at a time in tasks of their own (see
+  // makeUploader), so no single task carries the whole upload; `geo` (never drawn then) still serves picking, the highlight and sections
+  const chunked = isBig(body)
+  const invalidate = useThree((s) => s.invalidate)
+  const gl = useThree((s) => s.gl)
   const [chunksDone, setChunksDone] = useState(!chunked)
   const fullRef = useRef<Object3D>(null)
   const lodRef = useRef<Mesh>(null)
@@ -259,23 +277,41 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
   useEffect(() => {
     const group = fullRef.current
     if (!chunked || !group) return
-    let t = 0, raf = 0
+    let t = 0, timer = 0
     const total = body.mesh.indices.length / 3
-    const build = chunker(body)
+    // the worker that made the mesh cut the pieces; a body made elsewhere (a B-rep, a mesh boolean) is cut here
+    const ready = body.mesh.chunks
+    const cut = ready ? null : chunker(body.mesh.positions, body.mesh.normals, body.mesh.indices)
+    const uploader = makeUploader(gl)
+    const pieces: BufferGeometry[] = []
     const made: Mesh[] = []
+    // Each task sends pieces to the GPU until it has used up its share of the main thread, then hands the thread back, so no
+    // task is long and the page keeps answering in between. Nothing is in the scene until the last piece is up: the pieces
+    // are drawn for the first time as one body, with nothing left to send.
     const step = () => {
-      const m = new Mesh(build(t, Math.min(total, t + CHUNK_TRIS)), matRef.current)
-      m.frustumCulled = false // scaled to nothing until every piece is up, but still drawn so the GPU gets it
-      m.raycast = noRaycast
-      group.add(m)
-      made.push(m)
-      t += CHUNK_TRIS
-      if (t < total) raf = requestAnimationFrame(step)
-      else { for (const x of made) x.frustumCulled = true; setChunksDone(true) }
+      const t0 = performance.now()
+      if (lodGeo && pieces.length === 0) uploader.send(lodGeo) // the low-res copy stands in for the body, and has to be up first
+      do {
+        const piece = ready ? ready[pieces.length] : cut!(t, Math.min(total, t + CHUNK_TRIS))
+        const g = chunkGeometry(piece, body.mesh.bounds)
+        uploader.send(g)
+        pieces.push(g)
+        t += CHUNK_TRIS
+      } while (t < total && performance.now() - t0 < UPLOAD_SLICE_MS)
+      if (t < total) { timer = window.setTimeout(step, 0); return }
+      for (const g of pieces) {
+        const m = new Mesh(g, matRef.current)
+        m.raycast = noRaycast
+        group.add(m)
+        made.push(m)
+      }
+      setChunksDone(true)
+      invalidate()
     }
-    raf = requestAnimationFrame(step)
-    return () => { cancelAnimationFrame(raf); for (const m of made) { group.remove(m); m.geometry.dispose() } }
-  }, [chunked, body])
+    // the first slice waits for the frame that shows the low-res copy
+    const raf = requestAnimationFrame(() => { timer = window.setTimeout(step, 0) })
+    return () => { cancelAnimationFrame(raf); clearTimeout(timer); uploader.dispose(); for (const m of made) group.remove(m); for (const g of pieces) g.dispose() }
+  }, [chunked, body, invalidate, gl, lodGeo])
   const path = inst.occ || undefined
   const refFor = (e: ThreeEvent<PointerEvent | MouseEvent>): SelectionRef =>
     byComponent ? { kind: 'component', id: inst.occ }

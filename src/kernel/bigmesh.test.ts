@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BufferAttribute, BufferGeometry, Raycaster, Vector3 } from 'three'
 import { MeshBVH } from 'three-mesh-bvh'
-import { buildLod, IntMap, meshDisplayLarge, vertexNormals, weld } from './bigmesh'
+import { buildChunks, buildLod, CHUNK_TRIS, chunker, IntMap, meshDisplayLarge, vertexNormals, weld } from './bigmesh'
 import { meshDisplayAuto } from './meshutil'
 import { buildMeshBvh, withBvh } from './bvhBuild'
 import { topoVolume } from './meshutil'
@@ -129,5 +129,62 @@ describe('large mesh display', () => {
     buildMeshBvh(t.positions, t.indices)
     expect(t.indices).toEqual(before)
     expect(topoVolume(t)).toBeDefined()
+  })
+})
+
+describe('chunks for the GPU upload', () => {
+  const mesh = (n: number) => {
+    const t = heightfield(n)
+    return { positions: t.positions, normals: vertexNormals(t.positions, t.indices), indices: t.indices }
+  }
+
+  it('cuts a mesh into pieces that together are exactly its triangles', () => {
+    const m = mesh(120) // 28800 triangles: two pieces of 20000
+    const pieces = buildChunks(m.positions, m.normals, m.indices, 20_000)
+    expect(pieces).toHaveLength(2)
+    let tri = 0
+    for (const c of pieces) {
+      expect(c.positions.length).toBe(c.normals.length)
+      for (let i = 0; i < c.indices.length; i += 3, tri++) {
+        // the triangle the piece draws is the triangle of the mesh at that place: same corners, same normals
+        for (let k = 0; k < 3; k++) {
+          const v = c.indices[i + k], src = m.indices[tri * 3 + k]
+          for (let a = 0; a < 3; a++) {
+            expect(c.positions[v * 3 + a]).toBe(m.positions[src * 3 + a])
+            expect(c.normals[v * 3 + a]).toBe(m.normals[src * 3 + a])
+          }
+        }
+      }
+    }
+    expect(tri).toBe(m.indices.length / 3)
+  })
+
+  it('shares vertices inside a piece, so a piece is smaller than three corners per triangle', () => {
+    const m = mesh(200)
+    const [first] = buildChunks(m.positions, m.normals, m.indices)
+    expect(first.indices.length).toBe(CHUNK_TRIS * 3)
+    expect(first.positions.length / 3).toBeLessThan(CHUNK_TRIS * 3 * 0.7)
+  })
+
+  it('uses 16 bit indices when the piece has fewer than 65536 vertices, 32 bit otherwise', () => {
+    const m = mesh(60)
+    expect(buildChunks(m.positions, m.normals, m.indices)[0].indices).toBeInstanceOf(Uint16Array)
+    // a soup of unshared corners: 30000 triangles, 90000 vertices in one piece
+    const soup = soupOf(heightfield(122))
+    const normals = new Float32Array(soup.length).fill(0)
+    const indices = Uint32Array.from({ length: soup.length / 3 }, (_, i) => i)
+    const piece = buildChunks(soup, normals, indices, 30_000)[0]
+    expect(piece.positions.length / 3).toBeGreaterThan(65535)
+    expect(piece.indices).toBeInstanceOf(Uint32Array)
+  })
+
+  it('a piece does not depend on the ones made before it (the remap table is reset)', () => {
+    const m = mesh(150)
+    const make = chunker(m.positions, m.normals, m.indices, 10_000)
+    const a = make(20_000, 30_000)
+    make(0, 10_000)
+    const b = make(20_000, 30_000)
+    expect(Array.from(b.indices)).toEqual(Array.from(a.indices))
+    expect(Array.from(b.positions)).toEqual(Array.from(a.positions))
   })
 })
