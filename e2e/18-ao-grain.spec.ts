@@ -22,7 +22,7 @@ async function blockStats(app: App, box: { x: number; y: number; w: number; h: n
     const off = lum.filter((v) => Math.abs(v - median) > 1.5).length / lum.length
     const mean = lum.reduce((a, b) => a + b, 0) / lum.length
     const std = Math.sqrt(lum.reduce((a, b) => a + (b - mean) ** 2, 0) / lum.length)
-    return { median, off, std }
+    return { median, off, std, lum }
   }, url)
 }
 
@@ -42,10 +42,16 @@ test('light theme, AO on, empty scene: ground and background are grain free', as
   await app.ev((c) => c.bus.emit('view', 'top'))
   await app.cameraStable()
   const cb = (await app.page.locator('.vp canvas').boundingBox())!
-  // a block of ground (the grid is on) and a block of background-only pixels in the top corner
-  const ground = await blockStats(app, { x: Math.floor(cb.width / 2) + 20, y: Math.floor(cb.height / 2) + 20, w: 30, h: 30 })
-  // a few grid lines may cross the block, grain would touch most of it
-  expect(ground.off).toBeLessThan(0.15)
+  // a block of ground with the grid on, AO on and then off: the grid draws the same either way, so any change is AO grain
+  const block = { x: Math.floor(cb.width / 2) + 20, y: Math.floor(cb.height / 2) + 20, w: 30, h: 30 }
+  const ground = await blockStats(app, block)
+  await app.ev((c) => c.ui.getState().toggleSsao())
+  await app.page.waitForTimeout(600)
+  const plain = await blockStats(app, block)
+  await app.ev((c) => c.ui.getState().toggleSsao())
+  await app.page.waitForTimeout(600)
+  const changed = ground.lum.filter((v, i) => Math.abs(v - plain.lum[i]) > 1.5).length / ground.lum.length
+  expect(changed).toBeLessThan(0.05)
   // with the grid hidden the ground area is exactly the clear colour: no noise at all
   await app.ev((c) => c.ui.setState({ showGrid: false, showOrigin: false }))
   await app.page.waitForTimeout(600)

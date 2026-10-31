@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Color, DoubleSide, MathUtils, type OrthographicCamera, type PerspectiveCamera, type ShaderMaterial } from 'three'
+import { Color, DoubleSide, MathUtils, Vector2, Vector3, type OrthographicCamera, type PerspectiveCamera, type ShaderMaterial } from 'three'
 import { GRID_GLSL, gridFadeRange, gridLevels } from './gridMath'
 import { useVpColors } from './colors'
 import { useSettings } from '@/settings/settings'
@@ -26,6 +26,8 @@ uniform float uOrtho;
 uniform float uFadeA;
 uniform float uFadeB;
 uniform float uNear;
+uniform vec2 uFadeCenter;
+uniform float uGraze;
 uniform vec3 uMinor;
 uniform vec3 uMajor;
 uniform vec3 uAxisX;
@@ -36,7 +38,9 @@ void main() {
   // distance from the camera (depth for an orthographic one) fades the grid to the background before the far plane can clip it
   float d = uOrtho > 0.5 ? -(viewMatrix * vec4(p, 0.0, 1.0)).z : distance(vec3(p, 0.0), cameraPosition);
   float f = 1.0 - smoothstep(uFadeA, uFadeB, d);
-  f *= 1.0 - smoothstep(uRadius * 0.3, uRadius, length(vRel));
+  f *= 1.0 - smoothstep(uRadius * 0.3, uRadius, length(p - uFadeCenter));
+  // orthographic has no horizon: seen nearly edge-on the plane squeezes into a thin band with hard ends, so it fades out instead
+  if (uOrtho > 0.5) f *= smoothstep(0.05, 0.3, uGraze);
   if (uOrtho < 0.5) f *= smoothstep(uNear, uNear * 2.0, d); // dissolve instead of being cut by the near plane
   float k = gridStrength(p, uStep, uBlend, f);
   vec3 col = gridColor(k, uMinor, uMajor);
@@ -55,6 +59,8 @@ void main() {
  * follows the scene size and the camera distance) and the shader fades the lines out with distance, so there is no plane edge at
  * any angle: the minor lines go first, then the major ones, and cells smaller than a few pixels vanish instead of moire-ing.
  */
+const dirV = new Vector3()
+
 export function InfiniteGrid() {
   const colors = useVpColors()
   const mat = useRef<ShaderMaterial>(null)
@@ -73,6 +79,8 @@ export function InfiniteGrid() {
       uFadeA: { value: 100 },
       uFadeB: { value: 1000 },
       uNear: { value: 0.1 },
+      uFadeCenter: { value: new Vector2() },
+      uGraze: { value: 1 },
       uMinor: { value: new Color() },
       uMajor: { value: new Color() },
       uAxisX: { value: new Color() },
@@ -106,6 +114,14 @@ export function InfiniteGrid() {
     u.uHalf.value = ortho ? screen * 1.1 : far
     u.uRadius.value = ortho ? screen : 1e9
     u.uCenter.value = [cam.position.x, cam.position.y]
+    // the radial fade sits where the view looks at the ground (under the camera when it looks level), so it is even both ways
+    const dir = cam.getWorldDirection(dirV)
+    u.uGraze.value = Math.abs(dir.z)
+    const t = Math.abs(dir.z) > 1e-3 ? -cam.position.z / dir.z : -1
+    if (t > 0) u.uFadeCenter.value.set(cam.position.x + dir.x * t, cam.position.y + dir.y * t)
+    else u.uFadeCenter.value.set(cam.position.x, cam.position.y)
+    // orthographic: the quad sits on the same spot, so it always reaches past the end of the fade
+    if (ortho) u.uCenter.value = [u.uFadeCenter.value.x, u.uFadeCenter.value.y]
   })
 
   return (

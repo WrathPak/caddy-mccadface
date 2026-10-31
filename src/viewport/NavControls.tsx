@@ -219,7 +219,8 @@ export function NavControls() {
     if ((cam as OrthographicCamera).isOrthographicCamera) {
       const o = cam as OrthographicCamera
       o.zoom = sizeRef.current.height / (2 * st.dist * Math.tan(MathUtils.degToRad(FOV) / 2))
-      o.near = -(dc + R * 2 + 10)
+      // as deep in front as behind: an orthographic view sees the ground plane run past the camera, and a shallow near plane cut it off in a hard line
+      o.near = -far
       o.far = far
       o.updateProjectionMatrix()
     } else {

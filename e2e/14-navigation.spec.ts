@@ -106,6 +106,9 @@ test('wheel zooms toward the cursor (perspective and orthographic) with a smooth
 
 test('zooming in never clips into the model: the near plane follows the scene', async ({ app, page }) => {
   await setup(app)
+  // a perspective near plane (an orthographic one has no near distance to follow)
+  await app.ev((c) => c.ui.getState().setProjection('perspective'))
+  await app.cameraStable()
   const { cx, cy } = await vp(page)
   await page.mouse.move(cx, cy)
   for (let i = 0; i < 12; i++) { await page.mouse.wheel(0, -400); await page.waitForTimeout(40) }
