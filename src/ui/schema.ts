@@ -57,6 +57,8 @@ export interface SelectionRefParam extends Base {
   required?: boolean
   /** with `required`: the smallest number of entries that satisfies it (default 1) */
   min?: number
+  /** with `required`: not needed while the field with this key has an entry (two ways to say the same thing, one of them is enough) */
+  requiredUnless?: string
   /** viewport / Browser picks flow into this field while it is the active one (click the field to activate it) */
   pick?: boolean
   default: string[]
@@ -151,6 +153,7 @@ export function selectionParams(schema: ParamSchema, values: ParamValues): Selec
 export function missingRequired(schema: ParamSchema, values: ParamValues): string[] {
   const full = { ...schemaDefaults(schema), ...values }
   return selectionParams(schema, full)
+    .filter((d) => d.required && !(d.requiredUnless && Array.isArray(full[d.requiredUnless]) && (full[d.requiredUnless] as string[]).length > 0))
     .filter((d) => d.required && !(Array.isArray(full[d.key]) && (full[d.key] as string[]).length >= (d.min ?? 1)))
     .map((d) => d.label + ((d.min ?? 1) > 1 ? ` (at least ${d.min})` : ''))
 }

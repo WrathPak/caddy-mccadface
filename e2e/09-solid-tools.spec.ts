@@ -194,13 +194,15 @@ test('Shell: pick the top face, set thickness, hollow the box', async ({ app, pa
   await app.ev((c) => { c.runCommand('view.home'); c.runCommand('view.frame') })
   await app.ribbon('Shell').click()
   await expect(app.inspector().locator('.panel-title')).toHaveText('Shell')
-  await expect(okButton(page)).toBeDisabled()
-  await expect(hint(page)).toContainText('faces')
+  // the only body is picked for a closed hollow, so OK is ready; picking a face turns it into an open shell instead
+  await expect(okButton(page)).toBeEnabled()
+  expect((await app.ev((c) => c.ui.getState().inspector?.values.bodies))).toEqual(['f1'])
   const p = await app.project(0, 0, 20)
   await page.mouse.move(p.x - 30, p.y + 5)
   await page.mouse.move(p.x, p.y, { steps: 5 })
   await page.mouse.click(p.x, p.y)
   await expect(okButton(page)).toBeEnabled()
+  await expect.poll(() => app.ev((c) => c.ui.getState().inspector?.values.bodies)).toEqual([])
   await app.field('Thickness', '2')
   await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBe(1)
   await app.shot('shell-dialog')
@@ -220,7 +222,7 @@ test('feature dialogs: OK stays disabled with a hint until the required selectio
   await app.tab('Solid')
   const cases: [string, RegExp][] = [
     ['Extrude', /profiles/i], ['Revolve', /profiles/i], ['Fillet', /edges/i], ['Chamfer', /edges/i],
-    ['Sweep', /profile/i], ['Shell', /faces/i], ['Combine', /target/i],
+    ['Sweep', /profile/i], ['Combine', /target/i],
   ]
   for (const [name, re] of cases) {
     await app.ribbon(name).first().click()

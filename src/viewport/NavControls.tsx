@@ -22,6 +22,9 @@ const AZ = new Vector3(0, 0, 1)
 /** Unit vector from the target towards the camera for an azimuth / elevation (Z up). */
 const dirOf = (az: number, el: number) => new Vector3(Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el))
 const HOME_DIR = dirOf(-Math.PI / 4, MathUtils.degToRad(32))
+/** The view a fresh page opens with. */
+const HOME_TARGET = new Vector3(0, 0, 10)
+const HOME_DIST = 190
 
 const DIRS: Record<ViewDir, Vector3> = {
   home: HOME_DIR,
@@ -137,7 +140,7 @@ let savedPose: NavPose | null = null
 
 export function NavControls() {
   const { gl, size, invalidate, scene } = useThree()
-  const s = useRef<NavPose>(savedPose ? { target: savedPose.target.clone(), q: savedPose.q.clone(), dist: savedPose.dist } : { target: new Vector3(0, 0, 10), q: lookQuat(HOME_DIR), dist: 190 })
+  const s = useRef<NavPose>(savedPose ? { target: savedPose.target.clone(), q: savedPose.q.clone(), dist: savedPose.dist } : { target: HOME_TARGET.clone(), q: lookQuat(HOME_DIR), dist: HOME_DIST })
   useEffect(() => registerFingerOwner(() => useSketch.getState().active || useHairPaint.getState().mode !== 'off' || useAssemblyRuntime.getState().tool === 'drag'), [])
   useEffect(() => () => { savedPose = { target: s.current.target.clone(), q: s.current.q.clone(), dist: s.current.dist } }, [])
   const anim = useRef<Anim | null>(null)
@@ -357,6 +360,7 @@ export function NavControls() {
         fitSphere(sph.center.clone(), sph.radius)
       }),
       viewportBus.on('view', (d) => goTo({ q: lookQuat(DIRS[d]) })),
+      viewportBus.on('resetView', () => goTo({ q: lookQuat(HOME_DIR), dist: HOME_DIST, target: HOME_TARGET.clone() })),
       viewportBus.on('viewVec', ([x, y, z]) => goTo({ q: lookQuat(new Vector3(x, y, z)) })),
       viewportBus.on('tiltFromFacing', ({ normal, within = 10, deg = 30 }) => {
         const q = goalQ()

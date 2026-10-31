@@ -46,6 +46,17 @@ export function gridStep(wpp: number): number {
   return gridSnapStep(wpp)
 }
 
+/**
+ * A value on the grid: on a line of the current step when one is within `reach` (a few pixels), else on the next finer one, so a
+ * click never lands far from where the cursor was (the next segment is measured from here) yet the value is always round.
+ */
+export function gridValue(v: number, step: number, reach: number): number {
+  const r = Math.round(v / step) * step
+  if (Math.abs(r - v) <= reach) return r
+  const f = step / 10
+  return Math.round(v / f) * f
+}
+
 const centers = (m: SketchModel) => {
   const s = new Set<string>()
   for (const e of m.entities) if (e.type === 'circle' || e.type === 'arc') s.add(e.c)
@@ -128,8 +139,8 @@ export function snap(raw: Vec2, ctx: SnapCtx): Snap {
   // 5. grid
   if (ctx.grid) {
     const g = gridStep(wpp)
-    if (!lockX) x = Math.round(x / g) * g
-    if (!lockY) y = Math.round(y / g) * g
+    if (!lockX) x = gridValue(x, g, px(6))
+    if (!lockY) y = gridValue(y, g, px(6))
   }
   const kind: SnapKind = out.axis && lockX !== lockY ? 'axis' : lockX || lockY ? 'free' : ctx.grid ? 'grid' : 'free'
   // an axis snap pins the point to the axis only when exactly one coordinate was aligned with the origin

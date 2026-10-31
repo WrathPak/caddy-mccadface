@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import * as CM from '@radix-ui/react-context-menu'
 import { CaretDown, CaretRight, DotOutline, Cube, Eye, EyeSlash, FileText, Folder, GridFour, LineSegment, PencilSimpleLine, Planet, Parallelogram, SelectionBackground } from '@phosphor-icons/react'
 import { useUi, type EntityKind } from '@/store/ui'
@@ -8,6 +8,7 @@ import { ConfigurationsGroup } from '@/features/modeling-tools/ConfigUi'
 import { ComponentsSection, JointsSection } from '@/assembly/ComponentTree'
 import { ownerOf } from '@/assembly/instances'
 import { ROOT } from '@/assembly/types'
+import { useSketchPick } from '@/sketch/create'
 import { Tip } from './Tooltip'
 
 /** What a row in the Browser is, for its tooltip. */
@@ -107,8 +108,10 @@ function Row({ id, name, depth, kind, icon, open, onToggle, coll, eye = true, pa
   )
 }
 
-function Group({ label, depth, icon, children, defaultOpen = true }: { label: string; depth: number; icon: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
+function Group({ label, depth, icon, children, defaultOpen = true, openWhen = false }: { label: string; depth: number; icon: ReactNode; children: ReactNode; defaultOpen?: boolean; openWhen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
+  // opens by itself while `openWhen` holds (the planes while a sketch waits for one), then stays as the person leaves it
+  useEffect(() => { if (openWhen) setOpen(true) }, [openWhen])
   return (
     <>
       <Row id={'g:' + label} name={label} depth={depth} icon={icon} open={open} onToggle={() => setOpen(!open)} />
@@ -124,6 +127,7 @@ function Items({ items, depth, kind, coll, icon, path }: { items: TreeEntity[]; 
 /** Document > Origin (planes, axes) > Bodies > Surfaces > Sketches > Meshes > Components (each with its own bodies and sketches) > Joints */
 export function BrowserTree() {
   const doc = useDoc()
+  const pickingPlane = useSketchPick((s) => s.picking)
   const a = doc.assembly
   const owner = new Map(doc.geometry.map((b) => [b.id, ownerOf(b, a)]))
   const inDef = (def: string) => (f: { component?: string }) => (f.component ?? ROOT) === def
@@ -168,7 +172,7 @@ export function BrowserTree() {
       <div className="panel-scroll" style={{ paddingTop: 2 }}>
         <Group label={`Document: ${doc.name}`} depth={0} icon={<FileText size={13} />}>
           <Group label="Origin" depth={1} icon={<Planet size={13} />}>
-            <Group label="Planes" depth={2} icon={<Folder size={13} />} defaultOpen={false}>
+            <Group label="Planes" depth={2} icon={<Folder size={13} />} defaultOpen={false} openWhen={pickingPlane}>
               {['XY', 'XZ', 'YZ'].map((p) => <Row key={p} id={'plane' + p} name={p + ' plane'} depth={3} kind="plane" icon={<Parallelogram size={13} />} />)}
               {doc.features.filter((f) => PLANE_FEATURES.has(f.type) && inDef(ROOT)(f)).map((f) => <Row key={f.id} id={f.id} name={f.name} depth={3} kind="plane" coll="sketches" icon={<Parallelogram size={13} />} />)}
             </Group>
