@@ -52,6 +52,11 @@ function AngleHandle({ store, suffix }: { store: typeof useAngleManip; suffix: s
   const [hot, setHot] = useState(false)
   const [typing, setTyping] = useState<string | null>(null)
   useEffect(() => { if (!m.active) setTyping(null) }, [m.active])
+  // a handle that goes away under the pointer gets no pointer-out: give the cursor back, and start cold when it comes back
+  useEffect(() => { if (!m.active && hot) { setHot(false); gl.domElement.style.cursor = '' } }, [m.active, hot, gl])
+  const hotNow = useRef(false)
+  hotNow.current = hot
+  useEffect(() => () => { if (hotNow.current) gl.domElement.style.cursor = '' }, [gl])
 
   const frame = useMemo(() => {
     const z = new Vector3(...m.axis).normalize()
