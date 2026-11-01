@@ -23,6 +23,7 @@ import { usePlugins, hostOf } from '@/api/pluginStore'
 import { drawingDebug } from '@/drawing/debug'
 import { assemblyDebug } from '@/assembly/debug'
 import * as updates from './updates'
+import * as install from './install'
 import { useToast } from '@/ui/Modal'
 import { useSettings } from '@/settings/settings'
 import { useDiskAutosave } from '@/io/diskAutosave'
@@ -57,7 +58,7 @@ export function installDebugHandle() {
   ;(window as unknown as { __caddy: unknown }).__caddy = {
     doc: useDoc, ui: useUi, sketch: useSketch, sketchData: useSketchData, hair: useHairView, preview: usePreview, manip: useManip, manips: MANIP_SLOTS, angleManip: useAngleManip, angleManips: ANGLE_SLOTS, planes: usePlanes, paint: useHairPaint, bus: viewportBus, motion: useMotion, lodState, projects: useProjects, plugins: usePlugins, pluginHost: hostOf,
     ...((window as unknown as { __caddyExtra?: object }).__caddyExtra ?? {}),
-    toast: useToast, settings: useSettings, updates, diskAutosave: useDiskAutosave, flushAutosave, openProjectFile, recovery: useRecovery,
+    toast: useToast, settings: useSettings, updates, install, diskAutosave: useDiskAutosave, flushAutosave, openProjectFile, recovery: useRecovery,
     assembly: assemblyDebug, nav: navTools, drawing: drawingDebug, runCommand, allCommands, regenerate, importFiles, saveDocument, serializeProject, parseProject,
   }
 }

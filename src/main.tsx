@@ -16,6 +16,7 @@ import { startDevice } from './app/device'
 import { App } from './app/App'
 import { installDebugHandle } from './app/debug'
 import { DEBUG_HANDLE } from './app/flags'
+import { markOfflineReady, startInstall } from './app/install'
 import { newVersionWaiting, setUpdater, watchForTakeover, watchForUpdates } from './app/updates'
 
 // the service worker would cache across e2e runs and is pointless in dev.
@@ -24,6 +25,7 @@ if (import.meta.env.PROD && !DEBUG_HANDLE) {
   let reg: ServiceWorkerRegistration | undefined
   const updateSW = registerSW({
     immediate: true,
+    onOfflineReady: markOfflineReady,
     onNeedRefresh: () => newVersionWaiting({ controlled: !!navigator.serviceWorker.controller }),
     onRegisteredSW: (_url, r) => { reg = r; if (r) watchForUpdates(r) },
   })
@@ -42,6 +44,7 @@ if (import.meta.env.PROD && !DEBUG_HANDLE) {
   })
   watchForTakeover()
 }
+startInstall()
 if (DEBUG_HANDLE) installDebugHandle()
 document.documentElement.dataset.theme = 'dark'
 startDevice()

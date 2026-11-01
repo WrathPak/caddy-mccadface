@@ -1,12 +1,14 @@
 /** Commands and panels of the platform work: version history now; projects, plugins and the script editor register here too. */
 import { lazy, Suspense } from 'react'
-import { ClockCounterClockwise, FolderSimple, NotePencil, PuzzlePiece, Terminal } from '@phosphor-icons/react'
+import { ClockCounterClockwise, DownloadSimple, FolderSimple, NotePencil, PuzzlePiece, Terminal } from '@phosphor-icons/react'
 import { registerCommand } from './commands'
 import { openPanel, registerPanel } from './panels'
 import { HistoryPanel } from '@/history/HistoryPanel'
 import { useNoteDialog } from '@/history/HistoryUi'
 import { ProjectsPanel } from '@/projects/ProjectsPanel'
 import { PluginsPanel } from '@/api/PluginsPanel'
+import { installApp, useInstall } from './install'
+import { useSettingsDialog } from '@/ui/SettingsDialog'
 import '@/history/service'
 import '@/projects/insertComponent'
 
@@ -36,6 +38,16 @@ registerCommand({
   icon: FolderSimple,
   category: 'File',
   run: () => openPanel('projects'),
+})
+
+registerCommand({
+  id: 'app.install',
+  label: 'Install App',
+  tip: 'Install CADdy McCADFace as an app: its own window and icon, and it opens with no internet',
+  icon: DownloadSimple,
+  category: 'App',
+  // the browser's own install dialog where it has one; otherwise Settings says where the browser keeps it
+  run: () => { if (useInstall.getState().prompt) void installApp(); else useSettingsDialog.getState().show('general') },
 })
 
 registerPanel({ id: 'plugins', title: 'Plugins', render: () => <PluginsPanel /> })

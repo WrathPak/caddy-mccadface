@@ -4,6 +4,7 @@ import { autosaveOffForTests } from '@/io/actions'
 import { canPickFolder, useProjects } from '@/projects/store'
 import { useSettings } from '@/settings/settings'
 import { applyUpdate, useUpdate } from '@/app/updates'
+import { installApp, useInstall } from '@/app/install'
 import { useDevice } from '@/app/device'
 import { Tip } from './Tooltip'
 
@@ -73,6 +74,33 @@ export function UpdateCard() {
         <button type="button" className="btn primary" data-testid="update-card-now" disabled={applying} onClick={() => void applyUpdate()}>
           {applying ? 'Saving ...' : switched ? 'Reload now' : 'Update now'}
         </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Once, where the browser can install the app: offered after the tour, the autosave card and any update card are out of the way.
+ * "Not now" is remembered; Settings > General keeps the Install button.
+ */
+export function InstallCard() {
+  const asked = useSettings((s) => s.installAsked)
+  const setAsked = useSettings((s) => s.setInstallAsked)
+  const tourSeen = useSettings((s) => s.tourSeen)
+  const folderAnswered = useSettings((s) => s.autosaveFolderAsked || !s.autosave || !s.diskAutosave)
+  const root = useProjects((s) => s.root)
+  const can = useInstall((s) => !!s.prompt && !s.installed)
+  const updateCard = useUpdate((s) => s.ready && !s.cardDismissed)
+  if (asked || !can || !tourSeen || updateCard || (!folderAnswered && !root && canPickFolder())) return null
+  return (
+    <div role="region" aria-label="Install app" data-testid="install-card" style={CENTRED}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>Install CADdy McCADFace?</div>
+      <div style={{ color: 'var(--text-dim)', marginBottom: 8 }}>
+        It gets its own window and icon, and opens with no internet. Nothing about your files changes: they stay on this computer either way.
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        <button type="button" className="btn" data-testid="install-card-later" onClick={() => setAsked(true)}>Not now</button>
+        <button type="button" className="btn primary" data-testid="install-card-install" onClick={() => { setAsked(true); void installApp() }}>Install</button>
       </div>
     </div>
   )
