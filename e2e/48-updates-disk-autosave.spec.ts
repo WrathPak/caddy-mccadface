@@ -500,3 +500,63 @@ test('restart: the folder comes back on its own, a newer folder copy is offered 
   await page.waitForTimeout(1200)
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
+
+// ---------------------------------------------------------------- install as an app
+
+/** What Chrome fires when the app can be installed; `prompt()` is the browser's own dialog, here counted and answered with `outcome`. */
+const offerInstall = (page: Page, outcome: 'accepted' | 'dismissed') => page.evaluate((outcome) => {
+  const w = window as any // eslint-disable-line
+  w.__prompted = 0
+  const e = new Event('beforeinstallprompt', { cancelable: true }) as any // eslint-disable-line
+  e.prompt = async () => { w.__prompted++ }
+  e.userChoice = Promise.resolve({ outcome })
+  window.dispatchEvent(e)
+  return e.defaultPrevented as boolean
+}, outcome)
+
+test('install: Settings says where to install, a one-time centred card when the browser offers it, and the Install button shows the browser dialog', async ({ app, page }) => {
+  await memFolder(page, { picker: false })
+  await app.open()
+  // no offer from the browser yet: Settings points at the browser's own menu, and the offline state is shown
+  await openSettings(page)
+  await expect(page.getByTestId('set-install')).toContainText('Install app')
+  await expect(page.getByTestId('install-state')).toHaveText('From the browser menu')
+  await expect(page.getByTestId('set-install')).toContainText('address bar')
+  await expect(page.getByTestId('offline-state')).toHaveText('Getting ready')
+  await app.ev((c) => c.install.markOfflineReady())
+  await expect(page.getByTestId('offline-state')).toHaveText('Ready')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('settings-dialog')).toHaveCount(0)
+  await expect(page.getByTestId('install-card')).toHaveCount(0)
+
+  // the browser offers the install: its own mini bar is held back, and the card asks once, in the middle of the screen
+  expect(await offerInstall(page, 'dismissed')).toBe(true)
+  const card = page.getByTestId('install-card')
+  await expect(card).toBeVisible()
+  const vp = page.viewportSize()!
+  const box = (await card.boundingBox())!
+  expect(Math.abs(box.x + box.width / 2 - vp.width / 2)).toBeLessThan(3)
+  await app.shot('install-card')
+  await page.getByTestId('install-card-later').click()
+  await expect(card).toHaveCount(0)
+  expect(await app.ev((c) => c.settings.getState().installAsked)).toBe(true)
+
+  // Settings keeps the button: it opens the browser's dialog; a dismissed dialog uses up the offer, a later one brings the button back
+  await openSettings(page)
+  await page.getByTestId('install-app').click()
+  await expect.poll(() => page.evaluate(() => (window as any).__prompted)).toBe(1) // eslint-disable-line
+  await expect(page.getByTestId('install-state')).toHaveText('From the browser menu')
+  await offerInstall(page, 'accepted')
+  await page.getByTestId('install-app').click()
+  await expect(page.getByTestId('install-state')).toHaveText('Installed')
+  await page.keyboard.press('Escape')
+
+  // answered once: a new offer after a reload does not bring the card back, and the command opens the dialog straight away
+  await page.reload()
+  await app.open()
+  await offerInstall(page, 'accepted')
+  await page.waitForTimeout(500)
+  await expect(page.getByTestId('install-card')).toHaveCount(0)
+  await app.ev((c) => c.runCommand('app.install'))
+  await expect.poll(() => page.evaluate(() => (window as any).__prompted)).toBe(1) // eslint-disable-line
+})

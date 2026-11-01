@@ -54,6 +54,8 @@ interface Persisted {
   diskAutosave: boolean
   autosaveVersions: number
   autosaveFolderAsked: boolean
+  /** the one-time "Install the app" card was answered */
+  installAsked: boolean
   tooltips: boolean
   beginnerTips: boolean
   tourSeen: boolean
@@ -77,6 +79,7 @@ const DEFAULTS: Persisted = {
   diskAutosave: true,
   autosaveVersions: 3,
   autosaveFolderAsked: false,
+  installAsked: false,
   tooltips: true,
   beginnerTips: true,
   tourSeen: false,
@@ -109,6 +112,7 @@ function load(): Persisted {
       diskAutosave: v.diskAutosave !== false,
       autosaveVersions: AUTOSAVE_VERSION_CHOICES.includes(v.autosaveVersions as number) ? (v.autosaveVersions as number) : DEFAULTS.autosaveVersions,
       autosaveFolderAsked: v.autosaveFolderAsked === true,
+      installAsked: v.installAsked === true,
       tooltips: v.tooltips !== false,
       beginnerTips: v.beginnerTips !== false,
       tourSeen: v.tourSeen === true,
@@ -133,6 +137,7 @@ interface SettingsState {
   autosaveVersions: number
   /** The first-launch card about the autosave folder was answered (folder picked, or Not now). */
   autosaveFolderAsked: boolean
+  installAsked: boolean
   tooltips: boolean
   beginnerTips: boolean
   tourSeen: boolean
@@ -148,6 +153,7 @@ interface SettingsState {
   setDiskAutosave: (on: boolean) => void
   setAutosaveVersions: (n: number) => void
   setAutosaveFolderAsked: (asked: boolean) => void
+  setInstallAsked: (asked: boolean) => void
   setTooltips: (on: boolean) => void
   setBeginnerTips: (on: boolean) => void
   setTourSeen: (seen: boolean) => void
@@ -173,6 +179,7 @@ export const useSettings = create<SettingsState>((set, get) => {
     diskAutosave: init.diskAutosave,
     autosaveVersions: init.autosaveVersions,
     autosaveFolderAsked: init.autosaveFolderAsked,
+    installAsked: init.installAsked,
     tooltips: init.tooltips,
     beginnerTips: init.beginnerTips,
     tourSeen: init.tourSeen,
@@ -195,6 +202,7 @@ export const useSettings = create<SettingsState>((set, get) => {
     setDiskAutosave: (diskAutosave) => set({ diskAutosave }),
     setAutosaveVersions: (autosaveVersions) => set({ autosaveVersions }),
     setAutosaveFolderAsked: (autosaveFolderAsked) => set({ autosaveFolderAsked }),
+    setInstallAsked: (installAsked) => set({ installAsked }),
     setTooltips: (tooltips) => set({ tooltips }),
     setBeginnerTips: (beginnerTips) => set({ beginnerTips }),
     setTourSeen: (tourSeen) => set({ tourSeen }),
@@ -229,6 +237,7 @@ function save() {
     diskAutosave: s.diskAutosave,
     autosaveVersions: s.autosaveVersions,
     autosaveFolderAsked: s.autosaveFolderAsked,
+    installAsked: s.installAsked,
     tooltips: s.tooltips,
     beginnerTips: s.beginnerTips,
     tourSeen: s.tourSeen,

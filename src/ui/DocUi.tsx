@@ -7,7 +7,7 @@ import { formatParam, setUserParams } from '@/doc/params'
 import type { UserParam } from '@/doc/types'
 import { discardRecovery, importFiles, initPersistence, recover, useRecovery } from '@/io/actions'
 import { Modal } from './Modal'
-import { AutosaveCard, UpdateCard } from './AutosavePrompts'
+import { AutosaveCard, InstallCard, UpdateCard } from './AutosavePrompts'
 
 export const useParamsDialog = create<{ open: boolean; set: (o: boolean) => void }>((set) => ({ open: false, set: (open) => set({ open }) }))
 
@@ -112,6 +112,7 @@ export function DocUi() {
       <RecoveryPrompt />
       <AutosaveCard />
       <UpdateCard />
+      <InstallCard />
       <ParametersDialog />
     </>
   )

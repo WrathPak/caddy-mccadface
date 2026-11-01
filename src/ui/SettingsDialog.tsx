@@ -6,6 +6,7 @@ import { canPickFolder, useProjects } from '@/projects/store'
 import { useDiskAutosave } from '@/io/diskAutosave'
 import { AUTOSAVE_CHOICES, AUTOSAVE_VERSION_CHOICES, PIXEL_RATIOS, WORKSPACES, useSettings, type PixelRatio, type ThemeMode } from '@/settings/settings'
 import { useHelp } from '@/help/helpStore'
+import { installApp, installHow, useInstall } from '@/app/install'
 import { NAV_PRESETS, ORBIT_SPEEDS, useNavSettings } from '@/viewport/navSettings'
 import type { GridDensity } from '@/viewport/gridMath'
 import { Checkbox } from './Toggle'
@@ -78,6 +79,36 @@ function AutosaveFolder() {
   )
 }
 
+/** Install as an app, and whether it works offline. The button only where the browser offers the install; elsewhere, where to find it. */
+function InstallRows() {
+  const { prompt, installed, offlineReady } = useInstall()
+  const how = installHow()
+  return (
+    <>
+      <Row id="install" label="Install app"
+        help={installed
+          ? 'Installed. It opens in its own window from your Start menu, dock or home screen, and needs no network.'
+          : prompt
+            ? 'Adds CADdy McCADFace to your Start menu, dock or home screen. It opens in its own window and works with no network.'
+            : how
+              ? `Adds CADdy McCADFace to your computer or home screen, in its own window, working with no network. ${how}`
+              : 'This browser cannot install web apps. Chrome, Edge and Safari can. The app still works offline in this browser.'}>
+        {installed
+          ? <span className="set-help" data-testid="install-state">Installed</span>
+          : prompt
+            ? <button type="button" className="btn primary" data-testid="install-app" onClick={() => void installApp()}>Install</button>
+            : <span className="set-help" data-testid="install-state">{how ? 'From the browser menu' : 'Not available'}</span>}
+      </Row>
+      <Row id="offline" label="Works offline"
+        help={offlineReady
+          ? 'Every part of the app is stored on this computer, so it opens and works with no internet. Your files never leave it either way.'
+          : 'Still storing the app on this computer. Once done, it opens and works with no internet.'}>
+        <span className="set-help" data-testid="offline-state">{offlineReady ? 'Ready' : 'Getting ready'}</span>
+      </Row>
+    </>
+  )
+}
+
 function General() {
   const units = useUi((s) => s.units)
   const setUnits = useUi((s) => s.setUnits)
@@ -93,6 +124,7 @@ function General() {
       <Row id="theme" label="Theme" help="Dark is the default. System follows your computer's light or dark setting.">
         <Segmented value={s.themeMode} onChange={(v) => s.setThemeMode(v as ThemeMode)} options={[{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }, { value: 'system', label: 'System' }]} />
       </Row>
+      <InstallRows />
       <Row id="autosave" label="Autosave" help="Keeps a recovery copy while you have unsaved changes, so a crash or a closed tab does not lose your work. It is not your saved file.">
         <Checkbox checked={s.autosave} onChange={s.setAutosave} ariaLabel="Autosave" />
       </Row>

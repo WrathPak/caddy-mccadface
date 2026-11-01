@@ -242,6 +242,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
   'app.palette': h('Search every command by name and run it. Handy when you do not know where a button lives.'),
   'view.history': h('Every save keeps a version of the project inside the file. Look at one, compare two, or go back to an older one.'),
   'view.projects': h('Browse the projects in a folder on your computer, with previews, search, recent files and a trash.'),
+  'app.install': h('Install the app so it gets its own window and icon and opens with no internet. Where the browser has no install button, Settings says where to find it.'),
   'view.plugins': h('Add, switch on and off, and read the log of plugins, which are small programs that add features and commands.'),
   'view.script': h('Write and run a quick script against the plugin API. For when you want to automate something.'),
   'help.open': h('Open the help: getting started, keyboard shortcuts and a guide for every workspace.'),
