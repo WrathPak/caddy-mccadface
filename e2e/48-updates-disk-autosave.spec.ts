@@ -153,13 +153,23 @@ test('Update ready: quiet pill in the status bar, saves first, and only then swi
     })
     w.__caddy.updates.markUpdateReady() // what the service worker's onNeedRefresh does
   })
+  // a card in the middle of the screen so it gets noticed, but not a dialog: the app around it still works
+  const card = page.getByTestId('update-card')
+  await expect(card).toBeVisible()
+  const vp = page.viewportSize()!
+  const box = (await card.boundingBox())!
+  expect(Math.abs(box.x + box.width / 2 - vp.width / 2)).toBeLessThan(3)
+  expect(Math.abs(box.y + box.height / 2 - vp.height / 2)).toBeLessThan(3)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await app.shot('update-card')
+  // Later: the card goes, the pill in the status bar stays
+  await page.getByTestId('update-card-later').click()
+  await expect(card).toHaveCount(0)
   const pill = page.getByTestId('update-ready')
   await expect(pill).toBeVisible()
   await expect(pill).toHaveText('Update ready')
-  // it lives in the status bar, small, and nothing else changed: no dialog, no reload
   expect(await pill.evaluate((el) => !!el.closest('.status'))).toBe(true)
   expect((await pill.boundingBox())!.height).toBeLessThan(30)
-  await expect(page.getByRole('dialog')).toHaveCount(0)
   await app.shot('update-ready-pill')
   await page.waitForTimeout(500)
   expect(await page.evaluate(() => (window as any).__updateCalls.length)).toBe(0) // eslint-disable-line
@@ -190,6 +200,37 @@ test('Update ready: a clean document has nothing to save and still switches; a t
   // another tab switched versions under this one: the pill changes its words, and the page is still not reloaded by itself
   await page.evaluate(() => (window as any).__caddy.updates.useUpdate.setState({ ready: true, switched: true, applying: false })) // eslint-disable-line
   await expect(page.getByTestId('update-ready')).toHaveText('Reload to update')
+})
+
+test('a new version reaches people by default: switched on quietly after a hard refresh, applied at once on an untouched tab, asked about with work open', async ({ app, page }) => {
+  await memFolder(page, { picker: false })
+  await app.open()
+  const calls = () => page.evaluate(() => (window as any).__updateCalls) // eslint-disable-line
+  await page.evaluate(() => {
+    const w = window as any // eslint-disable-line
+    w.__updateCalls = []
+    w.__caddy.updates.setUpdater(async (reload: boolean) => { w.__updateCalls.push(reload) })
+  })
+
+  // hard refresh / first visit: the page is already the newest code, so the worker is switched without a reload or a prompt
+  await page.evaluate(() => (window as any).__caddy.updates.newVersionWaiting({ controlled: false })) // eslint-disable-line
+  await expect.poll(calls).toEqual([false])
+  await expect(page.getByTestId('update-card')).toHaveCount(0)
+  await expect(page.getByTestId('update-ready')).toHaveCount(0)
+
+  // nothing done in this tab yet: straight onto the new version
+  await page.evaluate(() => (window as any).__caddy.updates.newVersionWaiting({ controlled: true })) // eslint-disable-line
+  await expect.poll(calls).toEqual([false, true])
+  await page.evaluate(() => (window as any).__caddy.updates.useUpdate.setState({ applying: false })) // eslint-disable-line
+
+  // work open: asked, and nothing switches until the card is answered
+  await addBox(app, 1)
+  await page.evaluate(() => (window as any).__caddy.updates.newVersionWaiting({ controlled: true })) // eslint-disable-line
+  await expect(page.getByTestId('update-card')).toBeVisible()
+  await page.waitForTimeout(500)
+  expect(await calls()).toEqual([false, true])
+  await page.getByTestId('update-card-now').click()
+  await expect.poll(calls).toEqual([false, true, true])
 })
 
 // ---------------------------------------------------------------- autosave to a folder

@@ -8,6 +8,8 @@
  */
 import { create } from 'zustand'
 import { flushAutosave } from '@/io/actions'
+import { useDoc } from '@/doc/store'
+import { useUi } from '@/store/ui'
 
 export const UPDATE_CHECK_MS = 60 * 60 * 1000
 /** Coming back to a tab checks too, but not more often than this. */
@@ -20,8 +22,10 @@ interface UpdateState {
   switched: boolean
   /** The save-then-reload is under way. */
   applying: boolean
+  /** "Later" on the centred card: the status bar pill stays, the card does not come back for this version. */
+  cardDismissed: boolean
 }
-export const useUpdate = create<UpdateState>(() => ({ ready: false, switched: false, applying: false }))
+export const useUpdate = create<UpdateState>(() => ({ ready: false, switched: false, applying: false, cardDismissed: false }))
 
 type Updater = (reloadPage?: boolean) => Promise<void> | void
 let updater: Updater | null = null
@@ -29,7 +33,27 @@ let updater: Updater | null = null
 /** Hand over the function `registerSW` returned (or a stand-in, in the specs). */
 export function setUpdater(fn: Updater | null) { updater = fn }
 /** The service worker said a new version is waiting. */
-export function markUpdateReady() { useUpdate.setState({ ready: true }) }
+export function markUpdateReady() { useUpdate.setState({ ready: true, cardDismissed: false }) }
+
+/** Nothing to lose by reloading: an empty, untouched document and no command open. */
+function untouched(): boolean {
+  const d = useDoc.getState()
+  const u = useUi.getState()
+  return !d.dirty && d.features.length === 0 && !u.inspector && !u.activeTool
+}
+
+/**
+ * What the service worker's onNeedRefresh calls. New versions reach people by default, and only someone with work open is asked:
+ * - the page did not come from the old worker (first visit, or a hard refresh): it already runs the newest files from the network,
+ *   so the waiting worker is switched on quietly and there is nothing to show;
+ * - nothing has been done in this tab yet: switch and reload straight away, before any work starts;
+ * - otherwise: the centred card and the status bar pill, and nothing happens until one is clicked.
+ */
+export function newVersionWaiting(o: { controlled: boolean }) {
+  if (!o.controlled) { void Promise.resolve(updater?.(false)).catch(() => {}); return }
+  if (untouched()) { void applyUpdate(); return }
+  markUpdateReady()
+}
 
 /**
  * The button: save the work, wait for the save, then switch to the new version and reload.
@@ -82,7 +106,7 @@ export function watchForTakeover(sw: Pick<ServiceWorkerContainer, 'addEventListe
   if (!sw || !sw.controller) return // a first visit has no old version to be swapped out
   sw.addEventListener('controllerchange', () => {
     if (useUpdate.getState().applying) return
-    useUpdate.setState({ ready: true, switched: true })
+    useUpdate.setState({ ready: true, switched: true, cardDismissed: false })
     void flushAutosave().catch(() => {})
     setUpdater(() => { window.location.reload() })
   })
