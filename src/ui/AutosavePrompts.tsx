@@ -96,10 +96,10 @@ export function InstallCard() {
     <div role="region" aria-label="Install app" data-testid="install-card" style={CENTRED}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>Want it as an app? (optional)</div>
       <div style={{ color: 'var(--text-dim)', marginBottom: 6 }}>
-        You can keep using CADdy McCADFace right here in the browser. Everything works the same, offline included.
+        You can keep using CADdy McCADFace right here in the browser, it works the same.
       </div>
       <div style={{ color: 'var(--text-dim)', marginBottom: 8 }}>
-        Installing just gives it its own window and an icon to open it from. You can install it later from Settings.
+        Installing gives it its own window and icon, and lets you use it offline: open it from the icon with no internet at all. You can install it later from Settings.
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button type="button" className="btn" data-testid="install-card-later" onClick={() => setAsked(true)}>Keep using in browser</button>
