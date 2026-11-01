@@ -81,7 +81,7 @@ export function UpdateCard() {
 
 /**
  * Once, where the browser can install the app: offered after the tour, the autosave card and any update card are out of the way.
- * "Not now" is remembered; Settings > General keeps the Install button.
+ * Staying in the browser is remembered; Settings > General keeps the Install button.
  */
 export function InstallCard() {
   const asked = useSettings((s) => s.installAsked)
@@ -94,13 +94,16 @@ export function InstallCard() {
   if (asked || !can || !tourSeen || updateCard || (!folderAnswered && !root && canPickFolder())) return null
   return (
     <div role="region" aria-label="Install app" data-testid="install-card" style={CENTRED}>
-      <div style={{ fontWeight: 600, marginBottom: 4 }}>Install CADdy McCADFace?</div>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>Want it as an app? (optional)</div>
+      <div style={{ color: 'var(--text-dim)', marginBottom: 6 }}>
+        You can keep using CADdy McCADFace right here in the browser. Everything works the same, offline included.
+      </div>
       <div style={{ color: 'var(--text-dim)', marginBottom: 8 }}>
-        It gets its own window and icon, and opens with no internet. Nothing about your files changes: they stay on this computer either way.
+        Installing just gives it its own window and an icon to open it from. You can install it later from Settings.
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-        <button type="button" className="btn" data-testid="install-card-later" onClick={() => setAsked(true)}>Not now</button>
-        <button type="button" className="btn primary" data-testid="install-card-install" onClick={() => { setAsked(true); void installApp() }}>Install</button>
+        <button type="button" className="btn" data-testid="install-card-later" onClick={() => setAsked(true)}>Keep using in browser</button>
+        <button type="button" className="btn primary" data-testid="install-card-install" onClick={() => { setAsked(true); void installApp() }}>Install app</button>
       </div>
     </div>
   )
