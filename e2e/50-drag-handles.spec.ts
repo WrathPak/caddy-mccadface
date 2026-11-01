@@ -35,14 +35,35 @@ const tipAt = (m: { o: V3; d: V3 }, t: number): V3 => [m.o[0] + m.d[0] * t, m.o[
 const close = (a: number[], b: number[], eps = 0.05) => a.forEach((x, i) => expect(Math.abs(x - b[i]), `${a} vs ${b}`).toBeLessThan(eps))
 const parallel = (a: number[], b: number[]) => expect(Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (Math.hypot(...a) * Math.hypot(...b))).toBeGreaterThan(0.999)
 
+const grabCursor = (app: App) => app.page.evaluate(() => [...document.querySelectorAll('canvas')].some((c) => c.style.cursor === 'grab'))
+/**
+ * Put the pointer on a handle and wait until the handle says so (the grab cursor). On a slow machine the viewport can still be busy
+ * with the last drag's preview, and a press before the handle has seen the pointer lands on nothing. Moving off the viewport first makes
+ * sure a grab cursor left by the previous handle is not taken for this one.
+ */
+async function hoverHandle(app: App, at: { x: number; y: number }) {
+  const { page } = app
+  // off the viewport altogether (just left of it): every handle lets go of the pointer
+  const off = await page.evaluate(() => {
+    const r = [...document.querySelectorAll('canvas')].map((c) => c.getBoundingClientRect()).sort((a, b) => b.width * b.height - a.width * a.height)[0]
+    return { x: Math.max(1, r.left - 6), y: r.top + r.height / 2 }
+  })
+  await page.mouse.move(off.x, off.y, { steps: 3 })
+  await expect.poll(() => grabCursor(app), { timeout: 20000 }).toBe(false)
+  await expect.poll(async () => {
+    await page.mouse.move(at.x + 4, at.y + 4, { steps: 3 })
+    await page.mouse.move(at.x, at.y, { steps: 3 })
+    return grabCursor(app)
+  }, { timeout: 20000 }).toBe(true)
+}
+
 /** Grab arrow `i` by its tip and pull it `by` mm further along its direction, with real mouse moves. */
 async function pull(app: App, i: number, by: number) {
   const { page } = app
   const m = await slot(app, i)
   const from = await app.project(...tipAt(m, m.tip))
   const to = await app.project(...tipAt(m, m.tip + by))
-  await page.mouse.move(from.x + 4, from.y + 4, { steps: 3 })
-  await page.mouse.move(from.x, from.y, { steps: 3 })
+  await hoverHandle(app, from)
   await page.mouse.down()
   await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 6 })
   await page.mouse.move(to.x, to.y, { steps: 6 })
@@ -65,8 +86,7 @@ async function turn(app: App, to: number, slotIndex = 0) {
     return app.project(m.o[0] + r[0] * m.radius, m.o[1] + r[1] * m.radius, m.o[2] + r[2] * m.radius)
   }
   const from = await at(m.angle)
-  await page.mouse.move(from.x + 4, from.y + 4, { steps: 3 })
-  await page.mouse.move(from.x, from.y, { steps: 3 })
+  await hoverHandle(app, from)
   await page.mouse.down()
   const n = Math.max(2, Math.ceil(Math.abs(to - m.angle) / 12))
   for (let k = 1; k <= n; k++) {

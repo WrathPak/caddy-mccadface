@@ -208,6 +208,11 @@ function ArrowHandle({ store, suffix }: { store: typeof useManip; suffix: string
   const coarse = useDevice((d) => d.coarse)
   const [typing, setTyping] = useState<string | null>(null)
   useEffect(() => { if (!m.active) setTyping(null) }, [m.active])
+  // a handle that goes away under the pointer gets no pointer-out: give the cursor back, and start cold when it comes back
+  useEffect(() => { if (!m.active && hot) { setHot(false); gl.domElement.style.cursor = '' } }, [m.active, hot, gl])
+  const hotNow = useRef(false)
+  hotNow.current = hot
+  useEffect(() => () => { if (hotNow.current) gl.domElement.style.cursor = '' }, [gl])
   /** Enter in the value box: take the typed distance, then accept the dialog like OK does. */
   const commitTyped = (text: string) => {
     const v = evalNumber(text, 'mm')
