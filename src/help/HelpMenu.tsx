@@ -1,8 +1,9 @@
 import * as D from '@radix-ui/react-dropdown-menu'
-import { BookOpen, Compass, Info, Keyboard, Question, Sparkle } from '@phosphor-icons/react'
+import { BookOpen, ChatCircleText, Compass, Info, Keyboard, Question, Sparkle } from '@phosphor-icons/react'
 import { RIBBON_TABS } from '@/app/ribbon'
 import { useUi } from '@/store/ui'
 import { Tip } from '@/ui/Tooltip'
+import { giveFeedback } from './feedback'
 import { guideById } from './guides'
 import { openGuide, useHelp } from './helpStore'
 
@@ -32,6 +33,7 @@ export function HelpMenu() {
           <D.Item className="menu-item" onSelect={() => openGuide('solid')}><BookOpen size={14} /> All workspace guides</D.Item>
           <D.Separator className="menu-sep" />
           <D.Item className="menu-item" onSelect={startTour}><Sparkle size={14} /> Take the tour</D.Item>
+          <D.Item className="menu-item" onSelect={giveFeedback} data-testid="help-feedback"><ChatCircleText size={14} /> Give feedback</D.Item>
           <D.Item className="menu-item" onSelect={() => show({ kind: 'about' })}><Info size={14} /> About</D.Item>
         </D.Content>
       </D.Portal>
