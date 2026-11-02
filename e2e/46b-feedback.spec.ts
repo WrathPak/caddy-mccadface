@@ -14,3 +14,12 @@ test('Give feedback, from the Help menu and the command, starts an email to the 
   expect(url.searchParams.get('subject')).toBe('CADdy McCADFace feedback')
   expect(url.searchParams.get('body')).toContain('Browser: Mozilla/')
 })
+
+test('the GitHub logo at the top right links to the repo in a new tab', async ({ app, page }) => {
+  await app.open()
+  const link = page.getByTestId('github-link')
+  await expect(link).toBeVisible()
+  await expect(link).toHaveAttribute('href', 'https://github.com/WrathPak/caddy-mccadface')
+  await expect(link).toHaveAttribute('target', '_blank')
+  await expect(link).toHaveAttribute('rel', /noopener/)
+})
