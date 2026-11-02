@@ -248,6 +248,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
   'help.open': h('Open the help: getting started, keyboard shortcuts and a guide for every workspace.'),
   'help.shortcuts': h('See every keyboard shortcut in one list.'),
   'help.tour': h('Replay the short tour of the screen.'),
+  'help.feedback': h('Send the author an email about a bug or an idea. Your own email app opens with the message started, nothing is sent until you hit send.'),
   'app.settings': h('Open the settings: units, theme, navigation (including touch twist), display (origin axes, selection color), autosave and help options.'),
 }
 
