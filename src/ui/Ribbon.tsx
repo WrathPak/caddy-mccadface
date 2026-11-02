@@ -1,5 +1,5 @@
 import * as D from '@radix-ui/react-dropdown-menu'
-import { CaretDown, Moon, SidebarSimple, Sun } from '@phosphor-icons/react'
+import { CaretDown, GithubLogo, Moon, SidebarSimple, Sun } from '@phosphor-icons/react'
 import { useMemo } from 'react'
 import { RIBBON_TABS, type RibbonGroup, type RibbonItem } from '@/app/ribbon'
 import { useRibbonExtras, withExtras } from '@/app/ribbonExtras'
@@ -190,6 +190,11 @@ export function Ribbon() {
             </button>
           </Tip>
           <HelpMenu />
+          <Tip label="GitHub" desc="The source code, and where to report a bug or ask for a feature. Opens in a new tab." side="bottom">
+            <a className="rbtn small" href="https://github.com/WrathPak/caddy-mccadface" target="_blank" rel="noopener noreferrer" aria-label="GitHub" data-testid="github-link" style={{ minWidth: 0, padding: '1px 5px' }}>
+              <GithubLogo size={13} />
+            </a>
+          </Tip>
         </div>
       </div>
       <RibbonGroups groups={groups} />
