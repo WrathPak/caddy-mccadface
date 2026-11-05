@@ -181,7 +181,7 @@ describe('typed values while drawing', () => {
     // the same length again: redundant
     expect(commit(add(10) as never, { strict: true })).toBe(false)
     expect(JSON.stringify(st().model)).toBe(before)
-    expect(st().status).toMatch(/determined/)
+    expect(st().status).toMatch(/already fix that/)
   })
 })
 
