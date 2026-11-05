@@ -107,6 +107,7 @@ function build(m: SketchModel): System {
   for (const e of m.entities) if (e.type === 'arc' && !e.ref) push([e.id], () => [dist(P(e.s), P(e.c)) - dist(P(e.e), P(e.c))])
 
   for (const c of m.constraints) {
+    if (c.driven) continue
     const [a, b] = c.refs
     const v = c.value ?? 0
     const sg = c.sgn ?? 1
@@ -181,7 +182,7 @@ function build(m: SketchModel): System {
       }
       case 'diameter': push([a], () => [2 * rad(a) - v]); break
       case 'angle':
-        if (b && isLine(a) && isLine(b)) push([a, b], () => { const d1 = dir(a), d2 = dir(b); return [wrap(Math.atan2(cross(d1, d2), dot(d1, d2)) - (v * sg * Math.PI) / 180)] })
+        if (b && isLine(a) && isLine(b)) push([a, b], () => { const d1 = dir(a), d2 = dir(b); return [wrap(Math.atan2(cross(d1, d2), dot(d1, d2)) - ((c.supp ? 180 - v : v) * sg * Math.PI) / 180)] })
         else {
           const l = isLine(a) ? (ent(a) as { p1: string; p2: string }) : null
           const p1 = l ? l.p1 : a, p2 = l ? l.p2 : b

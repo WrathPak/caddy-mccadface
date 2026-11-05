@@ -77,11 +77,29 @@ export function measure(m: SketchModel, type: Constraint['type'], refs: string[]
   return null
 }
 
+/** Measure for a dimension as it is stored: an angle between lines may be the supplement of the one `measure` gives. */
+export function measureDim(m: SketchModel, type: Constraint['type'], refs: string[], supp?: boolean): Measured | null {
+  const me = measure(m, type, refs)
+  return me && supp && type === 'angle' && refs.length === 2 ? { value: 180 - me.value, sgn: me.sgn } : me
+}
+
+/** Reference (driven) dimensions follow the geometry: set their value from what is drawn. */
+export function refreshDriven(m: SketchModel) {
+  for (const c of m.constraints) {
+    if (!c.driven || !isDim(c)) continue
+    const me = measureDim(m, c.type, c.refs, c.supp)
+    if (!me) continue
+    c.value = me.value
+    c.sgn = me.sgn
+    c.expr = String(+me.value.toFixed(3))
+  }
+}
+
 /** Evaluate `expr` of every dimension (user parameters allowed). Returns the ids that failed. */
 export function refreshDims(m: SketchModel): string[] {
   const bad: string[] = []
   for (const c of m.constraints) {
-    if (!isDim(c) || c.expr === undefined) continue
+    if (!isDim(c) || c.expr === undefined || c.driven) continue
     const v = evalNumber(c.expr, c.type === 'angle' ? 'deg' : 'mm')
     if (v === null) bad.push(c.id)
     else c.value = v
@@ -90,6 +108,10 @@ export function refreshDims(m: SketchModel): string[] {
 }
 
 export function dimText(c: Constraint): string {
+  const t = dimValueText(c)
+  return c.driven ? `(${t})` : t
+}
+function dimValueText(c: Constraint): string {
   const v = +(c.value ?? 0).toFixed(3)
   switch (c.type) {
     case 'radius': return 'R' + v
@@ -209,7 +231,7 @@ export function layoutDim(m: SketchModel, c: Constraint, k = 1): DimLayout | nul
     }
     case 'angle': {
       const la = entityById(m, a), lb = b ? entityById(m, b) : undefined
-      const sweep = (((c.value ?? 0) * (c.sgn ?? 1)) * Math.PI) / 180
+      const sweep = (((c.value ?? 0) * (c.sgn ?? 1) * (c.supp && b ? -1 : 1)) * Math.PI) / 180
       const arcOf = (I: Vec2, a1: number, R: number) => {
         const pts: Vec2[] = []
         const n = Math.max(6, Math.ceil(Math.abs(sweep) / 0.1))
@@ -222,7 +244,10 @@ export function layoutDim(m: SketchModel, c: Constraint, k = 1): DimLayout | nul
         const hit = intersectLineLine(p1, p2, q1, q2)
         const I: Vec2 = hit ? hit.p : mid(p1, q1)
         const d1 = sub(p2, p1)
-        const a1 = Math.atan2(d1[1], d1[0])
+        let a1 = Math.atan2(d1[1], d1[0])
+        // the same angle sits in two opposite sectors: draw it in the one the label was put in
+        const to = sub(off, I)
+        if (len(to) > 1e-9 && dot(to, polar([0, 0], 1, a1 + sweep / 2)) < 0) a1 += Math.PI
         const R = Math.max(dist(off, I), 2 * k)
         const { pts, n, tA, tB } = arcOf(I, a1, R)
         return {

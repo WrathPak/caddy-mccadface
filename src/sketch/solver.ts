@@ -15,6 +15,7 @@ import { ORIGIN, type Constraint, type SketchModel, type Vec2 } from './types'
 import { arcInfo } from './geom'
 import { cloneModel, deps, entityById, pos } from './model'
 import { freedom, maxResidual } from './dof'
+import { refreshDriven } from './dims'
 
 let wrapper: GcsWrapper | null = null
 let loading: Promise<void> | null = null
@@ -77,7 +78,7 @@ function build(m: SketchModel, drag?: DragSpec, extra?: Prim[]): Prim[] {
     }
   }
   // helper geometry some constraints bring along (lines through the points they relate) is not a constraint itself
-  for (const c of m.constraints) prims.push(...mapConstraint(m, c).map((p) => (weight(p.type) < 2 ? p : { ...p, driving: true })))
+  for (const c of m.constraints) if (!c.driven) prims.push(...mapConstraint(m, c).map((p) => (weight(p.type) < 2 ? p : { ...p, driving: true })))
   if (drag?.points) {
     for (const [id, [x, y]] of Object.entries(drag.points)) {
       if (isRefPoint(m, id)) continue
@@ -179,7 +180,7 @@ function mapConstraint(m: SketchModel, c: Constraint): Prim[] {
     }
     case 'diameter': return [t(a) === 'arc' ? { id, type: 'arc_diameter', a_id: a, diameter: val } : { id, type: 'circle_diameter', c_id: a, diameter: val }]
     case 'angle': {
-      const rad = ((val * (c.sgn ?? 1)) * Math.PI) / 180
+      const rad = (((c.supp && b ? 180 - val : val) * (c.sgn ?? 1)) * Math.PI) / 180
       if (b && t(a) === 'line' && t(b) === 'line') return [{ id, type: 'l2l_angle_ll', l1_id: a, l2_id: b, angle: rad }]
       // direction of a line / of the vector pointA -> pointB, measured from the +X axis
       const l = t(a) === 'line' ? (entityById(m, a) as { p1: string; p2: string }) : null
@@ -266,6 +267,7 @@ export function solveModel(model: SketchModel, drag?: DragSpec): { model: Sketch
     writeBack(m, r.prims)
     if (!ok && r.conflicts.length === 0 && maxResidual(m) < 1e-6) ok = true
   }
+  if (ok) refreshDriven(m)
   if (!ok) return { model: cloneModel(model), info: { ok: false, status: r.status, dof: 0, conflicts: r.conflicts, redundant: [], fixed: new Set() } }
   return { model: m, info: { ok, status: r.status, dof: r.dof, conflicts: r.conflicts, redundant: r.redundant, fixed: new Set() } }
 }

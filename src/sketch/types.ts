@@ -70,6 +70,10 @@ export interface Constraint {
    */
   group?: string
   hidden?: boolean
+  /** a reference dimension: shows the measured value, never drives the sketch (made when the geometry is already fixed by other constraints) */
+  driven?: boolean
+  /** angle between two lines: the supplement (the other pair of sectors) is the one measured; `value` is that angle, `sgn` stays the turn from line A to line B */
+  supp?: boolean
 }
 
 export const DIM_TYPES: ConstraintType[] = ['distance', 'hdist', 'vdist', 'radius', 'diameter', 'angle', 'offset', 'majorRadius']

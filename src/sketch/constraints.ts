@@ -15,8 +15,25 @@ const isCurve = (t?: string) => t === 'circle' || t === 'arc'
 /** things with a direction: lines, and ellipses by their major axis */
 const isLineLike = (t?: string) => t === 'line' || t === 'ellipse'
 
-/** True when `ids` is a complete input for `kind`. */
+/** True when `ids` is a complete input for `kind`, picked in either order, or a whole selection of lines / curves / points to apply it to. */
 export function ready(m: SketchModel, kind: CKind, ids: string[]): boolean {
+  return readyIn(m, kind, ids) || (ids.length === 2 && readyIn(m, kind, [ids[1], ids[0]])) || manyKind(m, kind, ids) !== null
+}
+
+/** Three or more picked things for a constraint that pairs them: 'each' (one constraint per thing) or 'first' (every other one with the first). */
+function manyKind(m: SketchModel, kind: CKind, ids: string[]): 'each' | 'first' | null {
+  if (ids.length < 2) return null
+  const t = ids.map((i) => kindOf(m, i))
+  const all = (f: (x?: string) => boolean) => t.every(f)
+  if ((kind === 'hv' || kind === 'horizontal' || kind === 'vertical') && all(isLineLike)) return 'each'
+  if (ids.length < 3) return null
+  if (kind === 'equal' && (all((x) => x === 'line') || all((x) => isCurve(x) || x === 'ellipse'))) return 'first'
+  if (kind === 'parallel' && all(isLineLike)) return 'first'
+  if (kind === 'coincident' && all((x) => x === 'point')) return 'first'
+  return null
+}
+
+function readyIn(m: SketchModel, kind: CKind, ids: string[]): boolean {
   const t = ids.map((i) => kindOf(m, i))
   switch (kind) {
     case 'hv':
@@ -40,10 +57,18 @@ const has = (m: SketchModel, type: Constraint['type'], refs: string[]) =>
 /** Mutates `m`. Returns an error message, or null when applied. */
 export function applyConstraint(m: SketchModel, kind: CKind, idsIn: string[]): string | null {
   let ids = idsIn
-  if (!ready(m, kind, ids)) {
+  const many = manyKind(m, kind, ids)
+  if (many && !readyIn(m, kind, ids)) {
+    for (const [i, id] of ids.entries()) {
+      if (many === 'each') { const err = applyConstraint(m, kind, [id]); if (err) return err }
+      else if (i > 0) { const err = applyConstraint(m, kind, [ids[0], id]); if (err) return err }
+    }
+    return null
+  }
+  if (!readyIn(m, kind, ids)) {
     // allow either order for point/curve pairs
     const rev = [...ids].reverse()
-    if (ids.length === 2 && ready(m, kind, rev)) ids = rev
+    if (ids.length === 2 && readyIn(m, kind, rev)) ids = rev
     else return 'Select valid entities for ' + CKIND_LABEL[kind]
   }
   const add = (type: Constraint['type'], refs: string[]) => {
