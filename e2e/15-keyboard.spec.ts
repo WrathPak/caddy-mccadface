@@ -163,8 +163,7 @@ test('the on-canvas distance box accepts with Enter', async ({ app, page }) => {
 test('sketcher: Enter / Escape end the polyline, then the tool; Enter with no tool finishes the sketch', async ({ app, page }) => {
   await app.open()
   await app.ribbon('Sketch').first().click()
-  const planes = page.getByText('Planes', { exact: true })
-  if (!(await page.getByText('XY plane').isVisible())) await planes.click()
+  await app.showPlane('XY')
   await page.getByText('XY plane').click()
   await expect(page.locator('.sk-bar')).toBeVisible()
   await app.ribbon('Line').first().click()

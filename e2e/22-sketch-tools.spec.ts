@@ -3,7 +3,7 @@ import { test, expect, type App } from './helpers'
 async function startSketch(app: App) {
   const { page } = app
   await app.ribbon('Sketch').first().click()
-  if (!(await page.getByText('XY plane').isVisible())) await page.getByText('Planes', { exact: true }).click()
+  await app.showPlane('XY')
   await page.getByText('XY plane').click()
   await expect(page.locator('.sk-bar')).toBeVisible()
   await app.ev((c) => c.ui.setState({ snap: false })) // exact positions: no grid
@@ -231,4 +231,63 @@ test('Import SVG and DXF into a sketch', async ({ app, page }) => {
   await expect.poll(async () => (await sk(app)).profiles.length).toBe(3)
   m = await sk(app)
   expect(m.profiles.some((p: any) => Math.abs(p.area - 400) < 1)).toBe(true) // eslint-disable-line
+})
+
+test('Dimension on two parallel lines gives the distance between them, not an angle', async ({ app, page }) => {
+  await app.open()
+  await startSketch(app)
+  for (const y of [0, 15]) {
+    await tool(app, 'Line')
+    await click(app, 0, y)
+    await click(app, 30, y)
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+  }
+  await tool(app, 'Dimension')
+  await click(app, 15, 0)
+  await click(app, 15, 15)
+  await click(app, 40, 7)
+  const input = page.locator('.sk-dim-input')
+  await expect(input).toBeFocused()
+  await expect(input).toHaveValue(/^15(\.0+)?$/)
+  await input.fill('22')
+  await input.press('Enter')
+  const m = await sk(app)
+  const dims = m.constraints.filter((k: any) => k.type === 'distance' || k.type === 'angle') // eslint-disable-line
+  expect(dims).toHaveLength(1)
+  expect(dims[0].type).toBe('distance')
+  // the lines stay parallel and move apart to the new gap
+  const ys = [...new Set(m.entities.filter((e: any) => e.type === 'point').map((p: any) => Math.round(p.y * 1000) / 1000))].sort((a, b) => a - b) // eslint-disable-line
+  near(ys[ys.length - 1] - ys[0], 22)
+})
+
+test('Rectangular pattern: click the curves to repeat while the tool is open', async ({ app, page }) => {
+  await app.open()
+  await startSketch(app)
+  await tool(app, 'Rectangle')
+  await click(app, 0, 0)
+  await click(app, 10, 10)
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
+  expect(await app.ev((c) => c.sketch.getState().sel.length)).toBe(0)
+  await tool(app, 'Rectangular Pattern')
+  for (const [x, y] of [[5, 0], [10, 5], [5, 10], [0, 5]]) await click(app, x, y)
+  expect(await app.ev((c) => c.sketch.getState().sel.length)).toBe(4)
+  // a second click takes a curve out, a third puts it back
+  await click(app, 5, 0)
+  expect(await app.ev((c) => c.sketch.getState().sel.length)).toBe(3)
+  await click(app, 5, 0)
+  for (const [id, v] of [['count', '3'], ['spacing', '20'], ['angle', '0']]) {
+    await page.getByTestId('sk-opt-' + id).fill(v)
+    await page.getByTestId('sk-opt-' + id).press('Enter')
+  }
+  await page.getByTestId('sk-apply').click()
+  const m = await sk(app)
+  expect(m.profiles.length).toBe(3)
+  expect(m.ok).toBe(true)
+  // Escape leaves the tool and keeps the sketch open with everything in it
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
+  const after = await app.ev((c) => ({ active: c.sketch.getState().active, tool: c.sketch.getState().tool, lines: c.sketch.getState().model.entities.filter((e: any) => e.type === 'line').length })) // eslint-disable-line
+  expect(after).toEqual({ active: true, tool: 'select', lines: 12 })
 })

@@ -231,9 +231,16 @@ export function applyPatternR(): boolean {
   })
 }
 extraTools.patternR = {
-  start() { if (!curveSelection().length) K.flash('Select the curves to repeat in the sketch first, then set the counts and press Apply') },
-  move() { /* nothing to preview until Apply */ },
-  down() { /* the options bar drives this tool */ },
+  start() { if (!curveSelection().length) K.flash('Click the curves to repeat, then set the counts and press Apply') },
+  move(raw, wpp) { K.set({ hover: hitTest(K.get().model, raw, 8 * wpp, (e) => e.type !== 'point'), cursor: null }); K.invalidate() },
+  // a click adds a curve to the ones being repeated, or takes it out again
+  down(raw, wpp) {
+    const s = K.get()
+    const h = hitTest(s.model, raw, 8 * wpp, (e) => e.type !== 'point')
+    if (!h) return
+    K.set({ sel: s.sel.includes(h) ? s.sel.filter((i) => i !== h) : [...s.sel, h] })
+    K.invalidate()
+  },
 }
 
 let patternSource: string[] = []

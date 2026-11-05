@@ -93,6 +93,7 @@ export function SketchToolBar() {
           <Num id="count" label="Count" k="rectCount" min={1} /><Num id="spacing" label="Spacing" k="rectSpacing" min={0.001} unit="mm" /><Num id="angle" label="Direction" k="rectAngle" unit="deg" />
           <Num id="count2" label="Rows" k="rectCount2" min={1} /><Num id="spacing2" label="Row spacing" k="rectSpacing2" min={0.001} unit="mm" />
           <button type="button" className="btn primary" data-testid="sk-apply" onClick={() => applyPatternR()}>Apply</button>
+          <span className="sk-note">Click curves to add them, or click again to take them out.</span>
         </Bar>
       )
     case 'patternC':
