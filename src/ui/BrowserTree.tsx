@@ -10,13 +10,14 @@ import { ComponentsSection, JointsSection } from '@/assembly/ComponentTree'
 import { ownerOf } from '@/assembly/instances'
 import { ROOT } from '@/assembly/types'
 import { useSketchPick } from '@/sketch/create'
+import { editFeature } from '@/doc/editor'
 import { Tip } from './Tooltip'
 
 /** What a row in the Browser is, for its tooltip. */
 const KIND_HELP: Partial<Record<EntityKind, string>> = {
   body: 'A solid or surface shape. Click to select it, double-click to rename it, right-click for more.',
   mesh: 'A body made of triangles, usually from an STL file. Click to select it, double-click to rename it.',
-  sketch: 'A 2D drawing. Click to select it, double-click to rename it.',
+  sketch: 'A 2D drawing. Click to select it, double-click to edit it, right-click to rename it.',
   plane: 'A flat reference plane that sketches can sit on. Planes start hidden; the eye shows them.',
   axis: 'A reference line to revolve or pattern around.',
   point: 'A reference point other tools can snap to.',
@@ -35,6 +36,14 @@ const ICON = {
   PencilSimpleLine: <PencilSimpleLine size={13} />,
   Planet: <Planet size={13} />,
   SelectionBackground: <SelectionBackground size={13} />,
+}
+
+/** Open a sketch for editing, the same as double-clicking it in the timeline. */
+function editSketch(id: string) {
+  if (!useDoc.getState().features.some((f) => f.id === id)) return
+  useDoc.getState().selectFeature(id)
+  editFeature(id)
+  useUi.getState().setActiveTool(null)
 }
 
 interface RowProps {
@@ -74,6 +83,18 @@ const Row = memo(function Row({ id, name, depth, kind, icon, open, onToggle, col
     return !s.hiddenIds[id] && others.length > 0 && others.every((x) => s.hiddenIds[x])
   })
   const isGroup = onToggle !== undefined
+  // F2 renames the selected row (the help lists it)
+  useEffect(() => {
+    if (!selected || !coll) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.key !== 'F2' || (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable))) return
+      e.preventDefault()
+      setEditing(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selected, coll])
 
   const row = (
     <div
@@ -81,7 +102,7 @@ const Row = memo(function Row({ id, name, depth, kind, icon, open, onToggle, col
       data-selected={selected}
       style={{ paddingLeft: 4 + depth * 12 }}
       onClick={(e) => (isGroup ? onToggle!() : kind && (activate && useDoc.getState().setActiveOcc(activate), setSelection([{ kind, id, path }], e.ctrlKey || e.shiftKey)))}
-      onDoubleClick={() => coll && setEditing(true)}
+      onDoubleClick={() => (kind === 'sketch' ? editSketch(id) : coll && setEditing(true))}
     >
       <span className="caret">{isGroup ? open ? <CaretDown size={9} weight="bold" /> : <CaretRight size={9} weight="bold" /> : null}</span>
       <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}>{icon}</span>
@@ -113,6 +134,7 @@ const Row = memo(function Row({ id, name, depth, kind, icon, open, onToggle, col
       <CM.Trigger asChild>{row}</CM.Trigger>
       <CM.Portal>
         <CM.Content className="menu">
+          {kind === 'sketch' && <CM.Item className="menu-item" onSelect={() => editSketch(id)}>Edit Sketch</CM.Item>}
           <CM.Item className="menu-item" onSelect={() => setEditing(true)}>Rename<span className="kbd">F2</span></CM.Item>
           <CM.Item className="menu-item" onSelect={isolate}>{isolated ? 'Show all' : 'Isolate'}</CM.Item>
           <CM.Item className="menu-item" onSelect={() => toggleHidden(id)}>{hidden ? 'Show' : 'Hide'}</CM.Item>

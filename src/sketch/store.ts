@@ -163,7 +163,7 @@ export function commit(fn: (m: SketchModel) => string | void, opts: { strict?: b
   if (typeof err === 'string') { flash(err); return false }
   const bad = refreshDims(draft)
   const p = solvePruned(draft, existing, opts.strict)
-  if (p.overConstrained) { flash('That is already fully determined by the existing constraints'); return false }
+  if (p.overConstrained) { flash('Other constraints already fix that, so it cannot be added. Delete one of them first to dimension it here'); return false }
   if (!p.info.ok || p.info.conflicts.length) {
     flash(p.info.conflicts.length ? 'Conflicts with existing constraints' : 'Could not solve the sketch')
     return false
@@ -731,7 +731,10 @@ function pairType(m: SketchModel, refs: string[], at: Vec2): ConstraintType {
   if (vl < 1e-9 || dist(A, B) < 1e-9) return 'distance'
   const cosN = Math.abs(v[0] * n[0] + v[1] * n[1]) / vl
   if (cosN > Math.cos((35 * Math.PI) / 180)) return 'distance'
-  return Math.abs(v[1]) > Math.abs(v[0]) ? 'hdist' : 'vdist'
+  const t = Math.abs(v[1]) > Math.abs(v[0]) ? 'hdist' : 'vdist'
+  // points straight above one another have no horizontal gap to give (nor side by side a vertical one): the gap between them is meant
+  const along = t === 'hdist' ? Math.abs(B[0] - A[0]) : Math.abs(B[1] - A[1])
+  return along < 1e-6 * Math.max(1, dist(A, B)) ? 'distance' : t
 }
 
 function previewDim(s: SketchState, raw: Vec2, mods: Mods): Constraint | null {
@@ -752,6 +755,16 @@ function downDimension(raw: Vec2, mods: Mods) {
   const first = s.picks[0]
   if (s.picks.length === 1) {
     if (h && h !== first) {
+      // a circle or arc paired with something else is measured from its centre (centre to centre, centre to a line...)
+      const centreOf = (id: string) => { const e = entityById(s.model, id); return e && (e.type === 'circle' || e.type === 'arc' || e.type === 'ellipse') ? e.c : id }
+      const p0 = centreOf(first), p1 = centreOf(h)
+      if (p0 !== p1 && (p0 !== first || p1 !== h)) {
+        const a = t(p0), b = t(p1)
+        if ((a === 'point' || a === 'line') && (b === 'point' || b === 'line')) {
+          set({ picks: a === 'line' && b === 'point' ? [p1, p0] : [p0, p1] })
+          return
+        }
+      }
       const a = t(first), b = t(h)
       if ((a === 'point' && (b === 'point' || b === 'line')) || (a === 'line' && (b === 'line' || b === 'point'))) {
         set({ picks: a === 'line' && b === 'point' ? [h, first] : [first, h] })

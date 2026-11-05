@@ -291,3 +291,109 @@ test('Rectangular pattern: click the curves to repeat while the tool is open', a
   const after = await app.ev((c) => ({ active: c.sketch.getState().active, tool: c.sketch.getState().tool, lines: c.sketch.getState().model.entities.filter((e: any) => e.type === 'line').length })) // eslint-disable-line
   expect(after).toEqual({ active: true, tool: 'select', lines: 12 })
 })
+
+test('Double-clicking a sketch in the Browser opens it for editing; F2 and the right-click menu still rename it', async ({ app, page }) => {
+  await app.open()
+  await app.sketchRect('XY', 30, 20)
+  await app.finishSketch()
+  const id = await app.ev((c) => c.doc.getState().features.find((f: any) => f.type === 'sketch').id as string) // eslint-disable-line
+  const name = await app.ev((c) => c.doc.getState().sketches[0].name as string)
+  const row = page.locator('.tree-row', { hasText: name })
+  await row.dblclick()
+  await expect(page.locator('.sk-bar')).toBeVisible()
+  expect(await app.ev((c) => ({ active: c.sketch.getState().active, editing: c.sketch.getState().editing }))).toEqual({ active: true, editing: id })
+  expect(await app.ev((c) => c.sketch.getState().model.entities.filter((e: any) => e.type === 'line').length)).toBe(4) // eslint-disable-line
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.sk-bar')).toHaveCount(0)
+  expect(await app.ev((c) => c.doc.getState().features.filter((f: any) => f.type === 'sketch').length)).toBe(1) // eslint-disable-line
+
+  // F2 on the selected row renames it
+  await page.locator('.tree-row', { hasText: name }).click()
+  await page.keyboard.press('F2')
+  await page.locator('.tree-row input.rename').fill('Base outline')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.tree-row', { hasText: 'Base outline' })).toBeVisible()
+
+  // the right-click menu has Edit Sketch too
+  await page.locator('.tree-row', { hasText: 'Base outline' }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Edit Sketch' }).click()
+  await expect(page.locator('.sk-bar')).toBeVisible()
+  await page.keyboard.press('Escape')
+})
+
+test('Dimension between two circles measures centre to centre, and a circle to a line from its centre', async ({ app, page }) => {
+  await app.open()
+  await startSketch(app)
+  for (const y of [0, 40]) {
+    await tool(app, 'Circle')
+    await click(app, 0, y)
+    await click(app, 3, y)
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+  }
+  await tool(app, 'Line')
+  await click(app, 20, -10)
+  await click(app, 20, 50)
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
+  const input = page.locator('.sk-dim-input')
+  // circle edge, then the other circle's edge, then where the dimension goes
+  await tool(app, 'Dimension')
+  await click(app, -3, 0)
+  await click(app, -3, 40)
+  await click(app, -15, 20)
+  await expect(input).toBeFocused()
+  await expect(input).toHaveValue(/^40(\.0+)?$/)
+  await input.fill('50')
+  await input.press('Enter')
+  await expect(input).toHaveCount(0)
+  const centres = () => app.ev((c) => { const s = c.sketch.getState(); return s.model.entities.filter((e: any) => e.type === 'circle').map((e: any) => s.model.entities.find((p: any) => p.id === e.c)).map((p: any) => [p.x, p.y]) }) // eslint-disable-line
+  let cs = await centres()
+  near(Math.hypot(cs[1][0] - cs[0][0], cs[1][1] - cs[0][1]), 50)
+  // circle to the line: from the centre, square to the line
+  await click(app, cs[0][0] + 3, cs[0][1])
+  await click(app, 20, 20)
+  await click(app, 10, cs[0][1] - 8)
+  await expect(input).toBeFocused()
+  await input.fill('25')
+  await input.press('Enter')
+  cs = await centres()
+  const lineX = await app.ev((c) => { const s = c.sketch.getState(); const l = s.model.entities.find((e: any) => e.type === 'line'); return s.model.entities.find((p: any) => p.id === l.p1).x }) // eslint-disable-line
+  near(Math.abs(lineX - cs[0][0]), 25)
+  expect((await sk(app)).ok).toBe(true)
+})
+
+test('Dimension from centre to centre of two circles stacked straight up, placed above them, then a flag when nothing is left to set', async ({ app, page }) => {
+  await app.open()
+  await startSketch(app)
+  for (const y of [0, 40]) {
+    await tool(app, 'Circle')
+    await click(app, 0, y)
+    await click(app, 3, y)
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+  }
+  // the two centres on one vertical line, like circles placed on the Y axis
+  const cIds = await app.ev((c) => c.sketch.getState().model.entities.filter((e: any) => e.type === 'circle').map((e: any) => e.c as string)) // eslint-disable-line
+  await app.ev((c, sel) => c.sketch.setState({ sel }), cIds)
+  await app.ev((c) => c.runCommand('sketch.vertical'))
+  const input = page.locator('.sk-dim-input')
+  await tool(app, 'Dimension')
+  await click(app, 0, 0)
+  await click(app, 0, 40)
+  await click(app, 0, 55) // above both: there is no sideways gap, so this is the gap between them
+  await expect(input).toBeFocused()
+  await expect(input).toHaveValue(/^40(\.0+)?$/)
+  await input.fill('30')
+  await input.press('Enter')
+  await expect(input).toHaveCount(0)
+  const ys = await app.ev((c, ids) => ids.map((id: string) => c.sketch.getState().model.entities.find((p: any) => p.id === id)?.y ?? 0), cIds) // eslint-disable-line (a centre on the origin is the origin itself)
+  near(Math.abs(ys[1] - ys[0]), 30)
+  // the centres can not get any further constrained against each other: say so, add nothing
+  const before = (await sk(app)).constraints.length
+  await click(app, 0, ys[0])
+  await click(app, 0, ys[1])
+  await click(app, 8, (ys[0] + ys[1]) / 2)
+  await expect(page.locator('.sk-status')).toContainText('Other constraints already fix that')
+  expect((await sk(app)).constraints.length).toBe(before)
+})
