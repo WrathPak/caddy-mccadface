@@ -128,12 +128,21 @@ export class App {
     }, id)
   }
 
+  /** Make an origin plane's row visible in the browser tree. The Planes folder may still be opening when this looks, so it only opens it when it stays shut. */
+  async showPlane(plane: 'XY' | 'XZ' | 'YZ') {
+    const { page } = this
+    const row = page.getByText(plane + ' plane')
+    await expect(async () => {
+      if (!(await row.isVisible())) await page.getByText('Planes', { exact: true }).click()
+      await expect(row).toBeVisible({ timeout: 1000 })
+    }).toPass({ timeout: 10000 })
+  }
+
   /** Draw a w x h rectangle (typed dims) on an origin plane and finish the sketch. */
   async sketchRect(plane: 'XY' | 'XZ' | 'YZ', w: number, h: number, at = { x: 500, y: 400 }) {
     const { page } = this
     await this.ribbon('Sketch').first().click()
-    const planes = page.getByText('Planes', { exact: true })
-    if (!(await page.getByText(plane + ' plane').isVisible())) await planes.click()
+    await this.showPlane(plane)
     await page.getByText(plane + ' plane').click()
     await expect(page.locator('.sk-bar')).toBeVisible()
     await this.ribbon('Rectangle').first().click()

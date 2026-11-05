@@ -700,13 +700,24 @@ function dimFor(m: SketchModel, picks: string[], at: Vec2, k: number): Omit<Cons
     refs = picks
     type = 'distance'
   } else if (t[0] === 'line' && t[1] === 'line') {
-    refs = picks
-    type = 'angle'
+    const a = entityById(m, picks[0]), b = entityById(m, picks[1])
+    if (a?.type !== 'line' || b?.type !== 'line') return null
+    // parallel lines have no angle worth giving: dimension the gap between them (an end of the first to the second line)
+    if (parallelLines(m, a.p1, a.p2, b.p1, b.p2)) { refs = [a.p1, picks[1]]; type = 'distance' }
+    else { refs = picks; type = 'angle' }
   } else return null
   const me = measure(m, type, refs)
   if (!me) return null
   const off: Vec2 = type === 'hdist' || type === 'vdist' || type === 'distance' || type === 'radius' || type === 'diameter' || type === 'angle' ? at : defaultOff(m, type, refs, k)
   return { type, refs, value: me.value, sgn: me.sgn, expr: String(+me.value.toFixed(3)), off }
+}
+
+/** Two lines within half a degree of parallel (either way round). */
+function parallelLines(m: SketchModel, a1: string, a2: string, b1: string, b2: string) {
+  const u = sub(pos(m, a2), pos(m, a1)), v = sub(pos(m, b2), pos(m, b1))
+  const lu = Math.hypot(u[0], u[1]), lv = Math.hypot(v[0], v[1])
+  if (lu < 1e-9 || lv < 1e-9) return false
+  return Math.abs(u[0] * v[1] - u[1] * v[0]) / (lu * lv) < Math.sin((0.5 * Math.PI) / 180)
 }
 
 /** aligned / horizontal / vertical from where the cursor sits relative to the two points */
