@@ -291,3 +291,32 @@ test('Rectangular pattern: click the curves to repeat while the tool is open', a
   const after = await app.ev((c) => ({ active: c.sketch.getState().active, tool: c.sketch.getState().tool, lines: c.sketch.getState().model.entities.filter((e: any) => e.type === 'line').length })) // eslint-disable-line
   expect(after).toEqual({ active: true, tool: 'select', lines: 12 })
 })
+
+test('Double-clicking a sketch in the Browser opens it for editing; F2 and the right-click menu still rename it', async ({ app, page }) => {
+  await app.open()
+  await app.sketchRect('XY', 30, 20)
+  await app.finishSketch()
+  const id = await app.ev((c) => c.doc.getState().features.find((f: any) => f.type === 'sketch').id as string) // eslint-disable-line
+  const name = await app.ev((c) => c.doc.getState().sketches[0].name as string)
+  const row = page.locator('.tree-row', { hasText: name })
+  await row.dblclick()
+  await expect(page.locator('.sk-bar')).toBeVisible()
+  expect(await app.ev((c) => ({ active: c.sketch.getState().active, editing: c.sketch.getState().editing }))).toEqual({ active: true, editing: id })
+  expect(await app.ev((c) => c.sketch.getState().model.entities.filter((e: any) => e.type === 'line').length)).toBe(4) // eslint-disable-line
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.sk-bar')).toHaveCount(0)
+  expect(await app.ev((c) => c.doc.getState().features.filter((f: any) => f.type === 'sketch').length)).toBe(1) // eslint-disable-line
+
+  // F2 on the selected row renames it
+  await page.locator('.tree-row', { hasText: name }).click()
+  await page.keyboard.press('F2')
+  await page.locator('.tree-row input.rename').fill('Base outline')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.tree-row', { hasText: 'Base outline' })).toBeVisible()
+
+  // the right-click menu has Edit Sketch too
+  await page.locator('.tree-row', { hasText: 'Base outline' }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Edit Sketch' }).click()
+  await expect(page.locator('.sk-bar')).toBeVisible()
+  await page.keyboard.press('Escape')
+})
