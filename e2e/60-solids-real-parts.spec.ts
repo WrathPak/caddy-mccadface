@@ -1,11 +1,11 @@
 import { test, expect, type App } from './helpers'
 import {
-  bodiesBox, clickWorld, dim, dlg, esc2, near, planeOf, projectFace, sk, skCircle, skClick, sketchOnFace, tool, toLocal, type P3,
+  bodiesBox, clickWorld, dim, dlg, near, planeOf, sk, skCircle, sketchOnFace, toLocal, type P3,
 } from './solids-kit'
 
 /* Real parts a Fusion user makes on solids, built from a blank document with the mouse and keyboard only (typed values are keystrokes).
-   Where Fusion would auto-project the face edges the sketch starts empty here, so each face sketch uses the Project tool on its own
-   face first (one extra click); the parts are otherwise done the Fusion way. */
+   The Fusion way: a sketch on a face has the face's edges projected in at once (no Project step), and a cut through the whole plate
+   uses Extent: All instead of a depth typed past the plate. */
 
 type Box = { min: P3; max: P3 }
 const mid = (b: Box): P3 => [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, b.max[2]]
@@ -25,10 +25,10 @@ async function plate(app: App, w: number, h: number, d: number): Promise<Box> {
 }
 const dist = (app: App, c: [number, number], onEdge: [number, number], at: [number, number], v: number) => dim(app, [c, onEdge], at, String(v))
 
-/** Sketch on the top face, then Project the face so its edges can be dimensioned to. Returns the plane and the plate's local box. */
+/** Sketch on the top face (its edges are projected in already, so they can be dimensioned to). Returns the plane and the plate's local box. */
 async function faceSketch(app: App, b: Box) {
   await sketchOnFace(app, mid(b))
-  await projectFace(app, mid(b))
+  await expect.poll(async () => (await sk(app)).entities.filter((e) => e.ref && e.type === 'line').length).toBe(4)
   const pl = await planeOf(app)
   const lo = toLocal(pl, [b.min[0], b.min[1], b.max[2]]), hi = toLocal(pl, [b.max[0], b.max[1], b.max[2]])
   return { pl, lo, hi }
@@ -47,6 +47,18 @@ async function extrudeDialog(app: App, profiles: P3[], distance: string) {
   await expect.poll(async () => ((await dlg(app)).profiles as string[]).length).toBe(profiles.length)
   await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBe(1) // the live preview is up before the distance is typed
   await app.field('Distance', distance)
+}
+
+/** Same, but with Extent: All (a cut through everything, no depth to type). */
+async function extrudeAll(app: App, profiles: P3[]) {
+  await app.ribbon('Extrude').click()
+  await clickWorld(app, profiles[0])
+  await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBe(1)
+  await app.cameraStable()
+  for (const p of profiles.slice(1)) await clickWorld(app, p)
+  await expect.poll(async () => ((await dlg(app)).profiles as string[]).length).toBe(profiles.length)
+  await app.inspector().locator('.field', { has: app.page.locator('.field-label', { hasText: 'Extent type' }) }).locator('.sel').first().click()
+  await app.page.getByRole('option', { name: /^All$/ }).click()
 }
 
 
@@ -73,10 +85,12 @@ async function holePlate(app: App): Promise<Box> {
 async function plateWithBoss(app: App): Promise<{ b: Box; sketchId: string }> {
   const b = await plate(app, 80, 50, 10)
   const { pl, lo } = await faceSketch(app, b)
-  const c: [number, number] = [lo[0] + 30, lo[1] + 20]
+  // the boss in the middle of the 80 x 50 plate: 40 from the left edge, 25 up from the bottom edge (the middle is not the sketch origin any more:
+  // the origin is the world origin, the corner of the plate)
+  const c: [number, number] = [lo[0] + 40, lo[1] + 25]
   await skCircle(app, c[0], c[1], 20)
-  await dist(app, c, [lo[0], lo[1] + 40], [lo[0] + 15, lo[1] + 44], 30)
-  await dist(app, c, [lo[0] + 60, lo[1]], [lo[0] + 62, lo[1] + 8], 20)
+  await dist(app, c, [lo[0], lo[1] + 40], [lo[0] + 15, lo[1] + 44], 40)
+  await dist(app, c, [lo[0] + 60, lo[1]], [lo[0] + 62, lo[1] + 8], 25)
   const m = await sk(app)
   expect(m.dof).toBe(0)
   await app.finishSketch()
@@ -107,7 +121,7 @@ test('Mounting plate: four holes dimensioned to the projected plate edges, cut t
   await app.finishSketch()
   // cut the four holes: a click in each, a negative distance into the plate (Cut is chosen by itself)
   const discs: P3[] = spots.map(([x, y]) => [pl.origin[0] + lo[0] + x, pl.origin[1] + lo[1] + y, b.max[2]] as P3)
-  await extrudeDialog(app, discs, '-20') // Fusion would offer Extent: All here; there is no such choice, so the depth is typed past the 8 mm plate
+  await extrudeAll(app, discs) // Extent: All, as in Fusion: through the whole plate, going into it by itself
   await expect(app.inspector().locator('.field', { hasText: 'Operation' })).toContainText('Cut')
   await app.ok()
   near(v0 - (await app.volume()), 4 * Math.PI * 9 * 8, 3)
@@ -134,7 +148,6 @@ test('Counterbore: a circle on the projected through hole, cut 3 deep', async ({
   const b = await holePlate(app)
   const v0 = await app.volume()
   await sketchOnFace(app, [b.min[0] + 3, b.min[1] + 3, b.max[2]])
-  await projectFace(app, [b.min[0] + 3, b.min[1] + 3, b.max[2]])
   const pl = await planeOf(app)
   // the hole is in the middle of the plate: its centre in the sketch
   const hole = toLocal(pl, [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, b.max[2]])
@@ -161,7 +174,6 @@ test('Hole region: the region inside the hole loop of a face extruded up as a ne
   const b = await holePlate(app)
   const cx = (b.min[0] + b.max[0]) / 2, cy = (b.min[1] + b.max[1]) / 2
   await sketchOnFace(app, [b.min[0] + 3, b.min[1] + 3, b.max[2]])
-  await projectFace(app, [b.min[0] + 3, b.min[1] + 3, b.max[2]])
   await app.finishSketch()
   await extrudeDialog(app, [[cx, cy, b.max[2]]], '5')
   await app.inspector().locator('.sel').first().click()
@@ -193,14 +205,14 @@ test('Timeline: changing the first extrude height moves the boss sketch and the 
   const after = (await bodiesBox(app))
   expect(after).toHaveLength(1)
   near(after[0].max[2], 31, 0.02)
-  // the circle kept its dimensions to the (moved) projected edges: the boss is still 30 from the left edge
+  // the circle kept its dimensions to the (moved) projected edges: the boss is still in the middle, 40 from the left edge
   const d = await app.ev((c, id) => {
     const s = c.sketchData.getState().data[id]
     const circ = s.entities.find((e: any) => e.type === 'circle' && !e.ref) // eslint-disable-line
     const cp = s.entities.find((e: any) => e.id === circ.c) // eslint-disable-line
     return { x: cp.x + s.plane.origin[0], y: cp.y + s.plane.origin[1], r: circ.r }
   }, sketchId)
-  near(d.x - b.min[0], 30, 0.05)
-  near(d.y - b.min[1], 20, 0.05)
+  near(d.x - b.min[0], 40, 0.05)
+  near(d.y - b.min[1], 25, 0.05)
   near(d.r, 10, 0.001)
 })

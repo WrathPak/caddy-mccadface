@@ -180,8 +180,8 @@ export async function projectFace(app: App, at: P3) {
 export const refEnts = (m: SkState) => m.entities.filter((e) => e.ref && e.type !== 'point')
 export { sketchParam, XY, addSketch }
 
-/** The Inspector's current dialog values. */
-export const dlg = (app: App) => app.ev((c) => c.ui.getState().inspector?.values)
+/** The Inspector's current dialog values (what the form holds now, including picks made in the viewport). */
+export const dlg = (app: App) => app.ev((c) => { const s = c.ui.getState().inspector; return s?.latest ?? s?.values })
 export const bodyVolume = (app: App, i = 0) => app.ev((c, i) => c.doc.getState().geometry.length).then(async () => {
   const ids: string[] = await app.ev((c) => c.doc.getState().geometry.map((b: any) => b.id)) // eslint-disable-line
   return app.volume(ids[i])

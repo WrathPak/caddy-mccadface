@@ -1,12 +1,13 @@
-import { test, expect, type App } from './helpers'
+import type { Page } from '@playwright/test'
+import { test, expect, XZ, type App } from './helpers'
 import {
-  bodiesBox, circles, clickWorld, dim, dlg, esc2, fastHolePlate, fastPlate, hoverWorld, near, planeOf, projectFace, px, refEnts, sk, skCircle, skClick, skRect,
-  sketchOnFace, sketchParam, tool, toLocal, userCircles, XY, type P3,
+  addSketch, bodiesBox, circles, clickWorld, dim, dlg, esc2, fastHolePlate, fastPlate, hoverWorld, near, planeOf, projectFace, px, refEnts, sk, skCircle, skClick, skRect,
+  openSketch, sketchOnFace, sketchParam, tool, toLocal, userCircles, XY, type P3,
 } from './solids-kit'
 
 /* Fusion 360 parity: sketching on solids and Extrude. Reference: docs/fusion-parity/extrude-solids.md.
    Plate: 60 x 40 x 10, corner at the world origin, top face at z = 10. Hole plate: the same with a 10 mm hole at (20, 12).
-   Gaps are written as the correct Fusion behaviour and marked test.fail(), so each flips to passing when it is fixed. */
+   Every gap the first pass found is closed now; each test states the Fusion behaviour. */
 
 const TOP: P3 = [5, 5, 10]
 const HOLE: P3 = [20, 12, 10]
@@ -26,7 +27,7 @@ test('Sketch on a face: Sketch, then a click on the top face opens a sketch on i
   expect(dir[2]).toBeGreaterThan(0.99) // looking straight down at the face
 })
 
-test.fail('Sketch on a face: the face outer edges are projected into the new sketch at once, fixed', async ({ app }) => {
+test('Sketch on a face: the face outer edges are projected into the new sketch at once, fixed', async ({ app }) => {
   await app.open()
   await fastPlate(app)
   await sketchOnFace(app, TOP)
@@ -35,7 +36,7 @@ test.fail('Sketch on a face: the face outer edges are projected into the new ske
   expect(lines).toHaveLength(4)
 })
 
-test.fail('Sketch on a face: the edges of a hole in the face are projected into the new sketch at once', async ({ app }) => {
+test('Sketch on a face: the edges of a hole in the face are projected into the new sketch at once', async ({ app }) => {
   await app.open()
   await fastHolePlate(app)
   await sketchOnFace(app, TOP)
@@ -44,7 +45,28 @@ test.fail('Sketch on a face: the edges of a hole in the face are projected into 
   expect(m.profiles.length).toBeGreaterThanOrEqual(2) // plate with the hole in it, and the hole itself
 })
 
-test.fail('Sketch on a face: the sketch origin is the world origin projected onto the face, so coordinates match the model', async ({ app }) => {
+test('Sketch on a face: Settings > Sketch > Auto project face edges turns the projection off and on again', async ({ app, page }) => {
+  await app.open()
+  await fastPlate(app)
+  await page.getByTestId('settings-gear').click()
+  await page.getByTestId('settings-dialog-nav-sketch').click()
+  const cb = page.getByTestId('set-auto-project').getByRole('checkbox')
+  await expect(cb).toBeChecked() // on by default, as in Fusion
+  await cb.click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('settings-dialog')).toHaveCount(0)
+  await sketchOnFace(app, TOP)
+  expect((await sk(app)).entities).toHaveLength(0) // starts empty
+  await app.page.getByRole('button', { name: /Cancel/ }).first().click()
+  await page.getByTestId('settings-gear').click()
+  await page.getByTestId('settings-dialog-nav-sketch').click()
+  await page.getByTestId('set-auto-project').getByRole('checkbox').click()
+  await page.keyboard.press('Escape')
+  await sketchOnFace(app, TOP)
+  expect(refEnts(await sk(app))).toHaveLength(4)
+})
+
+test('Sketch on a face: the sketch origin is the world origin projected onto the face, so coordinates match the model', async ({ app }) => {
   await app.open()
   await fastPlate(app)
   await sketchOnFace(app, TOP)
@@ -54,7 +76,7 @@ test.fail('Sketch on a face: the sketch origin is the world origin projected ont
   near(pl.origin[2], 10, 0.001)
 })
 
-test.fail('Sketch on a face: projected curves are drawn purple', async ({ app, page }) => {
+test('Sketch on a face: projected curves are drawn purple', async ({ app, page }) => {
   await app.open()
   await fastPlate(app)
   await sketchOnFace(app, TOP)
@@ -100,7 +122,7 @@ test('Project: the Project tool on the face under the sketch puts its edges in a
   expect((await sk(app)).profiles.length).toBe(3)
 })
 
-test.fail('Project: a projected hole is one circle (it has a diameter and a centre), not two half arcs', async ({ app }) => {
+test('Project: a projected hole is one circle (it has a diameter and a centre), not two half arcs', async ({ app }) => {
   await app.open()
   await fastHolePlate(app)
   await sketchOnFace(app, TOP)
@@ -109,7 +131,7 @@ test.fail('Project: a projected hole is one circle (it has a diameter and a cent
   expect(refEnts(m).filter((e) => e.type === 'circle')).toHaveLength(1)
 })
 
-test.fail('Project: P starts the Project tool', async ({ app, page }) => {
+test('Project: P starts the Project tool', async ({ app, page }) => {
   await app.open()
   await fastPlate(app)
   await sketchOnFace(app, TOP)
@@ -118,7 +140,7 @@ test.fail('Project: P starts the Project tool', async ({ app, page }) => {
   expect((await sk(app)).tool).toBe('project')
 })
 
-test.fail('Project: a side face of the body, edge on to the sketch, projects as a line', async ({ app }) => {
+test('Project: a side face of the body, edge on to the sketch, projects as a line', async ({ app }) => {
   await app.open()
   await fastPlate(app)
   await sketchOnFace(app, TOP)
@@ -127,10 +149,12 @@ test.fail('Project: a side face of the body, edge on to the sketch, projects as 
   await expect.poll(async () => refEnts(await sk(app)).length, { timeout: 5000 }).toBeGreaterThan(0)
 })
 
-test.fail('Project: a click on a single body edge projects just that edge', async ({ app }) => {
+test('Project: a click on a single body edge projects just that edge', async ({ app }) => {
   await app.open()
   await fastPlate(app)
+  await app.ev((c) => c.settings.getState().setAutoProjectFaces(false)) // so the sketch starts empty and only the click puts curves in
   await sketchOnFace(app, TOP)
+  expect(refEnts(await sk(app))).toHaveLength(0)
   await tool(app, 'Project')
   await hoverWorld(app, [30, 0.05, 10])
   await clickWorld(app, [30, 0.05, 10]) // right on the front top edge
@@ -138,18 +162,41 @@ test.fail('Project: a click on a single body edge projects just that edge', asyn
   expect(refEnts(await sk(app))).toHaveLength(1)
 })
 
-test.fail('Project: Intersect (curves where the sketch plane cuts a body) is in the sketch tools', async ({ app }) => {
+test('Project: Intersect (curves where the sketch plane cuts a body) is in the sketch tools', async ({ app }) => {
   await app.open()
-  await fastPlate(app)
-  await sketchOnFace(app, TOP)
+  // a plate centred on the YZ plane (x from -30 to 30), so the plane cuts it
+  await addSketch(app, XY, [{ k: 'rect', x0: -30, y0: -20, x1: 30, y1: 20 }])
+  await app.ribbon('Extrude').click()
+  await app.field('Distance', '10')
+  await app.ok()
+  await app.ev((c) => { c.runCommand('view.home'); c.runCommand('view.frame') })
+  await app.cameraStable()
+  await openSketch(app, 'YZ')
   await expect(app.page.getByRole('button', { name: /^Intersect/ }).first()).toBeVisible({ timeout: 3000 })
+  await tool(app, /^Intersect/)
+  // the body, picked in the Browser (every face of it is edge on from here): the YZ plane cuts it in a 40 x 10 rectangle
+  await app.page.locator('.tree-row').filter({ hasText: 'Extrude1' }).first().click()
+  await expect.poll(async () => refEnts(await sk(app)).length, { timeout: 8000 }).toBe(4)
+  const m = await sk(app)
+  const lens = m.entities.filter((e) => e.type === 'line' && e.ref).map((l) => {
+    const p1 = m.entities.find((e) => e.id === l.p1), p2 = m.entities.find((e) => e.id === l.p2)
+    return Math.hypot(p1.x - p2.x, p1.y - p2.y)
+  }).sort((x, y) => x - y)
+  near(lens[0], 10, 0.01); near(lens[3], 40, 0.01)
+  expect(m.projections?.[0]?.mode).toBe('intersect')
 })
 
-test.fail('Project: Include 3D Geometry is in the sketch tools', async ({ app }) => {
+test('Project: Include 3D Geometry is in the sketch tools, and brings a body in with a point at every corner', async ({ app }) => {
   await app.open()
   await fastPlate(app)
   await sketchOnFace(app, TOP)
   await expect(app.page.getByRole('button', { name: /Include 3D/ }).first()).toBeVisible({ timeout: 3000 })
+  await tool(app, /Include 3D/)
+  await clickWorld(app, [5, 5, 10])
+  await expect.poll(async () => (await sk(app)).projections?.some((p) => p.mode === 'include3d') ?? false, { timeout: 8000 }).toBe(true)
+  const m = await sk(app)
+  expect(refEnts(m).filter((e) => e.type === 'line').length).toBeGreaterThanOrEqual(4)
+  expect(m.entities.filter((e) => e.ref && e.type === 'point').length).toBeGreaterThanOrEqual(4)
 })
 
 // ------------------------------------------------------------------------------------------------ snaps, dimensions
@@ -173,8 +220,8 @@ test('Projected geometry: a circle centres on a projected hole, a circle snaps t
   m = await sk(app)
   const c2 = circles(m).find((c) => !c.ref && c.id !== c1.id)!
   expect(m.constraints.some((k) => k.type === 'midpoint' && k.refs.includes(c2.c) && k.refs.some((r: string) => refIds(m).has(r)))).toBe(true)
-  // 3: a line from the corner
-  const k0 = toLocal(pl, [0, 0, 10]), k1 = toLocal(pl, [15, 25, 10])
+  // 3: a line from a corner (not the one on the world origin: that one is the sketch origin, which a line starting there takes first)
+  const k0 = toLocal(pl, [60, 0, 10]), k1 = toLocal(pl, [45, 25, 10])
   await tool(app, 'Line')
   await skClick(app, k0[0], k0[1])
   await skClick(app, k1[0], k1[1])
@@ -207,19 +254,21 @@ test('Projected geometry: a new circle can be dimensioned to a projected edge, a
   expect(pts(m)).toEqual(pts(before))
 })
 
-test.fail('Projected geometry: the diameter of a projected hole can be dimensioned (as a reference dimension)', async ({ app, page }) => {
+test('Projected geometry: the diameter of a projected hole can be dimensioned (as a reference dimension)', async ({ app, page }) => {
   await app.open()
   await fastHolePlate(app)
   await sketchOnFace(app, TOP)
-  await projectFace(app, TOP)
   const pl = await planeOf(app)
   const t = toLocal(pl, [20, 17, 10]) // top of the hole
   await page.keyboard.press('d')
   await skClick(app, t[0], t[1])
   await skClick(app, t[0] + 12, t[1] + 12)
-  const input = page.locator('.sk-dim-input')
-  await expect(input).toBeVisible({ timeout: 4000 })
-  expect(parseFloat(await input.inputValue())).toBeCloseTo(10, 2) // 10 across, not a radius of 5
+  // the projected hole is fixed, so the dimension is a reference one (in brackets, no value box): a diameter of 10, not a radius of 5
+  await expect.poll(async () => (await sk(app)).constraints.some((k) => k.type === 'diameter' && k.driven)).toBe(true)
+  const m = await sk(app)
+  expect(m.constraints.some((k) => k.type === 'radius')).toBe(false)
+  const d = m.constraints.find((k) => k.type === 'diameter')!
+  near(d.value, 10, 0.01)
 })
 
 // ------------------------------------------------------------------------------------------------ attached, associative
@@ -399,36 +448,291 @@ test('Extrude: the live preview shows while the dialog is open and the arrow in 
   expect((await dlg(app)).distance as number).toBeGreaterThan(m.tip + 3)
 })
 
-test.fail('Extrude: Extent type All / Through All cuts through the whole body without a distance', async ({ app, page }) => {
+/** Pick an option of a select field in the open Extrude dialog. */
+async function pickOption(app: App, page: Page, field: string, option: RegExp | string) {
+  await app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: field }) }).locator('.sel').first().click()
+  await page.getByRole('option', { name: option }).click()
+}
+const opText = (app: App, page: Page) => app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: 'Operation' }) }).innerText()
+/** Click an origin plane row in the Browser (it goes to the dialog field that is waiting for a pick). */
+async function clickPlaneRow(app: App, page: Page, plane: 'XY' | 'XZ' | 'YZ') {
+  await app.showPlane(plane)
+  await page.getByText(plane + ' plane').click()
+}
+
+test('Extrude: Extent type All / Through All cuts through the whole body without a distance', async ({ app, page }) => {
+  test.setTimeout(150000)
   await app.open()
   await faceRectExtrude(app)
   await expect(app.inspector().getByText('Extent type', { exact: true })).toBeVisible({ timeout: 4000 })
-  await page.getByText('Extent type', { exact: true }).click()
-  await page.getByRole('option', { name: /All/ }).click()
+  await pickOption(app, page, 'Extent type', /^All$/)
+  // there is no distance to type any more, and the extrude goes into the body by itself (a cut)
+  await expect(app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: /^Distance$/ }) })).toHaveCount(0)
+  await expect.poll(() => opText(app, page)).toContain('Cut')
+  // direction-aware: the profile is on the top face and the plate is behind it, so the direction came out flipped (into the plate)
+  await expect.poll(async () => (await dlg(app)).flip).toBe(true)
+  await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBe(1)
   await app.ok()
   near(await app.volume(), 2400 * 10 - 15 * 15 * 10, 1)
+  expect((await app.features()).every((f) => f.state === 'ok')).toBe(true)
 })
 
-test.fail('Extrude: Extent type To Object runs the extrude up to a picked face or body', async ({ app, page }) => {
+test('Extrude: Extent All goes both ways when Symmetric or Two sides, and edits from the timeline', async ({ app, page }) => {
+  test.setTimeout(240000)
   await app.open()
   await faceRectExtrude(app)
-  await expect(app.inspector().getByText('Extent type', { exact: true })).toBeVisible({ timeout: 4000 })
-  await page.getByText('Extent type', { exact: true }).click()
-  await expect(page.getByRole('option', { name: /To Object/i })).toBeVisible({ timeout: 3000 })
+  await page.getByRole('radio', { name: 'Symmetric' }).click()
+  await pickOption(app, page, 'Extent type', /^All$/)
+  // both ways through everything is a cut by itself, and there is no direction to flip
+  await expect.poll(() => opText(app, page)).toContain('Cut')
+  await expect(app.inspector().getByText('Flip direction')).toHaveCount(0)
+  await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBe(1)
+  await app.ok()
+  near(await app.volume(), 2400 * 10 - 15 * 15 * 10, 1)
+  // Two sides: the same, both ways all the way
+  const chip = page.locator('.tl .chip').nth(3)
+  await chip.dblclick()
+  await expect(app.inspector().locator('.panel-title')).toHaveText('Extrude')
+  await page.getByRole('radio', { name: 'Two sides' }).click()
+  await pickOption(app, page, 'Second side extent', /^All$/) // the second side has its own extent type
+  await expect(app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: 'Distance 2' }) })).toHaveCount(0) // All has no second distance
+  await app.ok()
+  near(await app.volume(), 2400 * 10 - 15 * 15 * 10, 1)
+  // One side: it goes up from the face by default, away from the plate, where there is nothing to go through. The dialog says so, and Flip direction fixes it
+  await chip.dblclick()
+  await page.getByRole('radio', { name: 'One side' }).click()
+  await expect.poll(() => app.ev((c) => c.ui.getState().inspectorNotice ?? ''), { timeout: 8000 }).toMatch(/nothing to go through/i)
+  await app.inspector().getByRole('checkbox', { name: 'Flip direction' }).click()
+  await expect.poll(() => app.ev((c) => c.ui.getState().inspectorNotice ?? '')).toBe('')
+  await app.ok()
+  near(await app.volume(), 2400 * 10 - 15 * 15 * 10, 1)
+  expect((await app.features()).every((f) => f.state === 'ok')).toBe(true)
 })
 
-test.fail('Extrude: Start can be Offset (the extrude begins a distance away from the profile plane)', async ({ app }) => {
+test('Extrude: Extent type To Object runs the extrude up to a picked face, plane or vertex, with an offset', async ({ app, page }) => {
+  test.setTimeout(240000)
+  await app.open()
+  await faceRectExtrude(app)
+  await pickOption(app, page, 'Extent type', /To Object/i)
+  // the To object field takes the next pick: the XY plane (the underside of the plate)
+  await expect(app.inspector().getByText(/^To object/)).toBeVisible({ timeout: 4000 })
+  await clickPlaneRow(app, page, 'XY')
+  await expect.poll(async () => (((await dlg(app)).toObject as string[]) ?? []).length).toBe(1)
+  await expect.poll(() => opText(app, page)).toContain('Cut')
+  expect(((await dlg(app)).profiles as string[]).length).toBe(1) // the pick did not also go into the profile list
+  await app.field('Object offset', '-4') // stop 4 short of the plane: 6 deep
+  await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBe(1)
+  await app.ok()
+  near(await app.volume(), 2400 * 10 - 15 * 15 * 6, 1)
+  // from the timeline: with the offset taken off it goes right through
+  await page.locator('.tl .chip').nth(3).dblclick()
+  await expect(app.inspector().locator('.panel-title')).toHaveText('Extrude')
+  await app.field('Object offset', '0')
+  await app.ok()
+  near(await app.volume(), 2400 * 10 - 15 * 15 * 10, 1)
+  expect((await app.features()).every((f) => f.state === 'ok')).toBe(true)
+})
+
+test('Extrude: Start can be Offset (the extrude begins a distance away from the profile plane)', async ({ app, page }) => {
+  test.setTimeout(150000)
   await app.open()
   await faceRectExtrude(app)
   await expect(app.inspector().getByText('Start', { exact: true })).toBeVisible({ timeout: 4000 })
   await expect(app.inspector().getByText(/Offset/).first()).toBeVisible({ timeout: 3000 })
+  // begin 2 mm inside the plate and go 5 up: 3 mm stick out above the face
+  await page.getByRole('radio', { name: 'Offset' }).click()
+  await app.field('Start offset', '-2')
+  await app.field('Distance', '5')
+  await expect.poll(() => opText(app, page)).toContain('Join')
+  await app.ok()
+  const b = (await bodiesBox(app))[0]
+  near(b.max[2], 13)
+  near(await app.volume(), 2400 * 10 + 15 * 15 * 3, 1)
 })
 
-test.fail('Extrude: Start can be From Object (the extrude begins at a picked face)', async ({ app }) => {
+test('Extrude: Start can be From Object (the extrude begins at a picked face or plane)', async ({ app, page }) => {
+  test.setTimeout(240000)
   await app.open()
   await faceRectExtrude(app)
   await expect(app.inspector().getByText('Start', { exact: true })).toBeVisible({ timeout: 4000 })
   await expect(app.inspector().getByText(/Object/).first()).toBeVisible({ timeout: 3000 })
+  await page.getByRole('radio', { name: 'From Object' }).click()
+  await expect(app.inspector().getByText(/^Start object/)).toBeVisible({ timeout: 4000 })
+  await clickPlaneRow(app, page, 'XY')
+  await expect.poll(async () => (((await dlg(app)).startObject as string[]) ?? []).length).toBe(1)
+  await app.field('Distance', '4')
+  await pickOption(app, page, 'Operation', /New body/)
+  await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBe(1)
+  await app.ok()
+  const bodies = await bodiesBox(app)
+  expect(bodies).toHaveLength(2)
+  const slug = bodies.find((x) => x.max[2] - x.min[2] < 5)!
+  near(slug.min[2], 0); near(slug.max[2], 4)
+  // from the timeline: start from the profile plane again
+  await page.locator('.tl .chip').nth(3).dblclick()
+  await expect(app.inspector().locator('.panel-title')).toHaveText('Extrude')
+  await page.getByRole('radio', { name: 'Profile Plane' }).click()
+  await app.ok()
+  const after = await bodiesBox(app)
+  const moved = after.find((x) => x.max[2] - x.min[2] < 5)!
+  near(moved.min[2], 10); near(moved.max[2], 14)
+})
+
+/** A horizontal cylinder (axis along y, x 20..40, y 0..40, z 10..30): a circle on the XZ plane extruded 40 the way the plane's normal does not go. */
+async function horizontalCylinder(app: App) {
+  await addSketch(app, XZ, [{ k: 'circle', c: [30, 20], r: 10 }])
+  await app.ribbon('Extrude').click()
+  await app.field('Distance', '-40')
+  await app.ok()
+  await app.ev((c) => { c.runCommand('view.home'); c.runCommand('view.frame') })
+  await app.cameraStable()
+  const b = (await bodiesBox(app))[0]
+  near(b.min[1], 0, 0.05); near(b.max[1], 40, 0.05); near(b.max[2], 30, 0.05)
+}
+
+test('Extrude: Extent To Object works with a curved face (a cylinder), ending the extrude at the face', async ({ app, page }) => {
+  test.setTimeout(240000)
+  await app.open()
+  await horizontalCylinder(app)
+  const sk2 = await addSketch(app, XY, [{ k: 'rect', x0: 25, y0: 5, x1: 35, y1: 35 }])
+  void sk2
+  // the rectangle (on z = 0, under the cylinder) is picked by its sketch in the Browser, then Extrude; it starts 40 up and runs down to the cylinder
+  await page.locator('.tree-row').filter({ hasText: 'Sketch2' }).first().click()
+  await app.ribbon('Extrude').click()
+  await expect.poll(async () => ((await dlg(app)).profiles as string[]).length).toBe(1)
+  await page.getByRole('radio', { name: 'Offset' }).click()
+  await app.field('Start offset', '40')
+  await pickOption(app, page, 'Extent type', /To Object/i)
+  await app.ev((c) => c.bus.emit('view', 'top')) // straight down, so nothing (the origin planes, for one) is in front of the cylinder
+  await app.cameraStable()
+  await clickWorld(app, [30, 20, 30]) // the top of the cylinder, seen from above
+  await expect.poll(async () => (((await dlg(app)).toObject as string[]) ?? []).length).toBe(1)
+  expect((((await dlg(app)).toObject as string[])[0])).toContain('"kind":"face"')
+  await pickOption(app, page, 'Operation', /New body/)
+  await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBe(1)
+  await app.ok()
+  const bodies = await bodiesBox(app)
+  expect(bodies).toHaveLength(2)
+  const slab = bodies.find((x) => x.max[2] > 35)!
+  near(slab.max[2], 40, 0.01)
+  near(slab.min[2], 20 + Math.sqrt(75), 0.15) // the corners of the rectangle meet the wall 5 mm off the middle
+  // 30 long, and 10 wide where the wall curves away: the volume between z = 40 and the wall
+  near(await app.volume(slab.id), 30 * (200 - 2 * (2.5 * Math.sqrt(75) + 50 * Math.asin(0.5))), 40)
+  expect((await app.features()).every((f) => f.state === 'ok')).toBe(true)
+  // an offset moves the end: 2 mm short of the wall (negative offset), from the timeline
+  await page.locator('.tl .chip').nth(3).dblclick()
+  await expect(app.inspector().locator('.panel-title')).toHaveText('Extrude')
+  await app.field('Object offset', '-2')
+  await app.ok()
+  const after = (await bodiesBox(app)).find((x) => x.max[2] > 35)!
+  near(after.min[2], 20 + Math.sqrt(75) + 2, 0.4)
+})
+
+test('Extrude: Two sides, each side has its own extent (a distance one way, to an object the other)', async ({ app, page }) => {
+  test.setTimeout(240000)
+  await app.open()
+  await faceRectExtrude(app)
+  await page.getByRole('radio', { name: 'Two sides' }).click()
+  await app.field('Distance', '3')
+  await expect(app.inspector().getByText('Second side extent', { exact: true })).toBeVisible({ timeout: 4000 })
+  await pickOption(app, page, 'Second side extent', /To Object/i)
+  await expect(app.inspector().getByText(/^Second side object/)).toBeVisible({ timeout: 4000 })
+  await clickPlaneRow(app, page, 'XY') // the underside of the plate, 10 below
+  await expect.poll(async () => (((await dlg(app)).toObject2 as string[]) ?? []).length).toBe(1)
+  expect(((await dlg(app)).toObject as string[]).length).toBe(0) // the pick went to the second side only
+  await expect.poll(() => opText(app, page)).toContain('Join')
+  await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBe(1)
+  await app.ok()
+  const b = (await bodiesBox(app))[0]
+  near(b.max[2], 13); near(b.min[2], 0)
+  near(await app.volume(), 2400 * 10 + 15 * 15 * 3, 1)
+  // from the timeline the second side becomes a distance of 12: it reaches 2 below the plate
+  await page.locator('.tl .chip').nth(3).dblclick()
+  await expect(app.inspector().locator('.panel-title')).toHaveText('Extrude')
+  await pickOption(app, page, 'Second side extent', /^Distance$/)
+  await app.field('Distance 2', '12')
+  await app.ok()
+  const c2 = (await bodiesBox(app))[0]
+  near(c2.min[2], -2); near(c2.max[2], 13)
+  // the first side can be All too: both ways through everything
+  await page.locator('.tl .chip').nth(3).dblclick()
+  await pickOption(app, page, 'Extent type', /^All$/)
+  await pickOption(app, page, 'Second side extent', /^All$/)
+  await expect(app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: 'Distance 2' }) })).toHaveCount(0)
+  await app.ok()
+  expect((await app.features()).every((f) => f.state === 'ok')).toBe(true)
+})
+
+test('Extrude: New Component makes a component that holds the new body', async ({ app, page }) => {
+  test.setTimeout(240000)
+  await app.open()
+  await faceRectExtrude(app)
+  await pickOption(app, page, 'Operation', /New Component/)
+  await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBe(1)
+  const before = await app.ev((c) => c.doc.getState().assembly.components.length)
+  await app.ok()
+  const st = await app.ev((c) => {
+    const d = c.doc.getState()
+    return { comps: d.assembly.components.map((x: any) => x.id), occs: d.assembly.occurrences.length, bodies: d.geometry.map((b: any) => ({ id: b.id, component: b.component ?? null, n: b.mesh.indices.length })), active: d.activeOcc } // eslint-disable-line
+  })
+  expect(st.comps.length).toBe(before + 1)
+  expect(st.occs).toBe(1)
+  expect(st.bodies).toHaveLength(2)
+  const mine = st.bodies.find((b) => b.component)!
+  expect(st.comps).toContain(mine.component)
+  expect(st.bodies.find((b) => !b.component)).toBeTruthy() // the plate stays in the root component
+  near(await app.volume(mine.id), 15 * 15 * 10, 1)
+  near(await app.volume(st.bodies.find((b) => !b.component)!.id), 2400 * 10, 1)
+  expect((await app.features()).every((f) => f.state === 'ok')).toBe(true)
+  // it shows in the Browser as a component with its body
+  await expect(page.locator('.tree-row').filter({ hasText: /^Component1/ }).first()).toBeVisible()
+  // and survives save and load
+  const round = await app.ev(async (c) => {
+    const p = c.parseProject(await c.serializeProject(false))
+    const f = p.data.features.find((x: any) => x.type === 'extrude' && x.params.operation === 'component') // eslint-disable-line
+    return { comps: p.data.assembly.components.length, owner: f?.params.component, has: p.data.assembly.components.some((x: any) => x.id === f?.params.component) } // eslint-disable-line
+  })
+  expect(round.comps).toBe(before + 1)
+  expect(round.has).toBe(true)
+})
+
+test('Project: the Project tool takes a vertex of a body and brings it in as a reference point', async ({ app }) => {
+  await app.open()
+  await fastPlate(app)
+  await app.ev((c) => c.settings.getState().setAutoProjectFaces(false))
+  await sketchOnFace(app, TOP)
+  await tool(app, 'Project')
+  await hoverWorld(app, [60, 40, 10])
+  await clickWorld(app, [60, 40, 10]) // the corner
+  await expect.poll(async () => (await sk(app)).entities.filter((e) => e.ref && e.type === 'point').length, { timeout: 8000 }).toBe(1)
+  const m = await sk(app)
+  expect(refEnts(m)).toHaveLength(0) // a point, no curve
+  const pl = await planeOf(app)
+  const p = m.entities.find((e) => e.ref && e.type === 'point')
+  const w = toLocal(pl, [60, 40, 10])
+  near(p.x, w[0], 0.01); near(p.y, w[1], 0.01)
+})
+
+test('Project to Surface: curves come in as guides over the part of a (curved) face they look at along the sketch normal', async ({ app, page }) => {
+  test.setTimeout(240000)
+  await app.open()
+  await horizontalCylinder(app)
+  await openSketch(app, 'XY')
+  await skRect(app, 10, 15, 50, 25)
+  await page.keyboard.press('Control+a')
+  await expect(app.page.getByRole('button', { name: /Project to Surface/ }).first()).toBeVisible({ timeout: 3000 })
+  await tool(app, /Project to Surface/)
+  await clickWorld(app, [30, 20, 30]) // the top of the cylinder, seen from above
+  await expect.poll(async () => (await sk(app)).projections?.some((p) => p.mode === 'surface') ?? false, { timeout: 8000 }).toBe(true)
+  const m = await sk(app)
+  const guides = m.entities.filter((e) => e.type === 'line' && e.ref)
+  expect(guides).toHaveLength(2) // the long sides, over the cylinder only: x from 20 to 40
+  for (const g of guides) {
+    const a = m.entities.find((e) => e.id === g.p1), b = m.entities.find((e) => e.id === g.p2)
+    near(Math.min(a.x, b.x), 20, 0.1); near(Math.max(a.x, b.x), 40, 0.1)
+    expect(g.construction).toBe(true) // guides: not part of any profile
+  }
+  expect(m.profiles.length).toBe(1) // still just the rectangle
 })
 
 // ------------------------------------------------------------------------------------------------ Press/Pull and Hole on a face
@@ -445,13 +749,18 @@ test('Press/Pull: with the top face selected first, a distance pushes it up', as
   near((await bodiesBox(app))[0].max[2], 14, 0.01)
 })
 
-test.fail('Press/Pull: start the tool, then click a face: the face goes into the dialog', async ({ app }) => {
+test('Press/Pull: start the tool, then click a face: the face goes into the dialog', async ({ app, page }) => {
   await app.open()
   await fastPlate(app)
   await app.ribbon('Press/Pull').first().click()
   await clickWorld(app, TOP)
-  await expect.poll(() => app.ev((c) => c.ui.getState().selection.length)).toBe(1) // the click does select the face ...
-  await expect.poll(async () => ((await dlg(app)).entities as string[]).length, { timeout: 8000 }).toBe(1) // ... but the dialog does not take it
+  await expect.poll(() => app.ev((c) => c.ui.getState().selection.length)).toBe(1)
+  await expect.poll(async () => ((await dlg(app)).entities as string[]).length, { timeout: 8000 }).toBe(1)
+  await expect(page.getByTestId('sel-entities')).toContainText('1 selected') // the list in the dialog itself
+  // and it is the real thing: a distance moves the face
+  await app.field('Distance', '4')
+  await app.ok()
+  near((await bodiesBox(app))[0].max[2], 14, 0.01)
 })
 
 test('Hole: a click on the top face of the plate places a hole there and it is drilled through', async ({ app }) => {
@@ -465,7 +774,7 @@ test('Hole: a click on the top face of the plate places a hole there and it is d
   expect(v0 - (await app.volume())).toBeGreaterThan(5) // the preset sizes the hole to the part (a small one here)
 })
 
-test.fail('Hole: a click right at the rim of an existing hole snaps to its centre (concentric)', async ({ app }) => {
+test('Hole: a click right at the rim of an existing hole snaps to its centre (concentric)', async ({ app }) => {
   await app.open()
   await fastHolePlate(app)
   await app.ribbon('Hole').first().click()

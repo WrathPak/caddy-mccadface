@@ -6,7 +6,8 @@ import { create } from 'zustand'
 import { evalNumber } from '@/doc/params'
 import { useDoc } from '@/doc/store'
 import { getKernel } from '@/kernel/client'
-import type { ProjectedCurve } from '@/kernel/sketch-ops'
+import type { ProjectMode } from '@/kernel/sketch-ops'
+import { useSettings } from '@/settings/settings'
 import { useUi, type SelectionRef } from '@/store/ui'
 import { viewportBus } from '@/viewport/bus'
 import { applyConstraint, expects, ready, type CKind } from './constraints'
@@ -26,7 +27,8 @@ import { circumcircle, cross, dist, intersectLineLine, norm, sub } from './geom'
 import { applyOffset, collectChain, sideOf, type Chain } from './offsetTool'
 import { connectedCurves, duplicateCurves } from './modify'
 import { encodeRef, refFromSelection } from '@/doc/refs'
-import { addProjected, reprojectModel } from './project'
+import { addProjected, projectRef, reprojectModel } from './project'
+import { surfaceCurves } from './surface'
 import { applyTrim, prepareTrim, trimSpan } from './trim'
 import {
   arcThrough, fieldsFor, hasText, resolveEnd, valuesOf, wrapDeg, type DrawTool, type Typed, type Values,
@@ -294,6 +296,13 @@ export async function beginSketch(o: { plane: PlaneDef; face?: string | null; mo
   if (o.model) await ensureFonts(o.model)
   onClose = o.onClose ?? null
   const model = o.model ?? emptyModel()
+  // a new sketch on a flat face starts with the face's edges projected in (Fusion's Auto Project Edges on Reference)
+  if (!o.model && o.face && useSettings.getState().autoProjectFaces) {
+    try {
+      const curves = await projectRef(o.face, o.plane, useDoc.getState().geometry, 'project', (n, a) => getKernel().call(n, a as never))
+      if (Array.isArray(curves)) addProjected(model, curves, o.face)
+    } catch { /* the sketch just starts empty */ }
+  }
   // projected geometry follows its source: refresh it against the bodies as they are now (a broken source is flagged, never fatal)
   if (model.projections?.length) {
     try { await reprojectModel(model, o.plane, useDoc.getState().geometry, (n, a) => getKernel().call(n, a as never)) } catch { /* keep the stored geometry */ }
@@ -1076,47 +1085,84 @@ export function commitOffset() {
 
 // ---- project
 
+/** Which of Project / Intersect / Include 3D Geometry the project tool is in. */
+export const useProjMode = create<{ mode: ProjectMode }>(() => ({ mode: 'project' }))
+const MODE_TOOL: Record<ProjectMode, string> = { project: 'sketch.project', intersect: 'sketch.intersect', include3d: 'sketch.include3d', surface: 'sketch.projectSurface' }
+const MODE_NAME: Record<ProjectMode, string> = { project: 'Project', intersect: 'Intersect', include3d: 'Include 3D Geometry', surface: 'Project to Surface' }
+
+/** Start the Project tool (or its Intersect / Include 3D Geometry variants). */
+export function startProject(mode: ProjectMode = 'project') {
+  useProjMode.setState({ mode })
+  setTool('project')
+  useUi.getState().setActiveTool(MODE_TOOL[mode])
+  useUi.setState({ pickKinds: mode === 'intersect' || mode === 'surface' ? [] : ['vertex'] })
+  flash(mode === 'surface' ? 'Project to Surface: select the sketch curves, then click the face' : mode === 'intersect' ? 'Intersect: click a face or body the sketch plane cuts' : mode === 'include3d' ? 'Include 3D Geometry: click a body, face or edge' : 'Project: click a face, an edge or a body')
+}
+
 let projUnsub: (() => void) | null = null
 function watchProject(on: boolean) {
   projUnsub?.()
   projUnsub = null
-  if (!on) return
+  if (!on) { if (useUi.getState().pickKinds.length === 1 && useUi.getState().pickKinds[0] === 'vertex') useUi.setState({ pickKinds: [] }); return }
   useUi.getState().setSelectionFilter('face')
+  useUi.setState({ pickKinds: ['vertex'] }) // corners of the bodies can be clicked too: a vertex comes in as a point
   projUnsub = useUi.subscribe((st, prev) => {
     if (st.selection === prev.selection || !st.selection.length) return
-    const refs = st.selection.filter((r) => r.kind === 'face' || r.kind === 'edge' || r.kind === 'body')
+    const refs = st.selection.filter((r) => r.kind === 'face' || r.kind === 'edge' || r.kind === 'body' || r.kind === 'vertex')
     if (!refs.length) return
     useUi.getState().clearSelection()
     void projectRefs(refs)
   })
 }
 
-/** Project the picked faces (their boundary), edges, or whole bodies onto the sketch plane as fixed reference geometry. */
-export async function projectRefs(refs: SelectionRef[]) {
+/**
+ * Project the picked faces (their boundary), edges, vertices or whole bodies onto the sketch plane as fixed reference geometry. In
+ * Intersect mode the curves are where the sketch plane cuts the picked faces or bodies.
+ */
+export async function projectRefs(refs: SelectionRef[], mode: ProjectMode = useProjMode.getState().mode) {
   const s = get()
   const bodies = useDoc.getState().geometry
+  if (mode === 'surface') {
+    const hit = refs.find((r) => r.kind === 'face')
+    const src = s.sel.filter((id) => { const e = entityById(s.model, id); return e && e.type !== 'point' && !e.ref })
+    if (!hit) { flash('Project to Surface: click a face'); return }
+    if (!src.length) { flash('Project to Surface: select the sketch curves first, then click the face'); return }
+    const body = bodies.find((x) => x.id === hit.id)
+    const g = body && refFromSelection(hit, bodies)
+    if (!body || body.kind !== 'brep' || !g || g.kind !== 'face') { flash('Project to Surface needs a face of a solid body'); return }
+    const res = surfaceCurves(s.model, src, s.plane, body, g.index)
+    let n = 0
+    const ok = commit((m) => { n = addProjected(m, res.curves, encodeRef(g), 'surface', src) })
+    if (ok) {
+      flash(!res.curves.length ? 'The face is not in line of sight of those curves (looking along the sketch normal)'
+        : `Project to Surface: ${n} guide curve${n === 1 ? '' : 's'} over the face, ${Math.abs(res.height ?? 0).toFixed(2)} mm from the sketch plane${res.skipped ? `; ${res.skipped} spline / ellipse / text curve${res.skipped === 1 ? '' : 's'} left out` : ''}`)
+    }
+    return
+  }
   // one associative projection per picked face / edge / body (the ref is what is re-projected on regeneration)
-  const jobs: { ref: string; key: string; faces: number[]; edges: number[]; all: boolean }[] = []
+  const jobs: string[] = []
   for (const r of refs) {
     const b = bodies.find((x) => x.id === r.id)
     if (!b) continue
     if (b.kind !== 'brep') { flash('Only solid (B-rep) bodies can be projected'); continue }
+    if (mode === 'intersect' && (r.kind === 'edge' || r.kind === 'vertex')) { flash('Intersect takes faces and bodies'); continue }
     const g = refFromSelection(r, bodies)
-    if (!g) continue
-    jobs.push({
-      ref: encodeRef(g), key: b.key,
-      faces: g.kind === 'face' ? [g.index] : [], edges: g.kind === 'edge' ? [g.index] : [], all: g.kind === 'body',
-    })
+    if (g) jobs.push(encodeRef(g))
   }
   if (!jobs.length) return
   try {
-    const done: { ref: string; curves: ProjectedCurve[] }[] = []
-    for (const j of jobs) {
-      done.push({ ref: j.ref, curves: (await getKernel().call('projectEdges', { key: j.key, plane: s.plane, faces: j.faces, edges: j.edges, all: j.all })) as ProjectedCurve[] })
+    const done: { ref: string; curves: Exclude<Awaited<ReturnType<typeof projectRef>>, string> }[] = []
+    for (const ref of jobs) {
+      const curves = await projectRef(ref, s.plane, bodies, mode, (n, a) => getKernel().call(n, a as never))
+      if (typeof curves === 'string') { flash(curves); continue }
+      done.push({ ref, curves })
     }
     let n = 0
-    const ok = commit((m) => { for (const d of done) n += addProjected(m, d.curves, d.ref) })
-    if (ok) flash(n ? `Projected ${n} curve${n === 1 ? '' : 's'}` : 'Nothing new to project (already in the sketch, or edge-on to the plane)')
+    const ok = commit((m) => { for (const d of done) n += addProjected(m, d.curves, d.ref, mode) })
+    if (ok) {
+      const what = MODE_NAME[mode]
+      flash(n ? `${what}: ${n} curve${n === 1 ? '' : 's'} added` : mode === 'intersect' ? 'The sketch plane does not cut that' : 'Nothing new to project (already in the sketch, or edge-on to the plane)')
+    }
   } catch (e) {
     flash('Projection failed: ' + (e instanceof Error ? e.message : String(e)))
   }

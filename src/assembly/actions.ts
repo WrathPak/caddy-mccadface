@@ -78,7 +78,7 @@ function prune(a: AssemblyData, features: DocData['features']): { assembly: Asse
 // ---------------------------------------------------------------- components
 
 /** New empty component inside the active one; it becomes the active component, so the next features go into it. */
-export function newComponent(name?: string): { def: string; occ: string; path: string } {
+export function newComponent(name?: string, activate = true): { def: string; occ: string; path: string } {
   const d = useDoc.getState()
   const a = d.assembly
   const def = nextId(a.components.map((c) => c.id), 'c')
@@ -91,7 +91,7 @@ export function newComponent(name?: string): { def: string; occ: string; path: s
     occurrences: [...x.occurrences, { id: occ, name: nm, component: def, parent, transform: identity() }],
   }))
   const path = activePrefix(d.activeOcc, occ)
-  useDoc.getState().setActiveOcc(path)
+  if (activate) useDoc.getState().setActiveOcc(path)
   return { def, occ, path }
 }
 

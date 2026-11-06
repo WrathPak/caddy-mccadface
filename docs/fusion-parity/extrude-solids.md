@@ -2,6 +2,8 @@
 
 Same format as `sketch.md`. Fusion behaviour is from daily-use knowledge of Fusion, not from this app's code. Status marks come from driving the app (real clicks, keys, typed values) at 1600x900 on a 60 x 40 x 10 plate (corner on the world origin, top face at z = 10) and the same plate with a 10 mm hole at (20, 12).
 
+Second pass: every `[GAP]` and `[PARTIAL]` the first pass found is built and now reads `[OK]`, and the four items left after it (New Component, a curved face for To Object, a separate extent for each side of Two sides, Project to Surface with vertex pick) are built too. The specs that were `test.fail()` are plain tests now.
+
 - `[OK]` matches Fusion
 - `[GAP]` Fusion does it, we do not. Failing spec in `e2e/59-solids-parity.spec.ts` (marked `test.fail()`, flips when fixed)
 - `[PARTIAL]` works but differs. Spec named
@@ -16,30 +18,32 @@ Fusion: Create Sketch, click a planar face. The view turns square to the face. T
 
 - [OK] Sketch button, then a click on a planar body face opens a sketch on that face, view turns to look straight at it (`Sketch on a face: Sketch, then a click on the top face`)
 - [OK] A face that is not planar is refused with "Select a planar face" (read in `create.ts`; not driven)
-- [GAP] The face outer edges are projected into the new sketch at once. Ours opens empty: 0 entities, "0 profiles", and the user has to start the Project tool and click the face (`Sketch on a face: the face outer edges are projected ...`)
-- [GAP] Same for the edges of holes in the face (`Sketch on a face: the edges of a hole ...`). Nothing is projected, so there is no hole to snap to or dimension to until Project is run
-- [GAP] Sketch origin. Ours sits at the face centroid (30, 20, 10 on the plate), so a sketch point (0, 0) is the middle of the face, and it moves when the face outline changes. Fusion's origin is the projected world origin (0, 0, 10), stable under edits (`Sketch on a face: the sketch origin is the world origin ...`)
-- [GAP] Projected curves are drawn purple in Fusion. Ours are the grey of dim text (`--text-dim`) with a 1.6 px width, hard to tell from construction geometry (`Sketch on a face: projected curves are drawn purple`)
+- [OK] The face outer edges are projected into the new sketch at once, fixed, as reference curves (`Sketch on a face: the face outer edges are projected ...`). Settings > Sketch > "Auto project face edges" (on by default) turns it off, and the sketch then starts empty as before
+- [OK] Same for the edges of holes in the face (`Sketch on a face: the edges of a hole ...`): a fresh sketch on the plate with a hole has two profiles, the plate with the hole in it and the hole
+- [OK] Sketch origin is the world origin projected onto the face plane ((0, 0, 10) on the plate), stable when the face outline changes (`Sketch on a face: the sketch origin is the world origin ...`). Only new sketches change: a sketch stored with the face centroid as its origin keeps it
+- [OK] Projected curves are drawn purple (token `--sk-ref`: a light purple in the dark theme, a deeper one in the light theme), 2 px wide (`Sketch on a face: projected curves are drawn purple`)
 
 ## 2. Project
 
 Fusion: Create > Project / Include > Project (P). Pick faces, edges or bodies, any number, with the dialog listing the picks. Edges perpendicular to the sketch plane project as points, faces edge on project as lines. Other options in the same menu: Intersect, Project to Surface, Include 3D Geometry.
 
-- [OK] Project is in the Sketch ribbon. Clicking a body face under the sketch puts its boundary in as fixed reference curves (`ref`), the hole included, associative (re-projected when the body changes). 4 lines for the plate (`Project: the Project tool on the face under the sketch ...`)
+- [OK] Project is in the Sketch ribbon (and on P). Clicking a body face under the sketch puts its boundary in as fixed reference curves (`ref`), the hole included, associative (re-projected when the body changes). 4 lines for the plate (`Project: the Project tool on the face under the sketch ...`)
 - [OK] The projected loops bound profiles: the plate with its hole as one profile with a hole in it, the hole as a region of its own, and a line drawn from edge to edge splits the plate region (same test)
-- [PARTIAL] A projected hole is two half arcs (two separate arc entities, two centre points), not one circle. It has no diameter and its seam points snap as extra ends (`Project: a projected hole is one circle ...`)
-- [GAP] P starts Project. Ours has no key for it (pressing P leaves the Line tool on) (`Project: P starts the Project tool`)
-- [GAP] A side face of the body, edge on to the sketch, projects as a line in Fusion. Ours says nothing and adds nothing (`Project: a side face of the body ...`)
-- [GAP] A click on one body edge projects just that edge. Ours only accepts faces (the filter is Face), so a click on the plate's top edge projected the whole top face, 4 lines (`Project: a click on a single body edge ...`)
-- [GAP] Intersect (curves where the sketch plane cuts a body). No such tool (`Project: Intersect ...`)
-- [GAP] Include 3D Geometry. No such tool (`Project: Include 3D Geometry ...`)
-- Not tested: Project to Surface; projecting whole bodies or several faces in one go (the code takes them); selecting by dialog and Apply.
+- [OK] A projected hole comes in as one circle (one centre, a diameter), not two half arcs (`Project: a projected hole is one circle ...`). Projections stored before this keep the half arcs they were made with, so dimensions on them still work
+- [OK] P starts Project (`Project: P starts the Project tool`)
+- [OK] A side face of the body, edge on to the sketch, projects as a line (its top and bottom edges land on one line and come in once); an edge square to the plane projects as a point (`Project: a side face of the body ...`, and the kernel test "a side face seen edge on")
+- [OK] A click on one body edge projects just that edge: with the Project tool on, edges are picked as well as faces, and an edge near the pointer wins over the face behind it (`Project: a click on a single body edge ...`)
+- [OK] Intersect: the curves where the sketch plane cuts the picked faces or body, as reference curves that follow the body like any projection (`Project: Intersect ...`)
+- [OK] Include 3D Geometry, the closest honest version, because a sketch here is flat: the picked body, face or edge comes in as reference geometry, its edges flattened onto the sketch plane plus a reference point at every vertex, so they can be snapped to and dimensioned. The height of the edges above the plane is not kept (`Project: Include 3D Geometry ...`)
+- [OK] Vertex pick: the Project tool shows the corners of the bodies as dots; a click on one brings it in as a reference point (`Project: the Project tool takes a vertex of a body ...`).
+- [OK] Project to Surface, in the form a flat sketch allows. Select sketch curves, start Project to Surface, click a face (flat or curved). Looking along the sketch normal (both ways) from points along the curves, the parts that have the face in view come in as purple guide curves (lines as lines, circles and arcs as arcs, a circle wholly over the face stays a circle), not part of any profile, and the message gives the face's distance from the sketch plane there. They follow the face and the source curves when the model changes. A sketch is flat, so the curves are NOT wrapped onto the face: a 3D curve lying on a curved face cannot live in a 2D sketch. To carry a profile onto a curved face, extrude it To Object with that face. Splines, ellipses and text are left out (counted in the message) (`Project to Surface: curves come in as guides ...`, `src/sketch/surface.test.ts`).
+- Not built: picking by dialog with Apply. Whole bodies and several faces in one go work (the code takes them).
 
 ## 3. Snaps, dimensions and constraints to projected geometry
 
 - [OK] A circle clicked on the middle of a projected hole is tied to the hole's centre (coincident to the arc centre point). A circle on the middle of a projected edge gets a midpoint constraint with it. A line started on a projected corner is coincident with it (`Projected geometry: a circle centres on a projected hole ...`)
 - [OK] A new circle can be dimensioned to a projected edge, and the dimension drives the circle. The projected corner points do not move (they are fixed) (`Projected geometry: a new circle can be dimensioned to a projected edge ...`)
-- [PARTIAL] Dimensioning the projected hole itself gives a radius of 5 (it is an arc), Fusion shows a diameter of 10 as a reference dimension (`Projected geometry: the diameter of a projected hole ...`)
+- [OK] Dimensioning the projected hole itself gives a diameter of 10 as a reference dimension (in brackets, no value box: the hole is fixed) (`Projected geometry: the diameter of a projected hole ...`)
 - Not checked: Fusion makes dimensions on fixed projected geometry reference (driven); we show one for geometry that is already solved (see `sketch.md` section 6).
 
 ## 4. Associativity: the sketch follows its face
@@ -56,7 +60,7 @@ Fusion: a sketch on a face stays on it, projected curves follow edits upstream, 
 - [OK] Nested loops: a rectangle with a circle in it gives the plate region (with a hole) and the disc as separate profiles, each selectable (`Project: ...`, `60 Hole region`)
 - [OK] A planar body face picked directly in the viewport is an extrude profile (Select Face filter); a plate face with a hole keeps its hole (`Profiles: the face of a plate with a hole ...`)
 - [OK] After projecting the face, the region inside the hole loop is a profile you can click and extrude, e.g. as a new body (`60 Hole region`)
-- [PARTIAL] The step before that needs the Project tool run by hand (see section 1); Fusion has the hole region as soon as the sketch is opened.
+- [OK] The hole region is there as soon as the sketch is opened (section 1).
 
 ## 6. Extrude
 
@@ -64,35 +68,35 @@ Fusion's dialog: Profiles, Start (Profile Plane / Offset / From Object), Directi
 
 - [OK] One side, Symmetric (whole length), Two sides with a second distance, negative distance goes the other way (no Flip button in Fusion either: negative or dragging the arrow back), Taper angle, all editable from the timeline (`Extrude: one side, symmetric, two sides ...`)
 - [OK] Typed expressions in the distance (`5 * 3` gives 15) (same test)
-- [GAP] Extent type. Only Distance exists. No To Object, no All / Through All (`Extrude: Extent type All ...`, `Extrude: Extent type To Object ...`)
-- [GAP] Start: Offset (begin a distance from the profile plane) (`Extrude: Start can be Offset`)
-- [GAP] Start: From Object (begin at a picked face) (`Extrude: Start can be From Object`)
-- [PARTIAL] Operations: Join, Cut, Intersect, New body are there. New Component is not (assemblies are made in the Assemble tab) (`Extrude: from a face going up ...`)
+- [OK] Extent type: Distance, To Object and All. To Object takes a flat face, a plane or a vertex, with an Object offset (positive goes past it, negative stops short); a flat face that is not parallel to the profile ends the extrude at a slant, and a cylinder or sphere face ends it at the curved surface: the extrude runs past the face and is cut at it (OpenCascade split with the surface the face lies on). For a curved face the end is the first place the extrude meets that cylinder or sphere (the whole surface it lies on, not only the picked patch), and the Object offset moves the end past the face (positive) or short of it (negative), as for a flat one; other curved kinds (cones, B-spline faces) are refused with a message (`Extrude: Extent To Object works with a curved face ...`). All goes through every body (or the Target bodies): Symmetric and Two sides go both ways, One side has a Flip direction box. With Two sides the second side has its own extent type (Distance, To Object or All, with its own object and offset), and runs against the first (`Extrude: Two sides, each side has its own extent ...`). All and To Object choose the direction and the operation by themselves, as the arrow does for a Distance: a sketch on a face goes into the body and becomes a Cut. Preview, OK and editing from the timeline share one code path (`Extrude: Extent type All ...`, `Extrude: Extent All goes both ways ...`, `Extrude: Extent type To Object ...`, `src/features/extrude/extent.test.ts`, and the kernel tests)
+- [OK] Start: Offset (begin a distance from the profile plane, on either side) (`Extrude: Start can be Offset`)
+- [OK] Start: From Object (begin at a picked flat face or plane parallel to the profile) (`Extrude: Start can be From Object`)
+- [OK] Operations: Join, Cut, Intersect, New body and New Component. New Component makes a new component (the same as the Assemble tab's New Component) and puts the new body in it; accepting the dialog creates the component, and it becomes the active one for a new extrude, as in Fusion. Editing the extrude from the timeline keeps its component (`Extrude: New Component ...`, `Extrude: from a face going up ...`)
 - [OK] Auto cut: with one profile, or two, drawn on a face, a negative distance into the body switches the operation to Cut by itself (`Extrude: from a face going up joins ...`, `Extrude: with several profiles from a face picked ...`). Going up stays Join.
 - [OK] Auto cut also works for the four round profiles of the mounting plate on a face sketch with projected edges (`60 Mounting plate`)
 - [OK] Live preview while the dialog is open (`Extrude: the live preview ...`)
 - [OK] Drag arrow in the view (distance follows the pointer) (`Extrude: the live preview ...`)
 - [OK] Press/Pull with the top face selected first, then a distance, moves the face (`Press/Pull: with the top face selected first ...`)
-- [PARTIAL] Press/Pull started first, then a click on the face: the face is selected in the view but the dialog's face list stays empty (Fusion takes the click) (`Press/Pull: start the tool, then click a face ...`)
+- [OK] Press/Pull started first, then a click on the face: the dialog's face list takes it, the same as selecting first. (The first pass read it as empty because the spec looked at the values the dialog opened with, not the ones its form holds now. The dialog now reports its live values, and the spec also types a distance and checks the face moved) (`Press/Pull: start the tool, then click a face ...`)
 
 ## 7. Hole on a face
 
 - [OK] Hole tool, click on a face places a hole at the click, drilled through (`Hole: a click on the top face ...`). The preset sizes the hole to the part (a small one on a 60 x 40 plate)
-- [GAP] A click at the rim of an existing hole snaps to its centre so the new hole is concentric. Ours would keep the raw click point (`Hole: a click right at the rim of an existing hole ...`). Fusion also offers concentric by picking the circular edge; unsure how close to the edge Fusion snaps.
+- [OK] A click at the rim of an existing hole snaps to its centre so the new hole is concentric: within the larger of 1 mm and a fifth of the radius of the rim, either side. A click on the corner marker where the round edge starts (its seam) does the same (`Hole: a click right at the rim of an existing hole ...`)
 - Note: a click inside an existing hole (on nothing) adds no hole at all; Fusion is the same.
 
 ## 8. Real parts (`e2e/60-solids-real-parts.spec.ts`)
 
-Each part is built from a blank document by mouse and keyboard. Where Fusion auto-projects face edges the part runs the Project tool on the face first (one extra click, the [GAP] in section 1), and where Fusion would pick Extent: All the depth is typed past the plate (the [GAP] in section 6).
+Each part is built from a blank document by mouse and keyboard. The Fusion way: a sketch on a face has its edges projected already (no Project step), and a through cut uses Extent: All.
 
-- Mounting plate (80 x 50 x 8, four 6 mm holes each dimensioned to the projected left and bottom edges, fully constrained, cut through): completes (Cut is picked by the auto cut when the negative depth is typed)
-- Plate with a boss (20 mm circle dimensioned to the projected edges, joined 15 up): completes
+- Mounting plate (80 x 50 x 8, four 6 mm holes each dimensioned to the projected left and bottom edges, fully constrained, cut through): completes (Extent: All, which picks Cut and the direction into the plate by itself)
+- Plate with a boss (20 mm circle in the middle of the plate, 40 from the left edge and 25 from the bottom edge, joined 15 up): completes
 - Counterbore (circle on the projected hole, centre tied to the hole centre, cut 3): completes
 - Hole region (the region inside the hole loop of a face, extruded up as a new body): completes
-- Timeline edit of the first extrude (10 to 16): the boss sketch moves to the new face height, the circle keeps its dimensions to the projected edges, the boss follows: completes
+- Timeline edit of the first extrude (10 to 16): the boss sketch moves to the new face height, the circle keeps its dimensions to the projected edges (still 40 and 25), the boss follows: completes
 
-Two catches met while writing these: the first profile pick makes the Extrude dialog turn the view square to the profiles (an animation), so a second click aimed before it ends can land on a body face and put that face in the list instead of the profile. And a circle centred exactly on the face centroid snaps to the sketch origin (which is the centroid here), so the first dimension was made to the origin instead of the edge. This follows from the origin gap in section 1.
+The two catches of the first pass are gone. The first profile pick still turns the view square to the profiles (an animation, so the specs wait for it before the second click), but a circle on the middle of the face no longer snaps to the sketch origin, because the origin is the world origin projected onto the face (the plate's corner), not the face centroid.
 
-## Not checked this pass
+## Not checked
 
-Revolve, Sweep, Loft on faces, extrude of splines and text profiles, assembly-level extrudes, sketch on a non-planar face, offset-plane sketches on faces, Project with several faces at once, New Component extrudes, undo of a projection.
+Revolve, Sweep, Loft on faces, extrude of splines and text profiles, assembly-level extrudes, sketch on a non-planar face, offset-plane sketches on faces, New Component extrudes, undo of a projection. Not built: To Object on a cone or a free-form face (flat faces, planes, vertices, cylinders and spheres are supported), and a curved end whose first meeting with the surface is not the picked patch.

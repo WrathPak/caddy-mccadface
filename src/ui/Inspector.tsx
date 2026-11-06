@@ -28,7 +28,7 @@ const normRef = (s: string) => {
 }
 
 type Setter = (key: string, v: ParamValue) => void
-interface Pick { active: string | null; activate: (key: string) => void; many: (v: ParamValues) => void; group: (id: string) => void }
+interface Pick { active: string | null; activate: (key: string | null) => void; many: (v: ParamValues) => void; group: (id: string) => void }
 
 /** Shows the field's help line under it while any control inside has the keyboard focus. */
 function Hinted({ help, children }: { help?: string; children: ReactNode }) {
@@ -125,7 +125,7 @@ function ParamInner({ def, values, set, pick }: { def: ParamDef; values: ParamVa
         </div>
       )
     case 'selection-ref':
-      return <SelectionRef def={def} value={Array.isArray(v) ? (v as string[]) : []} onChange={(s) => set(def.key, s)} active={pick.active === def.key} onActivate={() => def.pick && pick.activate(def.key)} />
+      return <SelectionRef def={def} value={Array.isArray(v) ? (v as string[]) : []} onChange={(s) => set(def.key, s)} active={pick.active === def.key} onActivate={() => pick.activate(def.pick ? def.key : null)} />
   }
 }
 
@@ -236,9 +236,12 @@ function InspectorForm({ session }: { session: InspectorSession }) {
     const f = d?.accepts.find((k) => k === 'body' || k === 'face' || k === 'edge')
     if (f) { touchedFilter.current = true; useUi.getState().setSelectionFilter(f) }
   }
+  // pick fields that were shown when the dialog opened; one that appears later (`autoActivate`) takes over the picking by itself
+  const seenPicks = useRef<Set<string>>(new Set())
   // the active field is the first empty pick field (or the first one)
   useEffect(() => {
     const ps = picks()
+    ps.forEach((p) => seenPicks.current.add(p.key))
     if (ps.length && !activeRef.current) activate((ps.find((p) => !(latest.current[p.key] as string[])?.length) ?? ps[0]).key)
     else if (activeRef.current) {
       // a remount (StrictMode does that in dev) ran the cleanup below first: only the pick kinds need setting again
@@ -252,6 +255,19 @@ function InspectorForm({ session }: { session: InspectorSession }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  useEffect(() => {
+    const ps = picks()
+    const keys = new Set(ps.map((p) => p.key))
+    for (const k of [...seenPicks.current]) if (!keys.has(k)) seenPicks.current.delete(k)
+    for (const p of ps) {
+      if (seenPicks.current.has(p.key)) continue
+      seenPicks.current.add(p.key)
+      if (p.autoActivate && !(values[p.key] as string[])?.length) activate(p.key)
+    }
+    // the active field went away with the choice that showed it: picks go back to the dialog's own handling
+    if (activeRef.current && !keys.has(activeRef.current)) activate(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values])
   // viewport / Browser picks flow into the active field
   useEffect(() => {
     return useUi.subscribe((s, p) => {

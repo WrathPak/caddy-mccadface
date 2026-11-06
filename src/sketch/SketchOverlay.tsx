@@ -47,7 +47,7 @@ function useSketchColors() {
   return useMemo(
     () => ({
       free: c.accent, fixed: read('--text', '#d4d7dc'), sel: c.custom ? c.sel : read('--warn', '#d2a24a'), hover: c.hover,
-      cons: read('--text-faint', '#636973'), dim: read('--text-dim', '#9096a0'), ref: read('--text-dim', '#9096a0'), danger: read('--danger', '#d9625a'), grid: c.grid, major: c.gridMajor,
+      cons: read('--text-faint', '#636973'), dim: read('--text-dim', '#9096a0'), ref: read('--sk-ref', '#b98cf5'), danger: read('--danger', '#d9625a'), grid: c.grid, major: c.gridMajor,
       axisX: c.axisX, axisY: c.axisY,
     }),
     [c],
@@ -234,7 +234,7 @@ function Geometry({ wpp }: { wpp: number }) {
   return (
     <>
       <Segments pairs={groups.cons} color={c.cons} width={1.4} dashed wpp={wpp} />
-      <Segments pairs={groups.ref} color={c.ref} width={1.6} wpp={wpp} />
+      <Segments pairs={groups.ref} color={c.ref} width={2} wpp={wpp} />
       <Segments pairs={groups.broken} color={c.danger} width={2.2} wpp={wpp} order={12} />
       <Segments pairs={groups.free} color={c.free} width={1.8} wpp={wpp} />
       <Segments pairs={groups.fixed} color={c.fixed} width={1.8} wpp={wpp} />

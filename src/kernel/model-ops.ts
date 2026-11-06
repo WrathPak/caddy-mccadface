@@ -1,8 +1,9 @@
 /** Worker ops for solid modelling: profile extrusion (with taper) / revolution, face extrusion, fillet / chamfer, edge frames. */
-import { Plane, asDir, basicFaceExtrusion, cast, isShape3D, makeVertex, measureDistanceBetween, draw, getOC, loft, makeAx1, makeFace, makePln, measureVolume, Vector, DEG2RAD, type AnyShape, type Face } from 'replicad'
+import { Plane, asDir, basicFaceExtrusion, cast, isShape3D, makePolygon, makeVertex, measureDistanceBetween, draw, getOC, loft, makeAx1, makeFace, makePln, measureVolume, Vector, DEG2RAD, type AnyShape, type Face } from 'replicad'
 import { registerOp, type OpHelpers } from './store'
 import { topoOf, type Shape } from './occ'
-import { edgeModNamed, eachInList, finalize, fuseNamed, indexer, type NShape } from './naming'
+import { boolNamed, edgeModNamed, eachInList, finalize, fuseNamed, indexer, type NShape } from './naming'
+import { planeBasis } from './print-geom'
 import { profileIdOf, type Loop, type PlaneDef, type Seg, type Vec2, type Vec3 } from '../sketch/types'
 import { polyArea, loopPoly, reverseLoop } from '../sketch/geom'
 import { offsetChain, offsetCircle } from '../sketch/offset'
@@ -327,6 +328,14 @@ export interface ExtrudeArgs {
   faceDir: 1 | -1
   /** draft angle in degrees (positive shrinks the section away from the profile); 0 = straight */
   taper?: number
+  /**
+   * The extent as signed distances [from, to] from the profile plane along its outward normal (the sketch plane normal, or the
+   * face normal). When given it replaces `mode` / `d1` / `d2` / `faceDir`: Start offsets, To Object and All are worked out by the
+   * caller into these two numbers.
+   */
+  span?: [number, number]
+  /** cut away everything beyond this plane (`normal` points at the part that goes): the end of a To Object extrude that is not parallel to the profile */
+  trim?: { origin: Vec3; normal: Vec3 } | { origin: Vec3; normal: Vec3 }[]
 }
 
 function span(mode: string, d1: number, d2: number): [number, number] {
@@ -335,8 +344,15 @@ function span(mode: string, d1: number, d2: number): [number, number] {
   return d1 >= 0 ? [0, d1] : [d1, 0]
 }
 
+/** A big block on one side of a plane (the plane is its bottom face), as a tool to cut with. */
+function halfSpace(origin: Vec3, normal: Vec3, size: number): Sh {
+  const { u, v, n } = planeBasis(normal)
+  const c = (p: number, q: number): Vec3 => [origin[0] + u[0] * p * size + v[0] * q * size, origin[1] + u[1] * p * size + v[1] * q * size, origin[2] + u[2] * p * size + v[2] * q * size]
+  return basicFaceExtrusion(makePolygon([c(-1, -1), c(1, -1), c(1, 1), c(-1, 1)]), new Vector([n[0] * size, n[1] * size, n[2] * size])) as unknown as Sh
+}
+
 registerOp<ExtrudeArgs>('extrudeTool', (a, h: OpHelpers) => {
-  const [from, to] = span(a.mode, a.d1, a.d2)
+  const [from, to] = a.span ?? span(a.mode, a.d1, a.d2)
   if (Math.abs(to - from) < 1e-9) throw new Error('Distance must not be zero')
   const taper = a.taper ?? 0
   if (Math.abs(taper) >= 89) throw new Error('Taper angle must be between -89° and 89°')
@@ -359,11 +375,18 @@ registerOp<ExtrudeArgs>('extrudeTool', (a, h: OpHelpers) => {
     // topology faces are cached and shared: work on a clone, because replicad's translate() / innerWires() consume their receiver
     const face = src.clone()
     const nv = face.normalAt()
-    const n: Vec3 = [nv.x * a.faceDir, nv.y * a.faceDir, nv.z * a.faceDir]
+    const fd = a.span ? 1 : a.faceDir
+    const n: Vec3 = [nv.x * fd, nv.y * fd, nv.z * fd]
     parts.push(named(prism(face, n, from, to, taper, { edges: edgeLabels, start: fn, end: fn, pts: edgePts }, a.id), 'f' + parts.length))
   }
   if (!parts.length) throw new Error('Nothing to extrude')
-  const r = fuseNamed(parts, a.id)
+  let r = fuseNamed(parts, a.id)
+  for (const t of a.trim ? (Array.isArray(a.trim) ? a.trim : [a.trim]) : []) {
+    const [lo, hi] = (r.shape as unknown as { boundingBox: { bounds: [Vec3, Vec3] } }).boundingBox.bounds
+    const size = Math.max(1, Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) + Math.hypot(t.origin[0] - lo[0], t.origin[1] - lo[1], t.origin[2] - lo[2])) * 2
+    const cutter = halfSpace(t.origin, t.normal, size)
+    r = boolNamed('cut', r, { shape: cutter, faces: topoOf(cutter as unknown as AnyShape).faces.map(() => [] as string[]) }, a.id)
+  }
   return h.sendBody(h.bodyFromShape(a.id, a.name, r.shape, r.faces))
 })
 

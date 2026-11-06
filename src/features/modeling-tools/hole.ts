@@ -2,16 +2,17 @@
 import { CircleDashed } from '@phosphor-icons/react'
 import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
-import { RefError, RefReport, decodeRef, encodeRef, faceSigs, resolveFace } from '@/doc/refs'
+import { RefError, RefReport, decodeRef, encodeRef, faceSigs, resolveFace, vertexSigs } from '@/doc/refs'
 import { registerFeature } from '@/doc/registry'
 import { useDoc } from '@/doc/store'
 import type { FeatureCtx, PreviewCtx, PreviewHandle } from '@/doc/types'
+import { getKernel } from '@/kernel/client'
 import { bbox, type Body, type Vec3 } from '@/kernel/types'
 import type { HoleArgs, HolePlace, HoleSpec } from '@/kernel/modeling-ops'
 import { add3, cross3, mul3, norm3 } from '@/kernel/xform'
 import { isPlanarFace } from '@/sketch/create'
 import { planeFromNormal, toLocal, toWorld } from '@/sketch/plane'
-import type { SketchData } from '@/sketch/types'
+import type { PlaneDef, SketchData } from '@/sketch/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
 import { useLastPick } from '@/viewport/lastPick'
@@ -286,29 +287,82 @@ function holePreview({ values, setValues }: PreviewCtx): PreviewHandle {
       useConstruct.getState().setThreads('preview', r.threads)
     } catch { clearPreview(); resetManip(); resetAngleManip() }
   })
-  // a click on a flat face adds a hole there
+  // a click on a flat face adds a hole there; a click near the rim of a round hole already in the face goes to that hole's centre
   const off = useLastPick.subscribe((s) => {
     if (s.seq === seq || !s.point || s.ref?.kind !== 'face') return
     seq = s.seq
     const bodies = useDoc.getState().geometry
     const body = bodies.find((b) => b.id === s.ref!.id)
     if (!body || s.ref.index === undefined || !isPlanarFace(body, s.ref.index)) return
-    const sg = faceSigs(body)[s.ref.index]
+    const faceIndex = s.ref.index
+    const sg = faceSigs(body)[faceIndex]
     const pl = planeFromNormal(sg.centroid, sg.normal)
-    const [u, v] = toLocal(pl, s.point)
-    const ref = { kind: 'face' as const, bodyId: body.id, featureId: body.featureId, index: s.ref.index, sig: sg, name: body.mesh.faceNames?.[s.ref.index]?.[0] }
-    const places = [...(cur.places as string[])]
-    if (!places.length && cur.preset === 'custom') fitTo(body)
-    const k = 'a' + Math.random().toString(36).slice(2, 7)
-    places.push(JSON.stringify({ hole: 1, k, face: encodeRef(ref), u: +u.toFixed(4), v: +v.toFixed(4) }))
-    cur = { ...cur, places }
-    setValues(cur)
+    const [u0, v0] = toLocal(pl, s.point)
+    const ref = { kind: 'face' as const, bodyId: body.id, featureId: body.featureId, index: faceIndex, sig: sg, name: body.mesh.faceNames?.[faceIndex]?.[0] }
+    void (async () => {
+      let u = u0, v = v0
+      try {
+        const c = await rimCentre(body, faceIndex, pl, [u0, v0])
+        if (c) [u, v] = c
+      } catch { /* no snap: the hole goes where the click was */ }
+      const places = [...(cur.places as string[])]
+      if (!places.length && cur.preset === 'custom') fitTo(body)
+      const k = 'a' + Math.random().toString(36).slice(2, 7)
+      places.push(JSON.stringify({ hole: 1, k, face: encodeRef(ref), u: +u.toFixed(4), v: +v.toFixed(4) }))
+      cur = { ...cur, places }
+      setValues(cur)
+    })()
+  })
+  // a corner picked where a round edge starts (the seam of a hole) means the hole itself: the new hole goes to its centre
+  const offVertex = useUi.subscribe((st, prev) => {
+    if (st.selection === prev.selection) return
+    const picked = st.selection.filter((r) => r.kind === 'vertex' && r.index !== undefined)
+    if (!picked.length) return
+    void (async () => {
+      for (const v of picked) {
+        const body = useDoc.getState().geometry.find((b) => b.id === v.id)
+        const pos = body && body.kind === 'brep' ? vertexSigs(body)[v.index!]?.pos : undefined
+        if (!body || !pos) continue
+        const sigs = faceSigs(body)
+        for (let fi = 0; fi < sigs.length; fi++) {
+          const sg = sigs[fi]
+          if (Math.abs((pos[0] - sg.centroid[0]) * sg.normal[0] + (pos[1] - sg.centroid[1]) * sg.normal[1] + (pos[2] - sg.centroid[2]) * sg.normal[2]) > 1e-4 || !isPlanarFace(body, fi)) continue
+          const pl = planeFromNormal(sg.centroid, sg.normal)
+          let c: [number, number] | null = null
+          try { c = await rimCentre(body, fi, pl, toLocal(pl, pos), true) } catch { /* not on a round edge */ }
+          if (!c) continue
+          const ref = { kind: 'face' as const, bodyId: body.id, featureId: body.featureId, index: fi, sig: sg, name: body.mesh.faceNames?.[fi]?.[0] }
+          const k = 'a' + Math.random().toString(36).slice(2, 7)
+          const places = (cur.places as string[]).filter((p) => { const r = p.startsWith('{') ? decodeRef(p) : null; return !(r?.kind === 'vertex' && r.bodyId === body.id && r.index === v.index) })
+          places.push(JSON.stringify({ hole: 1, k, face: encodeRef(ref), u: +c[0].toFixed(4), v: +c[1].toFixed(4) }))
+          cur = { ...cur, places }
+          setValues(cur)
+          break
+        }
+      }
+    })()
   })
   runner.schedule()
   return {
     update(v) { cur = v; runner.schedule() },
-    dispose() { off(); runner.dispose(); clearPreview(); clearMarkers(); resetManip(); resetAngleManip(); useConstruct.getState().setThreads('preview', null) },
+    dispose() { off(); offVertex(); runner.dispose(); clearPreview(); clearMarkers(); resetManip(); resetAngleManip(); useConstruct.getState().setThreads('preview', null) },
   }
+}
+
+/**
+ * The centre of the round edge of `face` (a hole, or a boss) that the point is close to, in the face's local frame, or null. "Close" is
+ * on the rim or within a little of it, either side: the larger of 1 mm and a fifth of the radius (`tight`: exactly on the rim).
+ */
+export async function rimCentre(body: Body, face: number, pl: PlaneDef, at: [number, number], tight = false): Promise<[number, number] | null> {
+  if (body.kind !== 'brep') return null
+  const circles = (await getKernel().call('faceCircles', { key: body.key, face, plane: pl })) as { c: [number, number]; r: number }[]
+  let best: [number, number] | null = null, bd = Infinity
+  for (const c of circles) {
+    const d = Math.hypot(at[0] - c.c[0], at[1] - c.c[1])
+    const off = Math.abs(d - c.r)
+    if (off <= (tight ? 1e-3 : Math.max(1, c.r * 0.2)) && off < bd) { bd = off; best = c.c }
+  }
+  return best
 }
 
 /** Ribbon command: starts with the selected sketch(es) or face point, else waits for clicks on a face. */

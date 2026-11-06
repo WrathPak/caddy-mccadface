@@ -5,6 +5,7 @@ import { useDoc } from '@/doc/store'
 import { useUi, type SelectionRef } from '@/store/ui'
 import type { Body } from '@/kernel/types'
 import { originPlane, planeFromNormal, type OriginPlaneName } from './plane'
+import type { PlaneDef } from './types'
 import { usePlanes } from './planes'
 import { beginSketch, flash } from './store'
 
@@ -25,6 +26,18 @@ export function isPlanarFace(b: Body, index: number): boolean {
     else if (n[0] * c[0] + n[1] * c[1] + n[2] * c[2] < 0.9995) return false
   }
   return n !== null
+}
+
+/**
+ * The sketch plane of a new sketch on a flat face. Like Fusion, its origin is the world origin projected onto the face's plane, so
+ * sketch coordinates line up with the model's (and stay put when the face outline changes). Sketches made before this have the
+ * face centroid as their origin; they keep it.
+ */
+export function facePlane(point: [number, number, number], normal: [number, number, number]): PlaneDef {
+  const base = planeFromNormal(point, normal)
+  const n = base.normal
+  const d = point[0] * n[0] + point[1] * n[1] + point[2] * n[2]
+  return { ...base, origin: [n[0] * d, n[1] * d, n[2] * d] }
 }
 
 function planeNameOf(id: string): OriginPlaneName | null {
@@ -52,7 +65,7 @@ export function beginFromSelection(sel: SelectionRef): boolean {
     const body = bodies.find((b) => b.id === sel.id)
     if (!ref || ref.kind !== 'face' || !body) return false
     if (!isPlanarFace(body, ref.index)) { flash('Select a planar face'); return false }
-    void beginSketch({ plane: planeFromNormal(ref.sig.centroid, ref.sig.normal), face: encodeRef(ref) })
+    void beginSketch({ plane: facePlane(ref.sig.centroid, ref.sig.normal), face: encodeRef(ref) })
     return true
   }
   return false

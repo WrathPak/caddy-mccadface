@@ -7,8 +7,8 @@ import {
   type AnyShape, type Face,
 } from 'replicad'
 import { registerOp, type OpHelpers } from './store'
-import { topoOf, type Shape } from './occ'
-import { boolNamed, finalize, indexer, inherit, rootNames, type NShape } from './naming'
+import { box, topoOf, type Shape } from './occ'
+import { boolNamed, finalize, fuseNamed, indexer, inherit, rootNames, type NShape } from './naming'
 import { applyPoint, axisAngle, cross3, dot3, norm3, sub3, add3, mul3, rotationBetween, type Xf } from './xform'
 import type { Vec3 } from './types'
 import { tapCutter as threadCutter, boreDia, type ThreadSpec } from './threads'
@@ -709,4 +709,55 @@ registerOp<{ before: string; after: string; fid: string }>('deltaCenter', (a, h)
   const mn = [0, 1, 2].map((k) => Math.min(...bs.map((b) => b[0][k])))
   const mx = [0, 1, 2].map((k) => Math.max(...bs.map((b) => b[1][k])))
   return [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2] as Vec3
+})
+
+// ------------------------------------------------------------------------------------------------ extrude to a curved face
+
+export interface TrimToFaceArgs {
+  id: string
+  name: string
+  /** the long extrusion that runs past the face */
+  key: string
+  /** the face it has to end at (a cylinder, a sphere or a plane) */
+  face: { key: string; index: number }
+  /** move the end surface along its outward normal by this much (negative: inwards) */
+  grow: number
+  /** points just inside the extrusion where it starts: the pieces that hold one of them are the ones kept */
+  keep: Vec3[]
+  fid: string
+}
+
+/** Is the point inside the solid? (a speck of a box around it is common to the solid) */
+function insideSolid(solid: Sh, p: Vec3): boolean {
+  const speck = box([0.004, 0.004, 0.004], [p[0], p[1], p[2] - 0.002])
+  try { return measureVolume(solid.clone().intersect(speck as never) as never) > 1e-9 } catch { return false }
+}
+
+/**
+ * Cut an extrusion off at a face: split it with the surface the face lies on, and keep the pieces on the start side (the ones that
+ * hold a `keep` point). Works for the faces `surfaceTool` can stand in for: planes, cylinders and spheres.
+ */
+registerOp<TrimToFaceArgs>('trimToFace', (a, h) => {
+  const src = h.getNamed(a.key)
+  const faces = topoOf(h.getBrep(a.face.key) as unknown as AnyShape).faces
+  const face = faces[a.face.index]
+  if (!face) throw new Error('The face to extrude to no longer exists')
+  const w = workOf(src.shape)
+  const tool = surfaceTool(face.clone() as Face, w, a.grow)
+  const { shape, builder } = runSplitter(src.shape, [tool.split])
+  try {
+    const solids = (shape as unknown as { solids: Sh[] }).solids
+    const kept = solids.filter((s) => a.keep.some((p) => insideSolid(s, p)))
+    if (solids.length < 2 || !kept.length) throw new Error('The extrude does not reach that face. Pick a face in its way, or flip the direction.')
+    const claims = inherit(builder as never, [src], shape as unknown as AnyShape, { fid: a.fid })
+    const all = topoOf(shape as unknown as AnyShape)
+    const find = indexer(all.faces, all.faceHashes)
+    const parts: NShape[] = kept.map((s, n) => {
+      const ft = topoOf(s as unknown as AnyShape)
+      const names = ft.faces.map((f) => { const j = find(f.wrapped as never); return j >= 0 ? claims[j] : [] })
+      return { shape: s, faces: finalize(s as unknown as AnyShape, names, a.fid, 'end' + n) }
+    })
+    const out = parts.length === 1 ? parts[0] : fuseNamed(parts, a.fid)
+    return h.sendBody(h.bodyFromShape(a.id, a.name, out.shape, out.faces))
+  } finally { builder.delete() }
 })

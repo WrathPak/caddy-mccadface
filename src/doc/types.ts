@@ -99,6 +99,8 @@ export interface FeatureDef {
   preview?(ctx: PreviewCtx): PreviewHandle | void
   /** custom editor (e.g. the sketcher) used instead of the Inspector when a timeline chip is double-clicked */
   edit?(featureId: string, params: ParamValues): void
+  /** called with the values when the dialog is accepted, before the feature is added or updated: may make what the values refer to (e.g. a new component) and return them changed */
+  beforeAccept?(values: ParamValues, isNew: boolean): ParamValues
   /** true when compute() reads user parameters itself (so a parameter change must re-run it) */
   dependsOnParams?: boolean
 }

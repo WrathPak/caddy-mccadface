@@ -4,7 +4,7 @@ import { getCommand, registerCommand, type Command } from '@/app/commands'
 import { useUi } from '@/store/ui'
 import { startSketchCommand, stopPicking, useSketchPick } from './create'
 import {
-  copySketch, deleteSelection, enterSketch, escapeSketch, finishSketch, pasteSketch, redoSketch, repeatLastTool, repeatableTool, runConstraintCommand, selectAllSketch, undoKey, setTool, toggleConstruction, useSketch,
+  copySketch, deleteSelection, enterSketch, escapeSketch, finishSketch, pasteSketch, redoSketch, repeatLastTool, repeatableTool, runConstraintCommand, selectAllSketch, undoKey, setTool, startProject, toggleConstruction, useSketch,
   type ToolId,
 } from './store'
 import type { CKind } from './constraints'
@@ -35,7 +35,10 @@ export function installSketchCommands() {
   tool('sketch.dimension', 'dimension')
   tool('sketch.trim', 'trim')
   tool('sketch.offset', 'offset')
-  tool('sketch.project', 'project')
+  override('sketch.project', () => { if (sketching()) startProject('project') })
+  override('sketch.intersect', () => { if (sketching()) startProject('intersect') })
+  override('sketch.include3d', () => { if (sketching()) startProject('include3d') })
+  override('sketch.projectSurface', () => { if (sketching()) startProject('surface') })
   constraint('sketch.coincident', 'coincident')
   constraint('sketch.horizontal', 'hv')
   constraint('sketch.parallel', 'parallel')

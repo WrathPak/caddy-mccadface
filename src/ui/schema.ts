@@ -61,6 +61,8 @@ export interface SelectionRefParam extends Base {
   requiredUnless?: string
   /** viewport / Browser picks flow into this field while it is the active one (click the field to activate it) */
   pick?: boolean
+  /** with `pick`: becomes the active field by itself when it appears (a field shown by another choice in the dialog) */
+  autoActivate?: boolean
   default: string[]
 }
 /** A text box (a line, or several with `multiline`). */

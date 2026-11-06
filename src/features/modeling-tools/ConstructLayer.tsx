@@ -80,7 +80,17 @@ export function ConstructLayer() {
   const pickKind = (k: string) => (pick as string[]).includes(k)
   const L = half * 1.15
 
-  if (sketching) return null
+  const vertices = pickKind('vertex') && geometry.flatMap((b) => {
+    if (hidden[b.id] || !b.mesh.vertexPos) return []
+    const vp = b.mesh.vertexPos
+    return Array.from({ length: vp.length / 3 }, (_, i) => {
+      const k = `v${b.id}.${i}`
+      return <Dot key={k} at={[vp[i * 3], vp[i * 3 + 1], vp[i * 3 + 2]]} r={r * 0.8} color={isSel('vertex', b.id, i) ? selWhite : colors.accent} hot={hot === k}
+        onClick={() => select('vertex', b.id, i)} onHover={(on) => setHot(on ? k : null)} />
+    })
+  })
+  // while sketching only the corners of the bodies show (the Project tool takes them); everything else here is for the feature dialogs
+  if (sketching) return pickKind('vertex') ? <group name="construct-layer">{vertices}</group> : null
   const axisLine = (a: { origin: Vec3; dir: Vec3 }): [Vec3, Vec3] => [[a.origin[0] - a.dir[0] * L, a.origin[1] - a.dir[1] * L, a.origin[2] - a.dir[2] * L], [a.origin[0] + a.dir[0] * L, a.origin[1] + a.dir[1] * L, a.origin[2] + a.dir[2] * L]]
   const originAxes = [{ id: 'axisX', a: { origin: [0, 0, 0] as Vec3, dir: [1, 0, 0] as Vec3 } }, { id: 'axisY', a: { origin: [0, 0, 0] as Vec3, dir: [0, 1, 0] as Vec3 } }, { id: 'axisZ', a: { origin: [0, 0, 0] as Vec3, dir: [0, 0, 1] as Vec3 } }]
   const originPlanes = (['XY', 'XZ', 'YZ'] as const).map((n) => ({ id: 'plane' + n, plane: originPlane(n) }))
@@ -119,15 +129,7 @@ export function ConstructLayer() {
           <meshBasicMaterial color={isSel('plane', id) || hot === 'pl' + id ? colors.sel : colors.accent} transparent opacity={isSel('plane', id) ? 0.4 : hot === 'pl' + id ? 0.35 : 0.1} side={DoubleSide} depthWrite={false} />
         </mesh>
       ))}
-      {pickKind('vertex') && geometry.flatMap((b) => {
-        if (hidden[b.id] || !b.mesh.vertexPos) return []
-        const vp = b.mesh.vertexPos
-        return Array.from({ length: vp.length / 3 }, (_, i) => {
-          const k = `v${b.id}.${i}`
-          return <Dot key={k} at={[vp[i * 3], vp[i * 3 + 1], vp[i * 3 + 2]]} r={r * 0.8} color={isSel('vertex', b.id, i) ? selWhite : colors.accent} hot={hot === k}
-            onClick={() => select('vertex', b.id, i)} onHover={(on) => setHot(on ? k : null)} />
-        })
-      })}
+      {vertices}
 
       {markers.items.map((m) => (
         <Dot key={m.id} at={m.pos} r={r * (m.state === 'fixed' ? 0.8 : 1.1)} color={m.state === 'fixed' ? '#8a8f98' : m.state === 'off' ? '#d9625a' : '#e8b84a'} hollow={m.state === 'off'} hot={hot === 'mk' + m.id}
