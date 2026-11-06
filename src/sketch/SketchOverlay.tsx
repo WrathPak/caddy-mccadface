@@ -24,7 +24,8 @@ import { planeQuaternion, toLocal } from './plane'
 import { type Snap } from './snap'
 import { GRID_GLSL, gridFadeRange, gridLevels } from '@/viewport/gridMath'
 import {
-  applyDimEdit, cancelDimEdit, doubleClick, editDim, pointerDown, pointerMove, pointerUp, select, setWpp, typedKey, useSketch, type SketchState,
+  applyDimEdit, cancelDimEdit, doubleClick, editDim, endDimDrag, moveDimDrag, pointerDown, pointerMove, pointerUp, select, setWpp, startDimDrag, typedKey,
+  useSketch, type SketchState,
 } from './store'
 import { isDim, type Constraint, type SketchModel, type Vec2 } from './types'
 
@@ -560,7 +561,18 @@ function Dimensions({ wpp }: { wpp: number }) {
                   data-sel={selected}
                   data-bad={col === c.danger}
                   data-preview={k.id === '~preview'}
-                  onPointerDown={(e) => { e.stopPropagation(); if (k.id === '~preview') return; if (e.pointerType === 'touch' && selected) editDim(k.id); else select([k.id], e.shiftKey) }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    if (k.id === '~preview') return
+                    if (e.pointerType === 'touch' && selected) { editDim(k.id); return }
+                    select([k.id], e.shiftKey)
+                    // press and drag the value to move the dimension
+                    const p = e.button === 0 ? locateClient?.(e.clientX, e.clientY) : null
+                    if (p) { startDimDrag(k.id, p); e.currentTarget.setPointerCapture(e.pointerId) }
+                  }}
+                  onPointerMove={(e) => { if (!e.currentTarget.hasPointerCapture(e.pointerId)) return; const p = locateClient?.(e.clientX, e.clientY); if (p) moveDimDrag(p) }}
+                  onPointerUp={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); endDimDrag() }}
+                  onPointerCancel={() => endDimDrag()}
                   onDoubleClick={(e) => { e.stopPropagation(); if (k.id !== '~preview') editDim(k.id) }}
                 >
                   {dimText(k)}
@@ -575,6 +587,9 @@ function Dimensions({ wpp }: { wpp: number }) {
 }
 
 // ---------------------------------------------------------------- input
+
+/** Screen position -> sketch coordinates (set while the input controller is mounted): the dimension labels use it to be dragged. */
+let locateClient: ((x: number, y: number) => Vec2 | null) | null = null
 
 function InputController() {
   const gl = useThree((s) => s.gl)
@@ -596,6 +611,7 @@ function InputController() {
       return { p: toLocal(plane, [hit.x, hit.y, hit.z]), wpp: wppFor(camera as PerspectiveCamera, r.height, plane) }
     }
     const mods = (e: PointerEvent | MouseEvent) => ({ shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
+    locateClient = (x, y) => locate({ clientX: x, clientY: y } as MouseEvent)?.p ?? null
 
     // ---- fingers. A tap puts the point under the fingertip. Resting the finger and dragging aims an offset reticle that sits above
     // it (the finger would hide the spot), with the usual snapping and guides; lifting places the point there. Tools that pick
@@ -717,6 +733,7 @@ function InputController() {
       reticle.remove()
       leash.remove()
       window.removeEventListener('keydown', key, true)
+      locateClient = null
       off()
     }
   }, [gl, camera, invalidate])

@@ -255,7 +255,7 @@ describe('offset tool', () => {
     expect(st().offset).toBeNull()
     expect(st().tool).toBe('select')
     const m = st().model
-    expect(m.entities.filter((e) => e.type === 'arc').length).toBe(4) // rounded outside corners
+    expect(m.entities.filter((e) => e.type === 'arc').length).toBe(0) // sharp outside corners, as in Fusion
     expect(m.entities.filter((e) => e.type === 'line').length).toBe(8)
     const vis = m.constraints.filter((c) => c.type === 'offset' && !c.hidden)
     expect(vis.length).toBe(1)
@@ -267,7 +267,7 @@ describe('offset tool', () => {
     expect(ringBefore).toBeGreaterThan(2 * 3 * 60)
     expect(applyDimEdit(vis[0].id, '5')).toBe(true)
     const ringAfter = st().profiles.filter((p) => p.holes.length).map((p) => p.area)[0]
-    expect(ringAfter).toBeCloseTo(2 * 5 * 60 + Math.PI * 25, -1)
+    expect(ringAfter).toBeCloseTo(2 * 5 * 60 + 4 * 25, -1)
     void area; void detectProfiles
   })
 })

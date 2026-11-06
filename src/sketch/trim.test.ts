@@ -143,7 +143,7 @@ describe('offset geometry', () => {
     return prof.map((p) => p.area).sort((a, b) => b - a)
   }
 
-  it('offsetting a rectangle outwards rounds the corners; inwards miters them', () => {
+  it('offsetting a rectangle keeps its corners sharp, outwards and inwards (as in Fusion)', () => {
     const m = emptyModel()
     const ls = rect(m, 40, 20)
     const chain = collectChain(m, ls[0].id)!
@@ -151,10 +151,11 @@ describe('offset geometry', () => {
     expect(chain.items.length).toBe(4)
     // outside: rect (counter-clockwise) -> negative distance is outside
     const out = offsetGeometry(m, chain, -3).segs!
-    expect(out.length).toBe(8) // 4 lines + 4 corner arcs
-    expect(out.filter((s) => s.corner).length).toBe(4)
-    const outLoop = out.map((s) => s.seg)
-    near(Math.abs(polyArea(loopPoly(outLoop))), 40 * 20 + 2 * 3 * (40 + 20) + Math.PI * 9, 2e-3)
+    expect(out.length).toBe(4) // the 4 lines, extended to meet
+    expect(out.every((s) => !s.corner && s.seg.k === 'l')).toBe(true)
+    near(Math.abs(polyArea(loopPoly(out.map((s) => s.seg)))), 46 * 26)
+    // the rounded style is still there for callers that ask for it
+    expect(offsetGeometry(m, chain, -3, 'round').segs!.filter((s) => s.corner).length).toBe(4)
     // inside
     const inn = offsetGeometry(m, chain, 3).segs!
     expect(inn.length).toBe(4)
@@ -210,8 +211,8 @@ describe('offset geometry', () => {
     const prof = detectProfiles(r.model)
     const withHole = prof.filter((p) => p.holes.length === 1)
     expect(withHole.length).toBe(1)
-    near(withHole[0].area, 2 * 3 * 60 + Math.PI * 9, 3e-3)
-    // the rounded offset is rigid: only the source's own freedom (position / size of the rectangle) remains
+    near(withHole[0].area, 46 * 26 - 40 * 20, 3e-3)
+    // the offset is rigid: only the source's own freedom (position / size of the rectangle) remains
     expect(r.info.redundant).toEqual([])
     expect(r.info.dof).toBe(4)
     // editing the source moves the offset with it: make the rectangle wider by moving a corner

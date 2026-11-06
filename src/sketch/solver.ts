@@ -15,7 +15,7 @@ import { ORIGIN, type Constraint, type SketchModel, type Vec2 } from './types'
 import { arcInfo } from './geom'
 import { cloneModel, deps, entityById, pos } from './model'
 import { freedom, maxResidual } from './dof'
-import { refreshDriven } from './dims'
+import { carryDims, refreshDriven } from './dims'
 
 let wrapper: GcsWrapper | null = null
 let loading: Promise<void> | null = null
@@ -277,7 +277,7 @@ export function solveModel(model: SketchModel, drag?: DragSpec): { model: Sketch
     writeBack(m, r.prims)
     if (!ok && r.conflicts.length === 0 && maxResidual(m) < 1e-6) ok = true
   }
-  if (ok) refreshDriven(m)
+  if (ok) { refreshDriven(m); carryDims(model, m) }
   if (!ok) return { model: cloneModel(model), info: { ok: false, status: r.status, dof: 0, conflicts: r.conflicts, redundant: [], fixed: new Set() } }
   return { model: m, info: { ok, status: r.status, dof: r.dof, conflicts: r.conflicts, redundant: r.redundant, fixed: new Set() } }
 }

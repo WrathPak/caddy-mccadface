@@ -402,3 +402,63 @@ test('Dimension from centre to centre of two circles stacked straight up, placed
   expect(m.constraints.filter((k: any) => k.driven)).toHaveLength(1) // eslint-disable-line
   expect(m.ok).toBe(true)
 })
+
+test('Offset of a rectangle keeps its corners square', async ({ app, page }) => {
+  await app.open()
+  await startSketch(app)
+  await tool(app, 'Rectangle')
+  await click(app, 0, 0)
+  await click(app, 20, 10)
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
+  await tool(app, 'Offset')
+  await click(app, 10, 0)
+  const p = await app.project(10, -5, 0)
+  await page.mouse.move(p.x, p.y, { steps: 4 })
+  await page.keyboard.type('3')
+  await page.keyboard.press('Enter')
+  await expect.poll(async () => (await sk(app)).entities.filter((e: any) => e.type === 'line').length).toBe(8) // eslint-disable-line
+  const m = await sk(app)
+  expect(types(m, 'arc').length).toBe(0)
+  // the outer outline is the rectangle grown by 3 on every side, corners and all
+  const xs = m.entities.filter((e: any) => e.type === 'point').map((q: any) => q.x), ys = m.entities.filter((e: any) => e.type === 'point').map((q: any) => q.y) // eslint-disable-line
+  near(Math.max(...xs) - Math.min(...xs), 26)
+  near(Math.max(...ys) - Math.min(...ys), 16)
+  expect(m.ok).toBe(true)
+})
+
+test('A placed dimension can be dragged to a new spot, and moves along when its geometry is moved', async ({ app, page }) => {
+  await app.open()
+  await app.sketchRect('XY', 30, 20)
+  const label = page.locator('.sk-dim', { hasText: /^30$/ })
+  await expect(label).toBeVisible()
+  const box = async () => { const b = (await label.boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 } }
+  const id = await app.ev((c) => c.sketch.getState().model.constraints.find((k: any) => k.value === 30).id as string) // eslint-disable-line
+  // drag the value 60 px down: the dimension goes with the pointer
+  const a = await box()
+  await page.mouse.move(a.x, a.y)
+  await page.mouse.down()
+  await page.mouse.move(a.x, a.y + 30, { steps: 4 })
+  await page.mouse.move(a.x, a.y + 60, { steps: 4 })
+  await page.mouse.up()
+  const b = await box()
+  expect(Math.abs(b.y - (a.y + 60))).toBeLessThan(6)
+  expect(await app.ev((c, id) => c.sketch.getState().dimEdit === id, id)).toBe(false) // a drag is not a double click
+  // Ctrl+Z puts it back
+  await page.keyboard.press('Control+z')
+  await expect.poll(async () => Math.abs((await box()).y - a.y)).toBeLessThan(6)
+
+  // move the whole rectangle by dragging one of its sides: the dimensions travel with it
+  const before = await box()
+  const side = await app.ev((c) => { const s = c.sketch.getState(); const l = s.model.entities.find((e: any) => e.type === 'line'); const P = (id: string) => s.model.entities.find((q: any) => q.id === id); return [(P(l.p1).x + P(l.p2).x) / 2, (P(l.p1).y + P(l.p2).y) / 2] }) // eslint-disable-line
+  const s0 = await app.project(side[0], side[1], 0)
+  const s1 = await app.project(side[0] + 15, side[1] + 10, 0)
+  await page.mouse.move(s0.x, s0.y)
+  await page.mouse.down()
+  await page.mouse.move((s0.x + s1.x) / 2, (s0.y + s1.y) / 2, { steps: 4 })
+  await page.mouse.move(s1.x, s1.y, { steps: 4 })
+  await page.mouse.up()
+  const after = await box()
+  expect(Math.abs((after.x - before.x) - (s1.x - s0.x))).toBeLessThan(6)
+  expect(Math.abs((after.y - before.y) - (s1.y - s0.y))).toBeLessThan(6)
+})

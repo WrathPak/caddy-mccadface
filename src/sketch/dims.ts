@@ -2,7 +2,7 @@
 import { evalNumber } from '@/doc/params'
 import { add, closestOnLine, cross, dist, dot, intersectLineLine, len, mid, norm, perp, polar, sub } from './geom'
 import { circleOf, entityById, lineEnds, pos } from './model'
-import { isDim, type Constraint, type SketchModel, type Vec2 } from './types'
+import { isDim, ORIGIN, type Constraint, type SketchModel, type Vec2 } from './types'
 
 export interface Measured { value: number; sgn: 1 | -1 }
 
@@ -84,6 +84,26 @@ export function measureDim(m: SketchModel, type: Constraint['type'], refs: strin
 }
 
 /** Reference (driven) dimensions follow the geometry: set their value from what is drawn. */
+/** Where a dimension hangs: the middle of what it measures (points, line middles, centres). */
+function dimAnchor(m: SketchModel, c: Constraint): Vec2 | null {
+  let x = 0, y = 0, n = 0
+  for (const r of c.refs) {
+    const e = r === ORIGIN ? null : entityById(m, r)
+    const p: Vec2 | null = r === ORIGIN ? [0, 0] : !e ? null : e.type === 'point' ? pos(m, r) : e.type === 'line' ? mid(...lineEnds(m, e)) : 'c' in e ? pos(m, e.c) : null
+    if (p) { x += p[0]; y += p[1]; n++ }
+  }
+  return n ? [x / n, y / n] : null
+}
+
+/** The geometry moved from `before` to `after`: every placed label goes along with what it measures, keeping its place beside it. */
+export function carryDims(before: SketchModel, after: SketchModel) {
+  for (const c of after.constraints) {
+    if (!isDim(c) || !c.off) continue
+    const a = dimAnchor(before, c), b = dimAnchor(after, c)
+    if (a && b) c.off = [c.off[0] + b[0] - a[0], c.off[1] + b[1] - a[1]]
+  }
+}
+
 export function refreshDriven(m: SketchModel) {
   for (const c of m.constraints) {
     if (!c.driven || !isDim(c)) continue
