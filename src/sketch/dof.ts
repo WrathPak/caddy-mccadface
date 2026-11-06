@@ -117,7 +117,9 @@ function build(m: SketchModel): System {
       case 'pointOnLine': push([a, b], () => [sdist(P(a), b)]); break
       case 'pointOnCurve': push([a, b], () => [dist(P(a), center(b)) - rad(b)]); break
       case 'onAxis': push([a], () => [c.axis === 'x' ? P(a)[1] : P(a)[0]]); break
-      case 'midpoint': push([a, b], () => { const [p, q] = L(b), A = P(a); return [A[0] - (p[0] + q[0]) / 2, A[1] - (p[1] + q[1]) / 2] }); break
+      case 'midpoint':
+        if (ent(b)?.type === 'arc') { const e = ent(b) as { s: string; e: string }; push([a, b], () => [dist(P(a), center(b)) - rad(b), dist(P(a), P(e.s)) - dist(P(a), P(e.e))]); break }
+        push([a, b], () => { const [p, q] = L(b), A = P(a); return [A[0] - (p[0] + q[0]) / 2, A[1] - (p[1] + q[1]) / 2] }); break
       case 'horizontal': push([a, ...(b ? [b] : [])], () => (b ? [P(a)[1] - P(b)[1]] : [dir(a)[1]])); break
       case 'vertical': push([a, ...(b ? [b] : [])], () => (b ? [P(a)[0] - P(b)[0]] : [dir(a)[0]])); break
       case 'parallel': push([a, b], () => { const d1 = dir(a), d2 = dir(b); return [cross(d1, d2) / ((Math.hypot(...d1) * Math.hypot(...d2)) || 1)] }); break

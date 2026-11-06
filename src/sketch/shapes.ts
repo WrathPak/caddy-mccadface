@@ -267,7 +267,7 @@ export function chamferCorner(m: SketchModel, a: LineE, b: LineE, d1: number, d2
 // ------------------------------------------------------------------------------------------------ copying entities
 
 /** The points (ids) an entity set is made of, in a stable order. */
-function pointsOf(m: SketchModel, ids: string[]): string[] {
+export function pointsOf(m: SketchModel, ids: string[]): string[] {
   const out: string[] = []
   const push = (p: string) => { if (p !== ORIGIN && !out.includes(p)) out.push(p) }
   for (const id of ids) {

@@ -31,7 +31,7 @@ import { isDim, type Constraint, type SketchModel, type Vec2 } from './types'
 const Z = 0.02
 
 /** Tools that place points by clicking in empty space: with a finger they get the offset aiming reticle. */
-const AIM_TOOLS = new Set<string>(['line', 'rect', 'rectC', 'circle', 'arc', 'spline', 'splineC', 'ellipse', 'slotCC', 'slotOv', 'slotArc', 'polygon', 'arcT', 'text'])
+const AIM_TOOLS = new Set<string>(['line', 'rect', 'rectC', 'circle', 'arc', 'spline', 'splineC', 'ellipse', 'slotCC', 'slotOv', 'slotArc', 'polygon', 'arcT', 'text', 'rect3', 'circle2', 'circle3', 'arcC', 'point'])
 /** How far above the fingertip the reticle sits (px). */
 const AIM_OFFSET = 76
 
@@ -360,7 +360,7 @@ function Marker({ snap, wpp }: { snap: Snap; wpp: number }) {
 const fmt = (v: number | undefined, unit: string) => (v === undefined ? '' : (unit === 'deg' ? `${(+v.toFixed(2))}°` : `${(+v.toFixed(2))}`))
 
 /** The boxes for typed values: live numbers until you type, then what you typed. Tab moves between them. */
-function TypedInputs({ at, fields, active, live }: { at: Vec2; fields: Typed['fields']; active: number; live: Partial<Record<string, number>> }) {
+export function TypedInputs({ at, fields, active, live }: { at: Vec2; fields: Typed['fields']; active: number; live: Partial<Record<string, number>> }) {
   return (
     <Html position={v3(at)} zIndexRange={[32, 0]} style={{ pointerEvents: 'none' }}>
       <div className="sk-typed">

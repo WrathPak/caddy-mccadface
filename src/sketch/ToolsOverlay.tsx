@@ -1,16 +1,17 @@
 /** Sketch overlay extras: previews of the newer tools, spline control polygons and tangent handles, ellipse axes. */
 import { useMemo } from 'react'
 import { useVpColors } from '@/viewport/colors'
-import { Segments, toPairs } from './SketchOverlay'
+import { Segments, toPairs, TypedInputs } from './SketchOverlay'
 import { pos } from './model'
 import { useSketch } from './store'
-import { useToolPreview } from './toolsUi'
+import { useToolPreview, useToolTyped } from './toolsUi'
 import type { Vec2 } from './types'
 
 export function ToolsOverlay({ wpp }: { wpp: number }) {
   const colors = useVpColors()
   const model = useSketch((s) => s.model)
   const prev = useToolPreview()
+  const typed = useToolTyped()
   const aux = useMemo(() => {
     const lines: Vec2[] = []
     for (const e of model.entities) {
@@ -30,7 +31,7 @@ export function ToolsOverlay({ wpp }: { wpp: number }) {
     <>
       {aux.length > 0 && <Segments pairs={aux} color={colors.accent} width={1} dashed wpp={wpp} order={9} />}
       {prev.polys.map((pts, i) => <Segments key={i} pairs={toPairs(pts)} color={colors.accent} width={1.8} dashed wpp={wpp} order={18} />)}
-      {handles.length > 0 && null}
+      {typed.at && typed.fields.length > 0 && <TypedInputs at={typed.at} fields={typed.fields} active={typed.active} live={typed.live} />}
     </>
   )
 }

@@ -156,6 +156,9 @@ export const GUIDES: Guide[] = [
         steps: [
           'Click Create Sketch in a workspace and click a plane or a flat face. The Sketch tab appears.',
           'Choose a tool: Line (L), Rectangle (R), Circle (C), Arc (A) and more in the Create group.',
+          'The small arrow beside Rectangle, Circle and Arc opens the other ways to draw them: a 3-point rectangle, circles from two points, three points or two tangent curves, and an arc from its center.',
+          'Line, Rectangle, Circle, Arc, Slot, Polygon, Ellipse and Spline let you type exact values: type a number, press Tab for the next box and Enter to place the point. Ctrl+Z takes back the last point you placed.',
+          'Dragging out from the end of a line draws a tangent arc. Point places a sketch point to dimension from.',
           'Click to place points. Press Enter to finish a chain of lines, and Esc to cancel the tool.',
           'Click Finish Sketch when the outline is closed. Closed outlines become profiles.',
         ],
@@ -167,7 +170,7 @@ export const GUIDES: Guide[] = [
         steps: [
           'Select the lines or points the rule is about, then click a constraint in the Constraints group.',
           'Coincident joins points. Horizontal and Vertical level a line. Parallel, Perpendicular, Tangent and Equal relate two shapes.',
-          'Fix locks something in place.',
+          'Fix locks something in place. Concentric shares a center, Collinear lines two lines up, Symmetry mirrors two things across a line (pick the line last) and Smooth joins a spline tangent to the curve it meets. Midpoint also works on an arc.',
         ],
       },
       {
@@ -183,7 +186,9 @@ export const GUIDES: Guide[] = [
         id: 'modify',
         title: 'Trim, Offset and Construction',
         steps: [
-          'Trim (T): click the piece of a curve between two crossings to remove it.',
+          'Trim (T): click the piece of a curve between two crossings to remove it. The small arrow beside Trim also offers Extend, which grows a free end out to the next curve, and Break, which cuts a curve into separate pieces at its crossings or at your click.',
+          'Fillet and Chamfer round or cut the corner of two lines, a line and an arc, or two arcs.',
+          'Sketch Scale: pick the curves and a base point, set the factor in the bar. Mirror and Circular Pattern also let you click the curves inside the tool, then press Enter to go on.',
           'Offset: select a chain of curves, then give a distance.',
           'Construction (X): turn selected curves into guide lines that are ignored when you extrude.',
           'Project / Include: bring edges of existing bodies into the sketch.',

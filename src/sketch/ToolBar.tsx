@@ -77,15 +77,24 @@ export function SketchToolBar() {
   if (!active) return null
   switch (tool) {
     case 'spline': case 'splineC':
-      return <Bar title={tool === 'spline' ? 'Fit point spline' : 'Control point spline'}><Check id="closed" label="Closed" k="splineClosed" /><button type="button" className="btn" data-testid="sk-handles" onClick={splineHandlesCommand}>Tangent handles on selected</button><span className="sk-note">Click points, Enter or double click to finish. Click the first point to close.</span></Bar>
+      return <Bar title={tool === 'spline' ? 'Fit point spline' : 'Control point spline'}><Check id="closed" label="Closed" k="splineClosed" /><button type="button" className="btn" data-testid="sk-handles" onClick={splineHandlesCommand}>Tangent handles on selected</button><span className="sk-note">Click points or type a length and angle (Tab, Enter). Enter or double click finishes; click the first point to close.</span></Bar>
     case 'polygon':
-      return <Bar title="Polygon"><Num id="sides" label="Sides" k="sides" min={3} /><Sel id="kind" label="Type" k="polyKind" options={[{ value: 'inscribed', label: 'Inscribed' }, { value: 'circumscribed', label: 'Circumscribed' }, { value: 'edge', label: 'Edge' }]} /><span className="sk-note">{o.polyKind === 'edge' ? 'Click the two ends of one side.' : 'Click the centre, then a corner (or the middle of a side when circumscribed).'}</span></Bar>
-    case 'slotCC': case 'slotOv': return <Bar title={tool === 'slotCC' ? 'Centre to centre slot' : 'Overall slot'}><span className="sk-note">Click the two ends, then drag out the width.</span></Bar>
-    case 'slotArc': return <Bar title="Centre point arc slot"><span className="sk-note">Click the centre, the start, the end, then the width.</span></Bar>
+      return <Bar title="Polygon"><Num id="sides" label="Sides" k="sides" min={3} /><Sel id="kind" label="Type" k="polyKind" options={[{ value: 'inscribed', label: 'Inscribed' }, { value: 'circumscribed', label: 'Circumscribed' }, { value: 'edge', label: 'Edge' }]} /><span className="sk-note">{o.polyKind === 'edge' ? 'Click the two ends of one side.' : 'Click the centre, then a corner (or the middle of a side when circumscribed).'} Type the size, Tab for the angle.</span></Bar>
+    case 'slotCC': case 'slotOv': return <Bar title={tool === 'slotCC' ? 'Centre to centre slot' : 'Overall slot'}><span className="sk-note">Click the two ends, then the width. Or type length, angle, width (Tab, Enter).</span></Bar>
+    case 'slotArc': return <Bar title="Centre point arc slot"><span className="sk-note">Click the centre, start, end, then the width. Or type radius, sweep, width.</span></Bar>
     case 'arcT': return <Bar title="Tangent arc"><span className="sk-note">Click the end of a line or arc, then the end of the new arc.</span></Bar>
-    case 'ellipse': return <Bar title="Ellipse"><span className="sk-note">Click the centre, the end of the long axis, then a point for the short radius.</span></Bar>
-    case 'fillet': return <Bar title="Sketch fillet"><Num id="radius" label="Radius" k="filletR" min={0.001} unit="mm" /><span className="sk-note">Click the corner, or two lines.</span></Bar>
-    case 'chamfer': return <Bar title="Sketch chamfer"><Num id="dist" label="Distance" k="chamferD" min={0.001} unit="mm" /><Num id="dist2" label="Distance 2 (0 = same)" k="chamferD2" min={0} unit="mm" /><span className="sk-note">Click the corner, or two lines.</span></Bar>
+    case 'ellipse': return <Bar title="Ellipse"><span className="sk-note">Click the centre, the long axis end, then the short radius. Or type both radii.</span></Bar>
+    case 'rect3': return <Bar title="3-point rectangle"><span className="sk-note">Click the two ends of one side, then the width. Or type length, angle, width.</span></Bar>
+    case 'circle2': return <Bar title="2-point circle"><span className="sk-note">Click the two ends of the diameter, or type the diameter.</span></Bar>
+    case 'circle3': return <Bar title="3-point circle"><span className="sk-note">Click three points on the circle.</span></Bar>
+    case 'circle2T': return <Bar title="2-tangent circle"><span className="sk-note">Click the two curves to touch (or select them first), then where the circle sits.</span></Bar>
+    case 'arcC': return <Bar title="Centre point arc"><span className="sk-note">Click the centre, the start, then the end. You can type the radius and the sweep.</span></Bar>
+    case 'point': return <Bar title="Point"><span className="sk-note">Click to place a point. It snaps onto curves and midpoints and stays on them.</span></Bar>
+    case 'extend': return <Bar title="Extend"><span className="sk-note">Click near the free end of a line or arc to grow it out to the next curve.</span></Bar>
+    case 'break': return <Bar title="Break"><span className="sk-note">Click a curve to cut it at its crossings, or at your click when nothing crosses it.</span></Bar>
+    case 'scale': return <Bar title="Sketch scale"><Num id="factor" label="Factor" k="scaleF" min={0.001} /><button type="button" className="btn" data-testid="sk-next" onClick={() => toolNext()}>Next: pick the base point</button><span className="sk-note">Click the curves (or select them first), then the point to scale about.</span></Bar>
+    case 'fillet': return <Bar title="Sketch fillet"><Num id="radius" label="Radius" k="filletR" min={0.001} unit="mm" /><span className="sk-note">Click the corner, or two lines or arcs.</span></Bar>
+    case 'chamfer': return <Bar title="Sketch chamfer"><Num id="dist" label="Distance" k="chamferD" min={0.001} unit="mm" /><Num id="dist2" label="Distance 2 (0 = same)" k="chamferD2" min={0} unit="mm" /><span className="sk-note">Click the corner, or two lines or arcs.</span></Bar>
     case 'mirror': return <Bar title="Sketch mirror"><button type="button" className="btn" data-testid="sk-next" onClick={() => toolNext()}>Next: pick the line</button><span className="sk-note">Click the curves (or select them first), then the line to mirror across.</span></Bar>
     case 'patternR':
       return (

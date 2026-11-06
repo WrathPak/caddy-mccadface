@@ -1,5 +1,5 @@
 /** Registers the sketch commands (replacing the ribbon stubs) and routes Esc / Delete / Undo / Redo while sketching. */
-import { ArrowsVertical, DotsThree, Square } from '@phosphor-icons/react'
+import { ArrowsVertical, Circle, DotsThree, Equals, Square, Target, Waves } from '@phosphor-icons/react'
 import { getCommand, registerCommand, type Command } from '@/app/commands'
 import { useUi } from '@/store/ui'
 import { startSketchCommand, stopPicking, useSketchPick } from './create'
@@ -47,6 +47,10 @@ export function installSketchCommands() {
   registerCommand({ id: 'sketch.rectCenter', label: 'Center Rectangle', icon: Square, category: 'Sketch', run: () => { if (sketching()) setTool('rectC') } })
   registerCommand({ id: 'sketch.vertical', label: 'Vertical', icon: ArrowsVertical, category: 'Sketch', run: () => { if (sketching()) runConstraintCommand('vertical') } })
   registerCommand({ id: 'sketch.midpoint', label: 'Midpoint', icon: DotsThree, category: 'Sketch', run: () => { if (sketching()) runConstraintCommand('midpoint') } })
+  registerCommand({ id: 'sketch.concentric', label: 'Concentric', icon: Target, category: 'Sketch', run: () => { if (sketching()) runConstraintCommand('concentric') } })
+  registerCommand({ id: 'sketch.collinear', label: 'Collinear', icon: Equals, category: 'Sketch', run: () => { if (sketching()) runConstraintCommand('collinear') } })
+  registerCommand({ id: 'sketch.symmetric', label: 'Symmetry', icon: Circle, category: 'Sketch', run: () => { if (sketching()) runConstraintCommand('symmetric') } })
+  registerCommand({ id: 'sketch.smooth', label: 'Smooth', icon: Waves, category: 'Sketch', run: () => { if (sketching()) runConstraintCommand('smooth') } })
   registerCommand({ id: 'sketch.construction', label: 'Construction', icon: DotsThree, shortcut: 'X', category: 'Sketch', run: () => { if (sketching()) toggleConstruction() } })
   registerCommand({ id: 'sketch.selectAll', label: 'Select All', icon: Square, shortcut: 'Ctrl+A', category: 'Sketch', hidden: true, run: () => { if (sketching()) selectAllSketch() } })
   registerCommand({ id: 'sketch.select', label: 'Select', icon: Square, shortcut: 'Q', category: 'Sketch', run: () => { if (sketching()) setTool('select') } })

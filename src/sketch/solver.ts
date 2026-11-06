@@ -119,10 +119,20 @@ function mapConstraint(m: SketchModel, c: Constraint): Prim[] {
     case 'pointOnLine': return [{ id, type: 'point_on_line_pl', p_id: a, l_id: b }]
     case 'pointOnCurve': return [t(b) === 'arc' ? { id, type: 'point_on_arc', p_id: a, a_id: b } : { id, type: 'point_on_circle', p_id: a, c_id: b }]
     case 'onAxis': return [c.axis === 'x' ? { id, type: 'coordinate_y', p_id: a, y: 0 } : { id, type: 'coordinate_x', p_id: a, x: 0 }]
-    case 'midpoint': return [
-      { id, type: 'point_on_line_pl', p_id: a, l_id: b },
-      { id: id + '_b', type: 'point_on_perp_bisector_pl', p_id: a, l_id: b },
-    ]
+    case 'midpoint': {
+      if (t(b) === 'arc') {
+        // the middle of an arc: on the arc, and as far from one end as from the other
+        const arc = entityById(m, b) as { s: string; e: string }
+        return [
+          { id, type: 'point_on_arc', p_id: a, a_id: b },
+          { id: id + '_b', type: 'point_on_perp_bisector_ppp', p_id: a, lp1_id: arc.s, lp2_id: arc.e },
+        ]
+      }
+      return [
+        { id, type: 'point_on_line_pl', p_id: a, l_id: b },
+        { id: id + '_b', type: 'point_on_perp_bisector_pl', p_id: a, l_id: b },
+      ]
+    }
     case 'horizontal': return [b ? { id, type: 'horizontal_pp', p1_id: a, p2_id: b } : { id, type: 'horizontal_l', l_id: a }]
     case 'vertical': return [b ? { id, type: 'vertical_pp', p1_id: a, p2_id: b } : { id, type: 'vertical_l', l_id: a }]
     case 'parallel': return [{ id, type: 'parallel', l1_id: ln(a), l2_id: ln(b) }]

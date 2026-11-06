@@ -7,14 +7,14 @@ import { evalNumber } from '@/doc/params'
 import { dist, norm, perp, sub } from './geom'
 import type { Vec2 } from './types'
 
-export type FieldKey = 'len' | 'ang' | 'w' | 'h' | 'dia' | 'rad' | 'dist'
+export type FieldKey = 'len' | 'ang' | 'w' | 'h' | 'dia' | 'rad' | 'dist' | 'maj' | 'min' | 'wd' | 'sw'
 export type DrawTool = 'line' | 'rect' | 'rectC' | 'circle' | 'arc'
 
 export interface TypedField { key: FieldKey; label: string; unit: 'mm' | 'deg'; text: string }
 /** `tool` / `stage` identify the draft state the fields belong to (they reset when either changes). */
 export interface Typed { fields: TypedField[]; active: number; tool: string; stage: number }
 
-const F = (key: FieldKey, label: string, unit: 'mm' | 'deg'): TypedField => ({ key, label, unit, text: '' })
+export const F = (key: FieldKey, label: string, unit: 'mm' | 'deg'): TypedField => ({ key, label, unit, text: '' })
 
 /** Fields a tool offers at a stage (arc: 0 = second point, 1 = third point). */
 export function fieldsFor(tool: DrawTool | 'offset', stage = 0): TypedField[] {
@@ -75,7 +75,7 @@ export function resolveEnd(tool: DrawTool, stage: number, pts: Vec2[], cursor: V
   }
 }
 
-function polarFrom(a: Vec2, cursor: Vec2, len?: number, angDeg?: number): Vec2 {
+export function polarFrom(a: Vec2, cursor: Vec2, len?: number, angDeg?: number): Vec2 {
   const l = len !== undefined ? len : dist(cursor, a)
   const ang = angDeg !== undefined ? (angDeg * Math.PI) / 180 : Math.atan2(cursor[1] - a[1], cursor[0] - a[0])
   return [a[0] + l * Math.cos(ang), a[1] + l * Math.sin(ang)]
