@@ -208,7 +208,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
   'sketch.handles': h('Show draggable handles at the ends of a fit point spline so you can shape how it leaves each point.', 'A fit point spline'),
   'sketch.import': h('Put the shapes of an SVG or DXF file into the sketch.'),
   'sketch.snapSettings': h('Choose which snaps and hints (parallel, perpendicular, tangent and so on) show up while you draw.'),
-  'sketch.dimension': h('Set an exact size. Click a line, a circle or two points, then type the value. The sketch is forced to match it.', 'A line, a circle, or two points'),
+  'sketch.dimension': h('Set an exact size. Click a line, a circle, an ellipse, two points, two lines, or a point and an axis, then click where the dimension goes and type the value. If the sketch already fixes that size, you get a reference dimension in brackets instead.', 'A line, a circle, or two points'),
   'sketch.project': h('Copy edges or faces from existing bodies into the sketch as reference geometry, so you can draw relative to them.', 'Edges or faces of an existing body'),
   'sketch.construction': h('Turn the selected curves into guide lines. They help you draw and constrain but are ignored when you extrude.', 'The curves to turn into guides'),
   'sketch.select': h('Switch back to the plain selection tool so you can click and drag existing shapes.'),

@@ -10,10 +10,10 @@ import { hitTest } from './hit'
 import { loadFont } from './font'
 import { boundsOfImport, insertImported, parseDxf, parseSvg } from './importers'
 import {
-  addHandles, chamferCorner, cornerOf, drawEllipse, drawTangentArc, drawPolygon, drawSlotArc, drawSlotCC, drawSlotOverall, drawSpline, drawText, filletCorner,
+  addHandles, chamferCorner, cornerOf, curveEndingAt, drawEllipse, drawTangentArc, drawPolygon, drawSlotArc, drawSlotCC, drawSlotOverall, drawSpline, drawText, filletCorner,
   mirrorEntities, patternCirc, patternRect, type PolygonKind,
 } from './shapes'
-import { extraTools, sketchInternals as K, setTool, type Mods, type ToolHandlers, type ToolId } from './store'
+import { extraTools, sketchInternals as K, setTool, tangentDrag, type Mods, type ToolHandlers, type ToolId } from './store'
 import type { Snap } from './snap'
 import { ORIGIN, type LineE, type SketchModel, type Vec2 } from './types'
 
@@ -101,6 +101,8 @@ function clickHandlers(id: ToolId, t: ClickTool): ToolHandlers {
         const r = t.build(m, taken.map((s) => s.pos))
         if (typeof r === 'string') return r
         bindSnaps(m, old, taken)
+        // construction mode (X with nothing selected) makes what the tool draws guide geometry
+        if (K.get().construction) for (const e of m.entities) if (!old.has(e.id) && e.type !== 'point') e.construction = true
       })
       void id
     },
@@ -109,6 +111,22 @@ function clickHandlers(id: ToolId, t: ClickTool): ToolHandlers {
 }
 
 for (const [id, t] of Object.entries(CLICK_TOOLS) as [ToolId, ClickTool][]) extraTools[id] = clickHandlers(id, t)
+
+// the Line tool: drag from the end of a line or arc for a tangent arc
+tangentDrag.canStart = (m, at) => !!curveEndingAt(m, at)
+tangentDrag.preview = (from, to) => {
+  if (!to) { clearPreview(); return }
+  showPreview(previewOf((m) => drawTangentArc(m, from, to)))
+}
+tangentDrag.make = (from, to) => {
+  const old = new Set(K.get().model.entities.map((e) => e.id))
+  K.commit((m) => {
+    const r = drawTangentArc(m, from.pos, to.pos)
+    if (typeof r === 'string') return r
+    bindSnaps(m, old, [from, to])
+    if (K.get().construction) for (const e of m.entities) if (!old.has(e.id) && e.type !== 'point') e.construction = true
+  })
+}
 
 // ------------------------------------------------------------------------------------------------ splines
 
@@ -201,22 +219,46 @@ const curveSelection = () => {
 }
 let mirrorSource: string[] = []
 
+/** Mirror and Circular Pattern take the curves first. With none selected the clicks pick them, and Enter (or the bar's button) moves on to the line / centre. */
+type Stage = 'curves' | 'target'
+const stages: Partial<Record<ToolId, Stage>> = {}
+const toggleCurve = (raw: Vec2, wpp: number) => {
+  const s = K.get()
+  const h = hitTest(s.model, raw, 8 * wpp, (e) => e.type !== 'point')
+  if (!h) return
+  K.set({ sel: s.sel.includes(h) ? s.sel.filter((i) => i !== h) : [...s.sel, h] })
+  K.invalidate()
+}
+/** Done picking curves: on to the mirror line / the centre to turn about. Returns false when there is nothing to move on from. */
+export function toolNext(): boolean {
+  const tool = K.get().tool
+  if (stages[tool] !== 'curves') return false
+  const ids = curveSelection()
+  if (!ids.length) { K.flash('Click the curves first'); return true }
+  if (tool === 'mirror') mirrorSource = ids
+  else patternSource = ids
+  stages[tool] = 'target'
+  K.flash(tool === 'mirror' ? 'Pick the line to mirror across' : 'Click the point to turn about (or the origin)')
+  return true
+}
+
 extraTools.mirror = {
   start() {
     mirrorSource = curveSelection()
-    if (!mirrorSource.length) K.flash('Select the curves to mirror in the sketch first, then pick the mirror line')
-    else K.flash('Pick the line to mirror across')
+    stages.mirror = mirrorSource.length ? 'target' : 'curves'
+    K.flash(mirrorSource.length ? 'Pick the line to mirror across' : 'Click the curves to mirror, then press Enter and pick the line')
   },
-  move(raw, wpp) { K.set({ hover: hitTest(K.get().model, raw, 8 * wpp, (e) => e.type === 'line'), cursor: null }); K.invalidate() },
+  move(raw, wpp) { K.set({ hover: hitTest(K.get().model, raw, 8 * wpp, stages.mirror === 'curves' ? (e) => e.type !== 'point' : (e) => e.type === 'line'), cursor: null }); K.invalidate() },
   down(raw, wpp) {
+    if (stages.mirror === 'curves') { toggleCurve(raw, wpp); return }
     const s = K.get()
     const h = hitTest(s.model, raw, 8 * wpp, (e) => e.type === 'line')
     if (!h) return
-    if (!mirrorSource.length) { K.flash('Select the curves to mirror in the sketch first'); return }
     const src = mirrorSource
     const ok = K.commit((m) => { const r = mirrorEntities(m, src, h); return typeof r === 'string' ? r : undefined })
     if (ok) setTool('select')
   },
+  enter: toolNext,
 }
 
 /** Apply the rectangular pattern to the selected curves (the Apply button of the tool bar). */
@@ -241,17 +283,22 @@ extraTools.patternR = {
     K.set({ sel: s.sel.includes(h) ? s.sel.filter((i) => i !== h) : [...s.sel, h] })
     K.invalidate()
   },
+  enter() { if (!curveSelection().length) return false; applyPatternR(); return true },
 }
 
 let patternSource: string[] = []
 extraTools.patternC = {
   start() {
     patternSource = curveSelection()
-    K.flash(patternSource.length ? 'Click the point to turn about (or the origin)' : 'Select the curves to repeat in the sketch first')
+    stages.patternC = patternSource.length ? 'target' : 'curves'
+    K.flash(patternSource.length ? 'Click the point to turn about (or the origin)' : 'Click the curves to repeat, then press Enter and pick the centre')
   },
-  move(raw, wpp, mods) { const sn = K.snap(raw, mods); K.set({ cursor: sn, hover: null }); K.invalidate(); void wpp },
+  move(raw, wpp, mods) {
+    if (stages.patternC === 'curves') { K.set({ hover: hitTest(K.get().model, raw, 8 * wpp, (e) => e.type !== 'point'), cursor: null }); K.invalidate(); return }
+    const sn = K.snap(raw, mods); K.set({ cursor: sn, hover: null }); K.invalidate()
+  },
   down(raw, wpp, mods) {
-    if (!patternSource.length) { K.flash('Select the curves to repeat in the sketch first'); return }
+    if (stages.patternC === 'curves') { toggleCurve(raw, wpp); return }
     const sn = K.snap(raw, mods)
     const src = patternSource
     const o = opts()
@@ -263,6 +310,7 @@ extraTools.patternC = {
     })
     if (ok) setTool('select')
   },
+  enter: toolNext,
 }
 
 // ------------------------------------------------------------------------------------------------ text

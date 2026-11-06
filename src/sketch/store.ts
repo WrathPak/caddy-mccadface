@@ -10,7 +10,7 @@ import type { ProjectedCurve } from '@/kernel/sketch-ops'
 import { useUi, type SelectionRef } from '@/store/ui'
 import { viewportBus } from '@/viewport/bus'
 import { applyConstraint, ready, type CKind } from './constraints'
-import { defaultOff, measure, refreshDims } from './dims'
+import { defaultOff, measure, measureDim, refreshDims } from './dims'
 import {
   addArc, addCircle, addCoincident, addConstraint, addLine, addPoint, cloneModel, entityById, entityPoints, lineEnds, pos, removeIds, tangentValue,
 } from './model'
@@ -22,7 +22,7 @@ import { ensureFonts } from './curves'
 import { useDevice } from '@/app/device'
 import { useSnapFlags } from './snapSettings'
 import { analyze, ensureSolver, solveModel, solvePruned, type DragSpec, type SolveInfo } from './solver'
-import { circumcircle, cross, dist, norm, sub } from './geom'
+import { circumcircle, cross, dist, intersectLineLine, norm, sub } from './geom'
 import { applyOffset, collectChain, sideOf, type Chain } from './offsetTool'
 import { encodeRef, refFromSelection } from '@/doc/refs'
 import { addProjected, reprojectModel } from './project'
@@ -62,6 +62,17 @@ export const sketchInternals = {
   wpp: () => wppNow,
   invalidate: () => invalidate(),
 }
+
+/**
+ * Line tool: pressing on the end of a line or arc and dragging draws a tangent arc instead of a straight line (hooked up by
+ * toolsUi.ts, which has the tangent arc geometry). `make` adds the arc (and says why when it is refused).
+ */
+export const tangentDrag: {
+  canStart?(m: SketchModel, at: Vec2): boolean
+  preview?(from: Vec2, to: Vec2 | null): void
+  make?(from: Snap, to: Snap): void
+} = {}
+let tanFrom: { snap: Snap; moved: boolean } | null = null
 
 export interface Draft {
   tool: ToolId
@@ -184,9 +195,13 @@ export function commit(fn: (m: SketchModel) => string | void, opts: { strict?: b
 const draftStack: Draft[] = []
 /** A dimension just placed whose value box opens when the mouse button comes up. */
 let pendingDim: string | null = null
+/** Dimension tool: the pick of a sketch axis, which says whether the distance from the origin is sideways (y axis) or up (x axis). */
+let axisHint: 'x' | 'y' | null = null
 
 function resetTransient(extra: Partial<SketchState> = {}) {
   pendingDim = null
+  axisHint = null
+  if (tanFrom) { tanFrom = null; tangentDrag.preview?.([0, 0], null) }
   draftStack.length = 0
   woken.clear()
   lastDir = null
@@ -202,6 +217,21 @@ export function undoSketch() {
   resetTransient()
   invalidate()
 }
+/** Ctrl+Z: while a polyline (or arc) is being drawn it takes back the last point and the tool carries on; otherwise the last change. */
+export function undoKey() {
+  const s = get()
+  if (s.active && !s.dimEdit && s.draft && ((s.tool === 'line' && draftStack.length) || (s.tool === 'arc' && s.draft.pts.length > 1))) { undoPoint(); return }
+  undoSketch()
+}
+
+/** Ctrl+A: every point and curve of the sketch. */
+export function selectAllSketch() {
+  const s = get()
+  if (!s.active || s.dimEdit || s.draft) return
+  set({ sel: s.model.entities.map((e) => e.id) })
+  invalidate()
+}
+
 export function redoSketch() {
   const s = get()
   const next = s.future[0]
@@ -279,6 +309,7 @@ export function setTool(tool: ToolId, ckind: CKind | null = null) {
   const id = tool === 'select' ? null : tool in extraTools ? 'sketch.' + tool : tool === 'constraint' && ckind ? 'sketch.' + (ckind === 'hv' ? 'horizontal' : ckind) : tool === 'dimension' ? 'sketch.dimension' : tool === 'rectC' ? 'sketch.rectCenter' : 'sketch.' + tool
   useUi.getState().setActiveTool(id)
   extraTools[tool]?.start?.()
+  if (tool === 'dimension') preselectDim()
   if (tool === 'offset') {
     // an already selected curve starts the offset straight away
     const s = get()
@@ -291,7 +322,10 @@ export function setTool(tool: ToolId, ckind: CKind | null = null) {
 /** Constraint command: apply to the current selection if complete, otherwise wait for picks. */
 export function runConstraintCommand(kind: CKind) {
   const s = get()
-  const ids = s.sel.filter((i) => !s.model.constraints.some((c) => c.id === i))
+  const all = s.sel.filter((i) => !s.model.constraints.some((c) => c.id === i))
+  // a box select picks up the points too: use just the curves (or just the points) when that is what the constraint takes
+  const isPt = (i: string) => i === ORIGIN || entityById(s.model, i)?.type === 'point'
+  const ids = [all, all.filter((i) => !isPt(i)), all.filter(isPt)].find((c) => c.length && ready(s.model, kind, c)) ?? all
   if (ready(s.model, kind, ids)) {
     const err = { v: null as string | null }
     commit((m) => { err.v = applyConstraint(m, kind, ids); return err.v ?? undefined }, { strict: true })
@@ -356,6 +390,7 @@ export function select(ids: string[], additive = false) {
 // -------- dimension editing
 
 export function editDim(id: string, isNew = false) {
+  if (get().model.constraints.find((c) => c.id === id)?.driven) { set({ sel: [id] }); flash('A reference dimension only shows the measured value; it cannot be edited'); return }
   set({ dimEdit: id, dimNew: isNew, sel: [id] })
   invalidate()
 }
@@ -458,6 +493,14 @@ export function pointerMove(raw: Vec2, wpp: number, mods: Mods) {
   const tool = s.tool
 
   if (drag) { dragMove(raw, mods); return }
+  if (tanFrom && (tanFrom.moved || dist(raw, tanFrom.snap.pos) > 6 * wpp)) {
+    const sn = doSnap(raw, mods, tanFrom.snap.pos)
+    tanFrom.moved = true
+    set({ draft: null, cursor: sn })
+    tangentDrag.preview?.(tanFrom.snap.pos, sn.pos)
+    invalidate()
+    return
+  }
   if (boxStart) { set({ box: [boxStart, raw] }); invalidate(); return }
   const extra = extraTools[tool]
   if (extra) { extra.move?.(raw, wpp, mods); return }
@@ -520,7 +563,12 @@ export function pointerDown(raw: Vec2, wpp: number, mods: Mods, px: Vec2) {
     case 'trim': return downTrim(raw)
     case 'offset': return downOffset(raw)
     case 'project': return
-    default: return downDraw(raw, mods)
+    default:
+      if (s.tool === 'line' && !s.draft) {
+        const sn = doSnap(raw, mods)
+        if (sn.kind === 'point' && sn.pointId && tangentDrag.canStart?.(s.model, sn.pos)) tanFrom = { snap: sn, moved: false }
+      }
+      return downDraw(raw, mods)
   }
 }
 
@@ -532,14 +580,38 @@ export function pointerUp(raw: Vec2, wpp: number, mods: Mods) {
     if (get().model.constraints.some((c) => c.id === id)) editDim(id, true)
   }
   if (drag) { dragEnd(raw, mods); return }
+  if (tanFrom) {
+    const t = tanFrom
+    tanFrom = null
+    tangentDrag.preview?.(t.snap.pos, null)
+    if (t.moved) endTangentDrag(t.snap, raw, mods)
+    return
+  }
   if (boxStart) {
     const b = get().box
     boxStart = null
     set({ box: null })
-    if (b && dist(b[0], b[1]) > 3 * wpp) select(boxSelect(get().model, b[0], b[1]), mods.shift)
+    if (b && dist(b[0], b[1]) > 3 * wpp) select(boxSelect(get().model, b[0], b[1], b[1][0] < b[0][0]), mods.shift)
     else if (!mods.shift) select([])
     invalidate()
   }
+}
+
+/** Mouse released after dragging from the end of a curve: the tangent arc, and the polyline carries on from its end. */
+function endTangentDrag(from: Snap, raw: Vec2, mods: Mods) {
+  const to = doSnap(raw, mods, from.pos)
+  const back = () => set({ draft: { tool: 'line', pts: [from.pos], snaps: [from] }, typed: null })
+  if (dist(from.pos, to.pos) < wppNow * 2) { back(); return }
+  const before = new Set(get().model.entities.map((e) => e.id))
+  tangentDrag.make?.(from, to)
+  const arc = get().model.entities.find((e) => e.type === 'arc' && !before.has(e.id))
+  if (!arc || arc.type !== 'arc') { back(); return }
+  const m = get().model
+  const endId = dist(pos(m, arc.s), to.pos) < dist(pos(m, arc.e), to.pos) ? arc.s : arc.e
+  const p = pos(m, endId)
+  draftStack.length = 0
+  set({ draft: { tool: 'line', pts: [p], snaps: [{ pos: p, kind: 'point', pointId: endId, guides: [] }] }, typed: null })
+  invalidate()
 }
 
 export function doubleClick(raw: Vec2, wpp: number) {
@@ -674,28 +746,70 @@ function downConstraint(raw: Vec2, mods: Mods) {
 
 const isCurveT = (t?: string) => t === 'circle' || t === 'arc'
 
+/** The sketch axes can be picked in the Dimension tool: they stand in for the origin plus a direction (`axisHint`). */
+const AXIS_X = '~axisX', AXIS_Y = '~axisY'
+const kindOfPick = (m: SketchModel, id: string) => (id === ORIGIN ? 'point' : id === AXIS_X || id === AXIS_Y ? 'axis' : entityById(m, id)?.type)
+/** What the Dimension tool can pick at `p`: the usual geometry, then the sketch axes. */
+function dimHit(m: SketchModel, p: Vec2, tol: number): string | null {
+  const h = hitTest(m, p, tol)
+  if (h) return h
+  if (Math.abs(p[1]) <= tol) return AXIS_X
+  if (Math.abs(p[0]) <= tol) return AXIS_Y
+  return null
+}
+
 function placeReady(m: SketchModel, picks: string[]) {
-  const t = picks.map((p) => (p === ORIGIN ? 'point' : entityById(m, p)?.type))
-  if (picks.length === 1) return t[0] === 'line' || isCurveT(t[0])
+  const t = picks.map((p) => kindOfPick(m, p))
+  if (picks.length === 1) return t[0] === 'line' || isCurveT(t[0]) || t[0] === 'ellipse'
   if (picks.length === 2) return (t[0] === 'point' && t[1] === 'point') || (t[0] === 'point' && t[1] === 'line') || (t[0] === 'line' && t[1] === 'line')
   return false
 }
 
+/**
+ * The picks after clicking `h` with `picks` already made (null: that pick does nothing). A circle, arc or ellipse paired with
+ * something else is measured from its centre; an axis with a point is the distance from that axis (the origin and a direction).
+ */
+function pickStep(m: SketchModel, picks: string[], h: string): { picks: string[]; axis: 'x' | 'y' | null } | null {
+  const t = (id: string) => kindOfPick(m, id)
+  if (!picks.length) return t(h) !== undefined ? { picks: [h], axis: null } : null
+  const first = picks[0]
+  if (h === first) return null
+  const centreOf = (id: string) => { const e = entityById(m, id); return e && (e.type === 'circle' || e.type === 'arc' || e.type === 'ellipse') ? e.c : id }
+  const p0 = centreOf(first), p1 = centreOf(h)
+  const a = t(p0), b = t(p1)
+  if (a === 'axis' || b === 'axis') {
+    const ax = a === 'axis' ? p0 : p1, other = a === 'axis' ? p1 : p0
+    if (ax === other || t(other) !== 'point' || other === ORIGIN) return null
+    return { picks: [ORIGIN, other], axis: ax === AXIS_X ? 'x' : 'y' }
+  }
+  const ok = (x?: string, y?: string) => (x === 'point' && (y === 'point' || y === 'line')) || (x === 'line' && (y === 'line' || y === 'point'))
+  if (ok(a, b)) return { picks: a === 'line' && b === 'point' ? [p1, p0] : [p0, p1], axis: null }
+  return null
+}
+
 function dimFor(m: SketchModel, picks: string[], at: Vec2, k: number): Omit<Constraint, 'id'> | null {
-  const t = picks.map((p) => (p === ORIGIN ? 'point' : entityById(m, p)?.type))
+  const t = picks.map((p) => kindOfPick(m, p))
   let type: ConstraintType
   let refs: string[]
+  let supp = false
   if (picks.length === 1 && t[0] === 'line') {
     const l = entityById(m, picks[0])
     if (l?.type !== 'line') return null
     refs = [l.p1, l.p2]
     type = pairType(m, refs, at)
+  } else if (picks.length === 1 && t[0] === 'ellipse') {
+    // the major radius when the dimension is put along the long axis, else the minor one
+    const e = entityById(m, picks[0])
+    if (e?.type !== 'ellipse') return null
+    const u = norm(sub(pos(m, e.m), pos(m, e.c))), w = norm(sub(at, pos(m, e.c)))
+    type = Math.abs(u[0] * w[0] + u[1] * w[1]) >= Math.SQRT1_2 ? 'majorRadius' : 'radius'
+    refs = picks
   } else if (picks.length === 1) {
     type = t[0] === 'circle' ? 'diameter' : 'radius'
     refs = picks
   } else if (t[0] === 'point' && t[1] === 'point') {
     refs = picks
-    type = pairType(m, refs, at)
+    type = axisHint && picks[0] === ORIGIN ? (axisHint === 'x' ? 'vdist' : 'hdist') : pairType(m, refs, at)
   } else if (t[0] === 'point' && t[1] === 'line') {
     refs = picks
     type = 'distance'
@@ -704,12 +818,24 @@ function dimFor(m: SketchModel, picks: string[], at: Vec2, k: number): Omit<Cons
     if (a?.type !== 'line' || b?.type !== 'line') return null
     // parallel lines have no angle worth giving: dimension the gap between them (an end of the first to the second line)
     if (parallelLines(m, a.p1, a.p2, b.p1, b.p2)) { refs = [a.p1, picks[1]]; type = 'distance' }
-    else { refs = picks; type = 'angle' }
+    else { refs = picks; type = 'angle'; supp = angleSupplement(m, a.p1, a.p2, b.p1, b.p2, at) }
   } else return null
-  const me = measure(m, type, refs)
+  const me = measureDim(m, type, refs, supp)
   if (!me) return null
-  const off: Vec2 = type === 'hdist' || type === 'vdist' || type === 'distance' || type === 'radius' || type === 'diameter' || type === 'angle' ? at : defaultOff(m, type, refs, k)
-  return { type, refs, value: me.value, sgn: me.sgn, expr: String(+me.value.toFixed(3)), off }
+  const off: Vec2 = type === 'hdist' || type === 'vdist' || type === 'distance' || type === 'radius' || type === 'diameter' || type === 'angle' || type === 'majorRadius' ? at : defaultOff(m, type, refs, k)
+  return { type, refs, value: me.value, sgn: me.sgn, expr: String(+me.value.toFixed(3)), off, ...(supp ? { supp: true } : {}) }
+}
+
+/** Where two lines cross they make four sectors, in two pairs of equal angles: true when the dimension is put in the pair that adds up to the other one. */
+function angleSupplement(m: SketchModel, a1: string, a2: string, b1: string, b2: string, at: Vec2): boolean {
+  const P = pos(m, a1), Q = pos(m, b1)
+  const d1 = sub(pos(m, a2), P), d2 = sub(pos(m, b2), Q)
+  const h = intersectLineLine(P, pos(m, a2), Q, pos(m, b2))
+  if (!h) return false
+  const u = sub(at, h.p)
+  if (Math.hypot(u[0], u[1]) < 1e-9) return false
+  // the sector between the two directions (or the one opposite) has the cursor on opposite sides of the lines
+  return cross(d1, u) * cross(d2, u) > 0
 }
 
 /** Two lines within half a degree of parallel (either way round). */
@@ -746,44 +872,54 @@ function previewDim(s: SketchState, raw: Vec2, mods: Mods): Constraint | null {
 
 function downDimension(raw: Vec2, mods: Mods) {
   const s = get()
-  const h = hitTest(s.model, raw, tolPx() * wppNow)
-  const t = (id: string) => (id === ORIGIN ? 'point' : entityById(s.model, id)?.type)
+  const h = dimHit(s.model, raw, tolPx() * wppNow)
   if (!s.picks.length) {
-    if (h && t(h) !== undefined) set({ picks: [h] })
+    const r = h ? pickStep(s.model, [], h) : null
+    if (r) set({ picks: r.picks })
     return
   }
-  const first = s.picks[0]
-  if (s.picks.length === 1) {
-    if (h && h !== first) {
-      // a circle or arc paired with something else is measured from its centre (centre to centre, centre to a line...)
-      const centreOf = (id: string) => { const e = entityById(s.model, id); return e && (e.type === 'circle' || e.type === 'arc' || e.type === 'ellipse') ? e.c : id }
-      const p0 = centreOf(first), p1 = centreOf(h)
-      if (p0 !== p1 && (p0 !== first || p1 !== h)) {
-        const a = t(p0), b = t(p1)
-        if ((a === 'point' || a === 'line') && (b === 'point' || b === 'line')) {
-          set({ picks: a === 'line' && b === 'point' ? [p1, p0] : [p0, p1] })
-          return
-        }
-      }
-      const a = t(first), b = t(h)
-      if ((a === 'point' && (b === 'point' || b === 'line')) || (a === 'line' && (b === 'line' || b === 'point'))) {
-        set({ picks: a === 'line' && b === 'point' ? [h, first] : [first, h] })
-        return
-      }
-    }
-    if (!placeReady(s.model, s.picks)) return
+  if (s.picks.length === 1 && h) {
+    const r = pickStep(s.model, s.picks, h)
+    if (r) { axisHint = r.axis; set({ picks: r.picks }); return }
   }
+  if (!placeReady(s.model, s.picks)) return
   place(raw, mods)
+}
+
+/** Dimension tool opened with things selected: they are the first picks (a line, a circle, two points ...). */
+function preselectDim() {
+  const s = get()
+  for (const id of s.sel) {
+    if (s.model.constraints.some((c) => c.id === id)) continue
+    const cur = get().picks
+    const r = pickStep(s.model, cur, id)
+    if (!r) continue
+    axisHint = r.axis
+    set({ picks: r.picks })
+    if (r.picks.length === 2) break
+  }
+}
+
+/** Would this dimension add nothing a solve could change, because the others already fix what it measures? */
+function redundantDim(model: SketchModel, d: Omit<Constraint, 'id'>): boolean {
+  const trial = cloneModel(model)
+  addConstraint(trial, d)
+  refreshDims(trial)
+  return solvePruned(trial, new Set(model.constraints.map((c) => c.id)), true).overConstrained
 }
 
 function place(at: Vec2, mods: Mods) {
   void mods
   const s = get()
   const d = dimFor(s.model, s.picks, at, wppNow * 20)
+  axisHint = null
   if (!d) { set({ picks: [], placing: null }); return }
+  // geometry the other constraints already fix still gets its dimension, as a reference one (in brackets) that follows the drawing
+  const driven = redundantDim(s.model, d)
   let newId = ''
-  const ok = commit((m) => { newId = addConstraint(m, d).id }, { strict: true })
+  const ok = commit((m) => { newId = addConstraint(m, driven ? { ...d, driven: true } : d).id }, { strict: true })
   set({ picks: [], placing: null })
+  if (ok && driven) { flash('Added as a reference dimension: other constraints already fix this'); return }
   // the value box opens when the button comes up: the browser moves the focus to the canvas as part of the press, which would
   // take it straight back from a box opened here
   if (ok) pendingDim = newId

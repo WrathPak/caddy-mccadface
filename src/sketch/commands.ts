@@ -4,7 +4,7 @@ import { getCommand, registerCommand, type Command } from '@/app/commands'
 import { useUi } from '@/store/ui'
 import { startSketchCommand, stopPicking, useSketchPick } from './create'
 import {
-  deleteSelection, enterSketch, escapeSketch, finishSketch, redoSketch, runConstraintCommand, setTool, toggleConstruction, undoSketch, useSketch,
+  deleteSelection, enterSketch, escapeSketch, finishSketch, redoSketch, runConstraintCommand, selectAllSketch, undoKey, setTool, toggleConstruction, useSketch,
   type ToolId,
 } from './store'
 import type { CKind } from './constraints'
@@ -48,6 +48,7 @@ export function installSketchCommands() {
   registerCommand({ id: 'sketch.vertical', label: 'Vertical', icon: ArrowsVertical, category: 'Sketch', run: () => { if (sketching()) runConstraintCommand('vertical') } })
   registerCommand({ id: 'sketch.midpoint', label: 'Midpoint', icon: DotsThree, category: 'Sketch', run: () => { if (sketching()) runConstraintCommand('midpoint') } })
   registerCommand({ id: 'sketch.construction', label: 'Construction', icon: DotsThree, shortcut: 'X', category: 'Sketch', run: () => { if (sketching()) toggleConstruction() } })
+  registerCommand({ id: 'sketch.selectAll', label: 'Select All', icon: Square, shortcut: 'Ctrl+A', category: 'Sketch', hidden: true, run: () => { if (sketching()) selectAllSketch() } })
   registerCommand({ id: 'sketch.select', label: 'Select', icon: Square, shortcut: 'Q', category: 'Sketch', run: () => { if (sketching()) setTool('select') } })
 
   /** Wrap a document command so it does something else while a sketch is open. */
@@ -56,7 +57,7 @@ export function installSketchCommands() {
     if (!c) return console.warn('[sketch] missing command', id)
     registerCommand({ ...c, run: () => (sketching() ? whileSketching() : c.run()) })
   }
-  wrap('edit.undo', undoSketch)
+  wrap('edit.undo', undoKey)
   wrap('edit.redo', redoSketch)
   wrap('edit.delete', deleteSelection)
   wrap('edit.escape', escapeSketch)

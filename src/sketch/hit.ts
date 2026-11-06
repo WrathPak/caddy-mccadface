@@ -1,7 +1,7 @@
 /** Hit testing and box selection against a SketchModel. */
-import { closestOnArc, closestOnCircle, closestOnSegment, dist } from './geom'
+import { arcInfo, closestOnArc, closestOnCircle, closestOnSegment, dist, sampleArc } from './geom'
 import { circleOf, deps, lineEnds, pos } from './model'
-import { closestOnDerived, isDerived } from './curves'
+import { closestOnDerived, derivedPolys, isDerived } from './curves'
 import { ORIGIN, type Entity, type SketchModel, type Vec2 } from './types'
 
 /** Nearest entity under `p` within `tol` (points win over curves). Returns null for none. */
@@ -33,11 +33,42 @@ export function hitTest(m: SketchModel, p: Vec2, tol: number, filter?: (e: Entit
   return best ? (best as { id: string }).id : null
 }
 
-/** Entities fully inside the box [min, max]. */
-export function boxSelect(m: SketchModel, a: Vec2, b: Vec2): string[] {
+/** Does the segment p-q touch the box? (Liang-Barsky clip) */
+function segHitsBox(p: Vec2, q: Vec2, x0: number, y0: number, x1: number, y1: number): boolean {
+  let t0 = 0, t1 = 1
+  const dx = q[0] - p[0], dy = q[1] - p[1]
+  for (const [pp, qq] of [[-dx, p[0] - x0], [dx, x1 - p[0]], [-dy, p[1] - y0], [dy, y1 - p[1]]]) {
+    if (Math.abs(pp) < 1e-12) { if (qq < 0) return false; continue }
+    const r = qq / pp
+    if (pp < 0) { if (r > t1) return false; if (r > t0) t0 = r } else { if (r < t0) return false; if (r < t1) t1 = r }
+  }
+  return true
+}
+
+/**
+ * Entities the box touches (dragged right to left, "crossing"), or - dragged left to right - only those fully inside it.
+ * Like Fusion 360: a window takes what it encloses, a crossing box everything it reaches.
+ */
+export function boxSelect(m: SketchModel, a: Vec2, b: Vec2, crossing = false): string[] {
   const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1])
   const inside = (p: Vec2) => p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1
   const ids: string[] = []
+  if (crossing) {
+    const polyHits = (pts: Vec2[]) => pts.length === 1 ? inside(pts[0]) : pts.some((p, i) => i > 0 && segHitsBox(pts[i - 1], p, x0, y0, x1, y1))
+    for (const e of m.entities) {
+      let hit = false
+      if (e.type === 'point') hit = inside([e.x, e.y])
+      else if (e.type === 'line') { const [p, q] = lineEnds(m, e); hit = segHitsBox(p, q, x0, y0, x1, y1) }
+      else if (e.type === 'circle') { const { c, r } = circleOf(m, e); hit = polyHits([...sampleArc(c, r, 0, 2 * Math.PI, Math.PI / 90)]) }
+      else if (e.type === 'arc') {
+        const c = pos(m, e.c), i = arcInfo(c, pos(m, e.s), pos(m, e.e))
+        hit = polyHits([pos(m, e.s), ...sampleArc(c, i.r, i.a0, i.a1, Math.PI / 90)])
+      } else if (isDerived(e)) hit = derivedPolys(m, e).some(polyHits)
+      else hit = deps(e).some((d) => inside(pos(m, d)))
+      if (hit) ids.push(e.id)
+    }
+    return ids
+  }
   for (const e of m.entities) {
     if (e.type === 'point') { if (inside([e.x, e.y])) ids.push(e.id) }
     else if (e.type === 'line') { const [p, q] = lineEnds(m, e); if (inside(p) && inside(q)) ids.push(e.id) }

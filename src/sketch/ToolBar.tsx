@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { evalNumber } from '@/doc/params'
 import { FONTS } from './font'
-import { applyPatternR, editSelectedText, useSketchOpts, type SketchOpts } from './toolsUi'
+import { applyPatternR, editSelectedText, toolNext, useSketchOpts, type SketchOpts } from './toolsUi'
 import { splineHandlesCommand } from './toolsUi'
 import { entityById } from './model'
 import { useSketch } from './store'
@@ -86,7 +86,7 @@ export function SketchToolBar() {
     case 'ellipse': return <Bar title="Ellipse"><span className="sk-note">Click the centre, the end of the long axis, then a point for the short radius.</span></Bar>
     case 'fillet': return <Bar title="Sketch fillet"><Num id="radius" label="Radius" k="filletR" min={0.001} unit="mm" /><span className="sk-note">Click the corner, or two lines.</span></Bar>
     case 'chamfer': return <Bar title="Sketch chamfer"><Num id="dist" label="Distance" k="chamferD" min={0.001} unit="mm" /><Num id="dist2" label="Distance 2 (0 = same)" k="chamferD2" min={0} unit="mm" /><span className="sk-note">Click the corner, or two lines.</span></Bar>
-    case 'mirror': return <Bar title="Sketch mirror"><span className="sk-note">With the curves selected, click the line to mirror across.</span></Bar>
+    case 'mirror': return <Bar title="Sketch mirror"><button type="button" className="btn" data-testid="sk-next" onClick={() => toolNext()}>Next: pick the line</button><span className="sk-note">Click the curves (or select them first), then the line to mirror across.</span></Bar>
     case 'patternR':
       return (
         <Bar title="Rectangular pattern">
@@ -97,7 +97,7 @@ export function SketchToolBar() {
         </Bar>
       )
     case 'patternC':
-      return <Bar title="Circular pattern"><Num id="count" label="Count" k="circCount" min={2} /><Num id="angle" label="Angle" k="circAngle" unit="deg" /><span className="sk-note">With the curves selected, click the point to turn about.</span></Bar>
+      return <Bar title="Circular pattern"><Num id="count" label="Count" k="circCount" min={2} /><Num id="angle" label="Angle" k="circAngle" unit="deg" /><button type="button" className="btn" data-testid="sk-next" onClick={() => toolNext()}>Next: pick the centre</button><span className="sk-note">Click the curves (or select them first), then the point to turn about.</span></Bar>
     case 'text':
       return (
         <Bar title="Text">

@@ -363,7 +363,7 @@ test('Dimension between two circles measures centre to centre, and a circle to a
   expect((await sk(app)).ok).toBe(true)
 })
 
-test('Dimension from centre to centre of two circles stacked straight up, placed above them, then a flag when nothing is left to set', async ({ app, page }) => {
+test('Dimension from centre to centre of two circles stacked straight up, placed above them, then a reference dimension when nothing is left to set', async ({ app, page }) => {
   await app.open()
   await startSketch(app)
   for (const y of [0, 40]) {
@@ -377,6 +377,7 @@ test('Dimension from centre to centre of two circles stacked straight up, placed
   const cIds = await app.ev((c) => c.sketch.getState().model.entities.filter((e: any) => e.type === 'circle').map((e: any) => e.c as string)) // eslint-disable-line
   await app.ev((c, sel) => c.sketch.setState({ sel }), cIds)
   await app.ev((c) => c.runCommand('sketch.vertical'))
+  await app.ev((c) => c.sketch.setState({ sel: [] })) // the Dimension tool would start from what is selected
   const input = page.locator('.sk-dim-input')
   await tool(app, 'Dimension')
   await click(app, 0, 0)
@@ -389,11 +390,15 @@ test('Dimension from centre to centre of two circles stacked straight up, placed
   await expect(input).toHaveCount(0)
   const ys = await app.ev((c, ids) => ids.map((id: string) => c.sketch.getState().model.entities.find((p: any) => p.id === id)?.y ?? 0), cIds) // eslint-disable-line (a centre on the origin is the origin itself)
   near(Math.abs(ys[1] - ys[0]), 30)
-  // the centres can not get any further constrained against each other: say so, add nothing
+  // the centres can not get any further constrained against each other: the dimension is made as a reference one, in brackets
   const before = (await sk(app)).constraints.length
   await click(app, 0, ys[0])
   await click(app, 0, ys[1])
   await click(app, 8, (ys[0] + ys[1]) / 2)
-  await expect(page.locator('.sk-status')).toContainText('Other constraints already fix that')
-  expect((await sk(app)).constraints.length).toBe(before)
+  await expect(page.locator('.sk-status')).toContainText('reference dimension')
+  await expect(input).toHaveCount(0)
+  const m = await sk(app)
+  expect(m.constraints.length).toBe(before + 1)
+  expect(m.constraints.filter((k: any) => k.driven)).toHaveLength(1) // eslint-disable-line
+  expect(m.ok).toBe(true)
 })

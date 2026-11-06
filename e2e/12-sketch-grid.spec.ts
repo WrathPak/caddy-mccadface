@@ -66,8 +66,7 @@ async function gridState(app: App) {
 async function startSketch(app: App) {
   const { page } = app
   await app.ribbon('Sketch').first().click()
-  const planes = page.getByText('Planes', { exact: true })
-  if (!(await page.getByText('XY plane').isVisible())) await planes.click()
+  await app.showPlane('XY')
   await page.getByText('XY plane').click()
   await expect(page.locator('.sk-bar')).toBeVisible()
   await app.cameraStable()
