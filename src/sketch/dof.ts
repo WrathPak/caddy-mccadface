@@ -70,6 +70,8 @@ function build(m: SketchModel): System {
     return out
   }
   const L = (id: string): [Vec2, Vec2] => {
+    if (id === 'AX') return [[0, 0], [1, 0]]
+    if (id === 'AY') return [[0, 0], [0, 1]]
     const e = ent(id)
     if (e?.type === 'ellipse') return [P(e.c), P(e.m)]
     return e && e.type === 'line' ? [P(e.p1), P(e.p2)] : [[0, 0], [1, 0]]

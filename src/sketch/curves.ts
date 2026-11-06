@@ -7,10 +7,10 @@ import { bezAt, bezFlatten, bezFromQuad, bezLine, bezClosest, type Bez } from '.
 import { dist, sub, add, mul, perp, norm, TAU } from './geom'
 import { entityById, pos } from './model'
 import { fontNow, layoutText, loadFont } from './font'
-import type { Entity, EllipseE, Seg, SketchModel, SplineE, TextE, Vec2 } from './types'
+import type { ConicE, Entity, EllipseE, Seg, SketchModel, SplineE, TextE, Vec2 } from './types'
 
-export type DerivedEntity = SplineE | EllipseE | TextE
-export const isDerived = (e: Entity): e is DerivedEntity => e.type === 'spline' || e.type === 'ellipse' || e.type === 'text'
+export type DerivedEntity = SplineE | EllipseE | TextE | ConicE
+export const isDerived = (e: Entity): e is DerivedEntity => e.type === 'spline' || e.type === 'ellipse' || e.type === 'text' || e.type === 'conic'
 
 const len = (a: Vec2) => Math.hypot(a[0], a[1])
 
@@ -162,12 +162,44 @@ export function textSegs(m: SketchModel, e: TextE): Seg[][] {
   }))
 }
 
+// ------------------------------------------------------------------------------------------------ conic curves
+
+/** The weight of the apex that puts the curve a fraction `rho` of the way from the middle of the chord to the apex. */
+export const conicWeight = (rho: number) => { const r = Math.min(0.98, Math.max(0.02, rho)); return r / (1 - r) }
+
+/**
+ * A conic section as cubic Bezier pieces: the rational quadratic Bezier through `p0` and `p2` with control point `a` and
+ * the weight `w` (a parabola for w = 1, an ellipse arc below, a hyperbola branch above). Each of the pieces matches the curve and
+ * its tangent at both ends, which keeps it within a few millionths of the true curve.
+ */
+export function conicBeziers(p0: Vec2, a: Vec2, p2: Vec2, rho: number, pieces = 8): Bez[] {
+  const w = conicWeight(rho)
+  const at = (t: number) => {
+    const b0 = (1 - t) * (1 - t), b1 = 2 * t * (1 - t), b2 = t * t
+    const d = b0 + w * b1 + b2
+    const n: Vec2 = [b0 * p0[0] + w * b1 * a[0] + b2 * p2[0], b0 * p0[1] + w * b1 * a[1] + b2 * p2[1]]
+    // derivative by the quotient rule
+    const db0 = -2 * (1 - t), db1 = 2 - 4 * t, db2 = 2 * t
+    const dd = db0 + w * db1 + db2
+    const dn: Vec2 = [db0 * p0[0] + w * db1 * a[0] + db2 * p2[0], db0 * p0[1] + w * db1 * a[1] + db2 * p2[1]]
+    const c: Vec2 = [n[0] / d, n[1] / d]
+    return { c, dc: [(dn[0] - c[0] * dd) / d, (dn[1] - c[1] * dd) / d] as Vec2 }
+  }
+  const out: Bez[] = []
+  for (let i = 0; i < pieces; i++) {
+    const t0 = i / pieces, t1 = (i + 1) / pieces, h = (t1 - t0) / 3
+    const A = at(t0), B = at(t1)
+    out.push([A.c, [A.c[0] + A.dc[0] * h, A.c[1] + A.dc[1] * h], [B.c[0] - B.dc[0] * h, B.c[1] - B.dc[1] * h], B.c])
+  }
+  return out
+}
+
 // ------------------------------------------------------------------------------------------------ generic access
 
 /** Closed or open loops of segments of a derived entity (spline: one open chain, or a closed loop; ellipse: a closed loop; text: one loop per outline). */
 export function derivedSegs(m: SketchModel, e: DerivedEntity): Seg[][] {
   if (e.type === 'text') return textSegs(m, e)
-  const bz = e.type === 'spline' ? splineBeziers(m, e) : ellipseBeziers(pos(m, e.c), pos(m, e.m), e.r)
+  const bz = e.type === 'spline' ? splineBeziers(m, e) : e.type === 'conic' ? conicBeziers(pos(m, e.s), pos(m, e.a), pos(m, e.e), e.rho) : ellipseBeziers(pos(m, e.c), pos(m, e.m), e.r)
   const ell = e.type === 'ellipse' ? (() => { const c = pos(m, e.c), mp = pos(m, e.m); return { c, rx: dist(c, mp), ry: e.r, rot: (Math.atan2(mp[1] - c[1], mp[0] - c[0]) * 180) / Math.PI } })() : undefined
   return bz.length ? [bz.map((b): Seg => ({ k: 'b', a: b[0], c1: b[1], c2: b[2], b: b[3], id: e.id, ...(ell ? { ell } : {}) }))] : []
 }
@@ -214,6 +246,7 @@ export function splineMid(m: SketchModel, e: SplineE): Vec2 {
 export function derivedPoints(e: DerivedEntity): string[] {
   if (e.type === 'spline') return [...e.pts, ...(e.t0 ? [e.t0] : []), ...(e.t1 ? [e.t1] : [])]
   if (e.type === 'ellipse') return [e.c, e.m]
+  if (e.type === 'conic') return [e.s, e.a, e.e]
   return [e.p]
 }
 

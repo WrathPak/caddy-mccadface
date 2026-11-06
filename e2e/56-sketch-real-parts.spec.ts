@@ -1,8 +1,7 @@
 import { test, expect, type App } from './helpers'
 
 /* Real 2D sketches a Fusion user makes, built from a blank document through the UI only (clicks, keys, typed values) and
-   finished fully constrained (dof 0, "black" in Fusion's colours). A part that cannot be finished today is marked test.fail()
-   with a comment saying which step breaks. */
+   finished fully constrained (dof 0, "black" in Fusion's colours).  */
 
 async function startSketch(app: App) {
   const { page } = app
@@ -290,7 +289,6 @@ test('Grip: a closed fit point spline outline with a finger hole, fully constrai
 })
 
 test('Keyhole: two circles and two lines trimmed into one outline, fully constrained', async ({ app, page }) => {
-  test.fail() // breaks at the end: trimming the circles into arcs drops the relations between the cut ends and the curves (and the distance dimensions on the lines), so the outline is closed but 6 degrees of freedom stay loose. See 'Trim: cutting a circle into an arc' in 55-sketch-parity
   await app.open()
   await startSketch(app)
   await tool(app, 'Circle')

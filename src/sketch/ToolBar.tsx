@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { evalNumber } from '@/doc/params'
 import { FONTS } from './font'
-import { applyPatternR, editSelectedText, toolNext, useSketchOpts, type SketchOpts } from './toolsUi'
+import { applyMoveCopy, applyPatternR, editSelectedText, toolNext, useSketchOpts, type SketchOpts } from './toolsUi'
 import { splineHandlesCommand } from './toolsUi'
 import { entityById } from './model'
 import { useSketch } from './store'
@@ -64,7 +64,7 @@ function TextEditor() {
   if (tool !== 'select' || e?.type !== 'text') return null
   return (
     <Bar title="Text">
-      <label className="sk-opt"><span>Text</span><input data-testid="sk-text-edit" value={t} onChange={(ev) => setT(ev.target.value)} onBlur={() => t !== e.text && editSelectedText({ text: t, font: e.font })} onKeyDown={(ev) => { ev.stopPropagation(); if (ev.key === 'Enter') (ev.target as HTMLElement).blur() }} /></label>
+      <label className="sk-opt"><span>Words</span><input data-testid="sk-text-edit" value={t} onChange={(ev) => setT(ev.target.value)} onBlur={() => t !== e.text && editSelectedText({ text: t, font: e.font })} onKeyDown={(ev) => { ev.stopPropagation(); if (ev.key === 'Enter') (ev.target as HTMLElement).blur() }} /></label>
       <label className="sk-opt"><span>Height</span><input data-testid="sk-text-height" defaultValue={e.h} key={e.h} onBlur={(ev) => { const v = evalNumber(ev.target.value, 'mm'); if (v && v !== e.h) editSelectedText({ h: v, font: e.font }) }} onKeyDown={(ev) => { ev.stopPropagation(); if (ev.key === 'Enter') (ev.target as HTMLElement).blur() }} /></label>
     </Bar>
   )
@@ -94,7 +94,25 @@ export function SketchToolBar() {
     case 'break': return <Bar title="Break"><span className="sk-note">Click a curve to cut it at its crossings, or at your click when nothing crosses it.</span></Bar>
     case 'scale': return <Bar title="Sketch scale"><Num id="factor" label="Factor" k="scaleF" min={0.001} /><button type="button" className="btn" data-testid="sk-next" onClick={() => toolNext()}>Next: pick the base point</button><span className="sk-note">Click the curves (or select them first), then the point to scale about.</span></Bar>
     case 'fillet': return <Bar title="Sketch fillet"><Num id="radius" label="Radius" k="filletR" min={0.001} unit="mm" /><span className="sk-note">Click the corner, or two lines or arcs.</span></Bar>
-    case 'chamfer': return <Bar title="Sketch chamfer"><Num id="dist" label="Distance" k="chamferD" min={0.001} unit="mm" /><Num id="dist2" label="Distance 2 (0 = same)" k="chamferD2" min={0} unit="mm" /><span className="sk-note">Click the corner, or two lines or arcs.</span></Bar>
+    case 'chamfer': return (
+      <Bar title="Sketch chamfer">
+        <Sel id="type" label="Type" k="chamferKind" options={[{ value: 'equal', label: 'Equal distance' }, { value: 'two', label: 'Two distances' }, { value: 'angle', label: 'Distance and angle' }]} />
+        <Num id="dist" label="Distance" k="chamferD" min={0.001} unit="mm" />
+        {o.chamferKind === 'two' && <Num id="dist2" label="Distance 2" k="chamferD2" min={0.001} unit="mm" />}
+        {o.chamferKind === 'angle' && <Num id="angle" label="Angle" k="chamferAngle" min={0.001} unit="deg" />}
+        <span className="sk-note">{o.chamferKind === 'angle' ? 'Click the line first, then the curve it meets (or the corner).' : 'Click the corner, or two lines or arcs.'}</span>
+      </Bar>
+    )
+    case 'conic': return <Bar title="Conic curve"><span className="sk-note">Click the two ends, the point where the tangents meet, then a point the curve passes through.</span></Bar>
+    case 'moveCopy':
+      return (
+        <Bar title="Move / Copy">
+          <Num id="x" label="X" k="moveX" unit="mm" /><Num id="y" label="Y" k="moveY" unit="mm" /><Num id="angle" label="Angle" k="moveAngle" unit="deg" />
+          <Check id="copy" label="Copy" k="moveCopy" />
+          <button type="button" className="btn primary" data-testid="sk-apply" onClick={() => applyMoveCopy()}>Apply</button>
+          <span className="sk-note">Click the curves (or select them first), set how far and how much to turn, then Apply.</span>
+        </Bar>
+      )
     case 'mirror': return <Bar title="Sketch mirror"><button type="button" className="btn" data-testid="sk-next" onClick={() => toolNext()}>Next: pick the line</button><span className="sk-note">Click the curves (or select them first), then the line to mirror across.</span></Bar>
     case 'patternR':
       return (
@@ -110,7 +128,7 @@ export function SketchToolBar() {
     case 'text':
       return (
         <Bar title="Text">
-          <label className="sk-opt"><span>Text</span><input data-testid="sk-opt-text" value={o.text} onChange={(e) => useSketchOpts.getState().set({ text: e.target.value })} onKeyDown={(e) => e.stopPropagation()} /></label>
+          <label className="sk-opt"><span>Words</span><input data-testid="sk-opt-text" value={o.text} onChange={(e) => useSketchOpts.getState().set({ text: e.target.value })} onKeyDown={(e) => e.stopPropagation()} /></label>
           <Num id="height" label="Height" k="textH" min={0.1} unit="mm" /><Num id="angle" label="Angle" k="textAngle" unit="deg" />
           <Sel id="font" label="Font" k="textFont" options={FONT_OPTIONS} />
           <span className="sk-note">Click where the text starts. Its outlines become profiles.</span>

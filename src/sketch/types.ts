@@ -8,6 +8,10 @@ export interface PlaneDef { origin: Vec3; xDir: Vec3; normal: Vec3 }
 
 /** Id of the implicit, fixed sketch origin point. */
 export const ORIGIN = 'O'
+/** Ids of the implicit sketch axes (lines through the origin): constraints and the Mirror tool may refer to them like any line. */
+export const AXIS_X = 'AX'
+export const AXIS_Y = 'AY'
+export const isAxisId = (id: string) => id === AXIS_X || id === AXIS_Y
 
 /**
  * `ref`: projected reference geometry (see the Project tool). It is fixed in place (the solver treats it as constants),
@@ -29,7 +33,12 @@ export interface SplineE { id: string; type: 'spline'; mode: 'fit' | 'ctrl' | 'b
 export interface EllipseE { id: string; type: 'ellipse'; c: string; m: string; r: number; construction?: boolean; ref?: boolean; broken?: boolean }
 /** Text laid out at the anchor point `p`: `h` is the cap height in mm, `a` the angle of the baseline in degrees. Its outlines are profiles. */
 export interface TextE { id: string; type: 'text'; p: string; text: string; h: number; a: number; font?: string; construction?: boolean; ref?: boolean; broken?: boolean }
-export type Entity = PointE | LineE | CircleE | ArcE | SplineE | EllipseE | TextE
+/**
+ * Conic curve (Fusion's Conic Curve): from `s` to `e`, tangent there to the lines towards the apex point `a`. `rho` (0..1, 0.5 is a
+ * parabola, smaller is flatter, larger is more pointed) says how far the curve reaches from the middle of the chord towards the apex.
+ */
+export interface ConicE { id: string; type: 'conic'; s: string; e: string; a: string; rho: number; construction?: boolean; ref?: boolean; broken?: boolean }
+export type Entity = PointE | LineE | CircleE | ArcE | SplineE | EllipseE | TextE | ConicE
 
 export type ConstraintType =
   | 'coincident' | 'pointOnLine' | 'pointOnCurve' | 'onAxis' | 'midpoint'
@@ -70,6 +79,8 @@ export interface Constraint {
    */
   group?: string
   hidden?: boolean
+  /** the name of a dimension (d1, d2 ...): other dimensions may use it in their expression */
+  name?: string
   /** a reference dimension: shows the measured value, never drives the sketch (made when the geometry is already fixed by other constraints) */
   driven?: boolean
   /** angle between two lines: the supplement (the other pair of sectors) is the one measured; `value` is that angle, `sgn` stays the turn from line A to line B */

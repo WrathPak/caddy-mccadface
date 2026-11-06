@@ -4,7 +4,7 @@
  * at the sharp corner, on both curves, so the dimensions and constraints that referred to the corner keep their meaning.
  */
 import { add, cross, dist, dot, intersectCircleCircle, intersectLineCircle, intersectLineLine, mul, norm, perp, relAngle, sub, TAU } from './geom'
-import { defaultOff } from './dims'
+import { defaultOff, measureDim } from './dims'
 import { addArc, addConstraint, addLine, addPoint, deps, entityById, newId, pos, removeIds, tangentValue } from './model'
 import { ORIGIN, type ArcE, type LineE, type SketchModel, type Vec2 } from './types'
 
@@ -152,6 +152,45 @@ export function chamferCurves(m: SketchModel, a: Curve, b: Curve, d1: number, d2
   const group = d1 === d2 ? newId(m, 'k') : undefined
   addConstraint(m, { type: 'distance', refs: [K, T1], value: d1, expr: String(+d1.toFixed(4)), off: defaultOff(m, 'distance', [K, T1], DIM_K), ...(group ? { group } : {}) })
   addConstraint(m, { type: 'distance', refs: [K, T2], value: d2, expr: String(+d2.toFixed(4)), off: defaultOff(m, 'distance', [K, T2], DIM_K), ...(group ? { group, hidden: true } : {}) })
+  return { line: line.id }
+}
+
+/**
+ * Cut the corner of a line and a line or arc by distance and angle: `d` from the corner along the first line, then a straight cut that
+ * makes `angle` degrees with that line and runs on until it meets the second curve. A distance and an angle dimension are added.
+ */
+export function chamferAngle(m: SketchModel, a: Curve, b: Curve, d: number, angle: number): string | { line: string } {
+  if (a.type !== 'line') return 'Distance and angle starts from a line: pick the line first'
+  const g = legs(m, a, b)
+  if (typeof g === 'string') return g
+  if (!(d > 0)) return 'The chamfer distance must be greater than zero'
+  if (!(angle > 0 && angle < 180)) return 'The angle must be between 0 and 180 degrees'
+  const p1 = legPointAt(g.la, d)
+  if (!p1) return 'The chamfer is longer than the line'
+  const back = norm(sub(g.la.K, p1)) // from the cut on the first line back towards the corner
+  const al = (angle * Math.PI) / 180
+  let best: { t: number; p: Vec2 } | null = null
+  for (const sgn of [1, -1]) {
+    const u: Vec2 = [back[0] * Math.cos(sgn * al) - back[1] * Math.sin(sgn * al), back[0] * Math.sin(sgn * al) + back[1] * Math.cos(sgn * al)]
+    const far = add(p1, u)
+    const hits: { t: number; p: Vec2 }[] = []
+    if (g.lb.k === 'l') {
+      const h = intersectLineLine(p1, far, g.lb.K, add(g.lb.K, g.lb.d))
+      if (h && h.t > 1e-9) hits.push({ t: h.t, p: h.p })
+    } else hits.push(...intersectLineCircle(p1, far, g.lb.c, g.lb.r).filter((h) => h.t > 1e-9).map((h) => ({ t: h.t, p: h.p })))
+    for (const h of hits) if (onLeg(g.lb, h.p) && (!best || h.t < best.t)) best = h
+  }
+  if (!best) return 'The angle does not reach the second curve: try another angle or distance'
+  const T1 = addPoint(m, p1[0], p1[1]), T2 = addPoint(m, best.p[0], best.p[1])
+  const K = releaseCorner(m, g.c, [T1, T2])
+  const line = addLine(m, T1, T2)
+  addConstraint(m, { type: 'distance', refs: [K, T1], value: d, expr: String(+d.toFixed(4)), off: defaultOff(m, 'distance', [K, T1], DIM_K) })
+  // the angle between the first line and the cut: the measure gives it one way or the other round, the dimension is the one asked for
+  const me = measureDim(m, 'angle', [a.id, line.id])
+  if (me) {
+    const supp = Math.abs(180 - me.value - angle) < Math.abs(me.value - angle)
+    addConstraint(m, { type: 'angle', refs: [a.id, line.id], value: angle, sgn: me.sgn, expr: String(+angle.toFixed(4)), off: defaultOff(m, 'angle', [a.id, line.id], DIM_K), ...(supp ? { supp: true } : {}) })
+  }
   return { line: line.id }
 }
 

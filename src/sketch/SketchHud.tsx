@@ -1,9 +1,38 @@
 /** DOM overlay on the viewport: status flashes, plane-pick hint, and the Finish / Cancel buttons while sketching. */
-import { Check, X } from '@phosphor-icons/react'
-import { useSketch, finishSketch, cancelSketch } from './store'
+import { useState } from 'react'
+import { CaretDown, CaretRight, Check, Crosshair, X } from '@phosphor-icons/react'
+import { useUi } from '@/store/ui'
+import { Tip } from '@/ui/Tooltip'
+import { useSketch, finishSketch, cancelSketch, lookAtSketch, setSketchView, type SketchView } from './store'
 import { useSketchPick } from './create'
 import { SketchToolBar } from './ToolBar'
 import './sketch.css'
+
+/** Fusion's Sketch Palette: what the sketch shows, Look At, Slice and the grid snap. */
+function SketchPalette() {
+  const show = useSketch((s) => s.show)
+  const snap = useUi((s) => s.snap)
+  const [open, setOpen] = useState(true)
+  const row = (key: keyof SketchView, label: string) => (
+    <label className="sk-pal-row"><input type="checkbox" checked={show[key]} onChange={(e) => setSketchView({ [key]: e.target.checked })} />{label}</label>
+  )
+  return (
+    <div className="sk-palette" data-testid="sk-palette">
+      <button type="button" className="sk-pal-head" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? <CaretDown size={10} /> : <CaretRight size={10} />}Sketch Palette</button>
+      {open && (
+        <>
+          <button type="button" className="btn sk-pal-look" onClick={lookAtSketch}><Crosshair size={12} /> Look At</button>
+          {row('profile', 'Show Profile')}
+          {row('points', 'Show Points')}
+          {row('dims', 'Show Dimensions')}
+          {row('constraints', 'Show Constraints')}
+          {row('slice', 'Slice')}
+          <label className="sk-pal-row"><input type="checkbox" checked={snap} onChange={() => useUi.getState().toggleSnap()} />Snap</label>
+        </>
+      )}
+    </div>
+  )
+}
 
 export function SketchHud() {
   const active = useSketch((s) => s.active)
@@ -17,17 +46,19 @@ export function SketchHud() {
   const state = info.ok ? (info.dof === 0 ? 'Fully constrained' : 'Under-constrained') : 'Conflict'
   return (
     <>
-      <SketchToolBar />
-      {text && <div className="sk-status" data-kind={status ? 'warn' : 'info'}>{text}</div>}
+      <div className="sk-stack">
+        <SketchToolBar />
+        {text && <div className="sk-status" data-kind={status ? 'warn' : 'info'}>{text}</div>}
+      </div>
+      {active && <SketchPalette />}
       {active && (
         <div className="sk-bar">
           <span className="info">
-            {state} · {profiles.length} profile{profiles.length === 1 ? '' : 's'}
-            {construction ? ' · construction' : ''}
-            {tool === 'dimension' ? ' · dimension' : ''}
+            {state}
+            <span className="more"> · {profiles.length} profile{profiles.length === 1 ? '' : 's'}{construction ? ' · construction' : ''}{tool === 'dimension' ? ' · dimension' : ''}</span>
           </span>
-          <button type="button" className="btn" onClick={cancelSketch}><X size={12} /> Cancel</button>
-          <button type="button" className="btn primary" onClick={finishSketch}><Check size={12} /> Finish Sketch</button>
+          <Tip label="Cancel" desc="Leave the sketch and drop the changes made to it." side="bottom"><button type="button" className="btn" aria-label="Cancel" onClick={cancelSketch}><X size={12} /><span className="lbl"> Cancel</span></button></Tip>
+          <Tip label="Finish Sketch" desc="Keep the sketch and go back to the model." side="bottom"><button type="button" className="btn primary" aria-label="Finish Sketch" onClick={finishSketch}><Check size={12} /><span className="lbl"> Finish Sketch</span></button></Tip>
         </div>
       )}
     </>

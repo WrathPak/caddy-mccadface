@@ -10,6 +10,7 @@
 import { TAU, closestOnSegment, dist, polar, relAngle, sampleArc } from './geom'
 import { bezClosest, bezFlatten, bezLine, bezSub, type Bez } from './bezier'
 import { derivedSegs, isDerived, textSegs, type DerivedEntity } from './curves'
+import { holds } from './holds'
 import { addArc, addConstraint, addLine, addPoint, addSpline, arcOf, circleOf, cloneModel, entityById, lineEnds, pos, removeIds } from './model'
 import { intersections, maxParam, paramOn, type ClassicCurve as Curve, type Curve as AnyCurve } from './profiles'
 import type { ArcE, CircleE, Constraint, Entity, LineE, SketchModel, Vec2 } from './types'
@@ -213,9 +214,9 @@ export function setPos(m: SketchModel, id: string, p: Vec2) {
   if (e && e.type === 'point') { e.x = p[0]; e.y = p[1] }
 }
 
-/** Drop what pinned a point that is about to move (coincidences, dimensions, ...); constraints on the curve itself stay. */
-export function unpin(m: SketchModel, point: string, curve: string) {
-  m.constraints = m.constraints.filter((c) => !(c.refs.includes(point) || (c.type === 'equal' && c.refs.includes(curve))))
+/** After a point has moved along its curve: drop the constraints on it (and the equal-length ones on the curve) that no longer hold; the rest stay. */
+export function release(m: SketchModel, point: string, curve: string) {
+  m.constraints = m.constraints.filter((c) => !(c.refs.includes(point) || (c.type === 'equal' && c.refs.includes(curve))) || holds(m, c))
 }
 
 /** Applies a trim computed by `trimSpan` to `m` (in place). Returns an error message or null. */
@@ -245,7 +246,7 @@ export function applyTrim(m: SketchModel, span: TrimSpan): string | null {
     if (e.ref) arc.ref = true
     for (const c of m.constraints) {
       if (!c.refs.includes(e.id)) continue
-      if (['radius', 'diameter', 'equal', 'tangent'].includes(c.type)) c.refs = c.refs.map((r) => (r === e.id ? arc.id : r))
+      c.refs = c.refs.map((r) => (r === e.id ? arc.id : r)) // everything that was tied to the circle is tied to the arc that stays
     }
     bind(s, c1!.cutter)
     bind(t, c0!.cutter)
@@ -276,8 +277,8 @@ export function applyTrim(m: SketchModel, span: TrimSpan): string | null {
     const fixed = keepFirst ? e.p1 : e.p2
     const cut = (keepFirst ? c0 : c1)!
     void fixed
-    unpin(m, moving, e.id)
     setPos(m, moving, cut.p)
+    release(m, moving, e.id)
     bind(moving, cut.cutter)
     return null
   }
@@ -302,8 +303,8 @@ export function applyTrim(m: SketchModel, span: TrimSpan): string | null {
   const fixed = keepFirst ? a.s : a.e
   const cut = (keepFirst ? c0 : c1)!
   void fixed
-  unpin(m, moving, a.id)
   setPos(m, moving, cut.p)
+  release(m, moving, a.id)
   bind(moving, cut.cutter)
   return null
 }

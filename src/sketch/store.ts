@@ -14,7 +14,7 @@ import { defaultOff, measure, measureDim, refreshDims } from './dims'
 import {
   addArc, addCircle, addCoincident, addConstraint, addLine, addPoint, cloneModel, entityById, entityPoints, lineEnds, pos, removeIds, tangentValue,
 } from './model'
-import { boxSelect, hitTest } from './hit'
+import { axisHit, boxSelect, hitTest } from './hit'
 import { detectProfiles } from './profiles'
 import { snap as snapAt, gridStep, type Snap } from './snap'
 import { inferSnap, type Rel } from './infer'
@@ -24,18 +24,19 @@ import { useSnapFlags } from './snapSettings'
 import { analyze, ensureSolver, solveModel, solvePruned, type DragSpec, type SolveInfo } from './solver'
 import { circumcircle, cross, dist, intersectLineLine, norm, sub } from './geom'
 import { applyOffset, collectChain, sideOf, type Chain } from './offsetTool'
+import { connectedCurves, duplicateCurves } from './modify'
 import { encodeRef, refFromSelection } from '@/doc/refs'
 import { addProjected, reprojectModel } from './project'
 import { applyTrim, prepareTrim, trimSpan } from './trim'
 import {
   arcThrough, fieldsFor, hasText, resolveEnd, valuesOf, wrapDeg, type DrawTool, type Typed, type Values,
 } from './typed'
-import { ORIGIN, emptyModel, type Constraint, type ConstraintType, type PlaneDef, type Profile, type SketchModel, type Vec2 } from './types'
+import { AXIS_X, AXIS_Y, ORIGIN, emptyModel, type Constraint, type ConstraintType, type PlaneDef, type Profile, type SketchModel, type Vec2 } from './types'
 
 export type ToolId =
   | 'select' | 'line' | 'rect' | 'rectC' | 'circle' | 'arc' | 'dimension' | 'constraint' | 'trim' | 'offset' | 'project'
   | 'spline' | 'splineC' | 'ellipse' | 'slotCC' | 'slotOv' | 'slotArc' | 'polygon' | 'fillet' | 'chamfer' | 'mirror' | 'patternR' | 'patternC' | 'text' | 'arcT'
-  | 'rect3' | 'circle2' | 'circle3' | 'circle2T' | 'arcC' | 'point' | 'extend' | 'break' | 'scale'
+  | 'conic' | 'moveCopy' | 'rect3' | 'circle2' | 'circle3' | 'circle2T' | 'arcC' | 'point' | 'extend' | 'break' | 'scale'
 
 /**
  * Handlers of the tools that live outside this file (sketch/toolsUi.ts). A tool registered here gets the pointer and keyboard
@@ -71,6 +72,7 @@ export const sketchInternals = {
   flash: (msg: string) => flash(msg),
   snap: (raw: Vec2, mods: Mods, anchor?: Vec2) => doSnap(raw, mods, anchor),
   pointFor: (m: SketchModel, s: Snap) => pointFor(m, s),
+  bindPoint: (m: SketchModel, id: string, s: Snap) => bindPoint(m, id, s),
   wpp: () => wppNow,
   invalidate: () => invalidate(),
 }
@@ -94,9 +96,10 @@ export interface Draft {
   /** arc: the chord length / angle typed for the first two points, applied as dimensions when the arc is made */
   pend?: { len?: string; ang?: string }
 }
+export interface SketchView { profile: boolean; points: boolean; dims: boolean; constraints: boolean; slice: boolean }
 export interface Mods { shift: boolean; ctrl: boolean }
 /** A chain picked with the Offset tool, previewed at signed distance `d` (left of travel; for a circle: outward). */
-export interface OffsetSession { chain: Chain; d: number }
+export interface OffsetSession { chain: Chain; d: number; /** which side of the curve the cursor is on (+1 left of travel) */ side?: 1 | -1 }
 
 const emptyInfo = (): SolveInfo => ({ ok: true, status: -1, dof: 1, conflicts: [], redundant: [], fixed: new Set() })
 
@@ -112,6 +115,8 @@ export interface SketchState {
   ckind: CKind | null
   construction: boolean
   sel: string[]
+  /** the Sketch Palette: what the sketch draws (profiles, points, dimensions, constraint glyphs), and Slice (the model in front of the plane is cut away) */
+  show: SketchView
   hover: string | null
   cursor: Snap | null
   draft: Draft | null
@@ -137,7 +142,7 @@ const initial = (): SketchState => ({
   plane: { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] },
   model: emptyModel(), info: emptyInfo(), profiles: [],
   tool: 'select', ckind: null, construction: false,
-  sel: [], hover: null, cursor: null, draft: null, typed: null, trimHover: null, offset: null, picks: [], placing: null, dimEdit: null, dimNew: false,
+  sel: [], show: { profile: true, points: true, dims: true, constraints: true, slice: false }, hover: null, cursor: null, draft: null, typed: null, trimHover: null, offset: null, picks: [], placing: null, dimEdit: null, dimNew: false,
   box: null, dragging: false,
   status: null, badDims: [], past: [], future: [],
 })
@@ -245,6 +250,31 @@ export function selectAllSketch() {
   invalidate()
 }
 
+// -------- copy and paste
+
+/** What Copy took: a snapshot of the sketch and the curves that were selected (Paste makes copies from it, in place). */
+let clip: { model: SketchModel; ids: string[] } | null = null
+export const canPaste = () => !!clip
+
+export function copySketch() {
+  const s = get()
+  if (!s.active || s.dimEdit) return
+  const ids = s.sel.filter((i) => { const e = entityById(s.model, i); return e && e.type !== 'point' && !e.ref })
+  if (!ids.length) { flash('Select the curves to copy first'); return }
+  clip = { model: cloneModel(s.model), ids }
+  flash(`Copied ${ids.length} curve${ids.length === 1 ? '' : 's'}`)
+}
+
+export function pasteSketch() {
+  const s = get()
+  if (!s.active || s.dimEdit) return
+  if (!clip) { flash('Nothing copied yet: select curves and press Ctrl+C'); return }
+  const c = clip
+  let made: string[] = []
+  const ok = commit((m) => { made = duplicateCurves(m, c.ids, (p) => p, c.model) })
+  if (ok) { resetTransient(); set({ sel: made, tool: 'select', ckind: null }); useUi.getState().setActiveTool(null); invalidate() }
+}
+
 export function redoSketch() {
   const s = get()
   const next = s.future[0]
@@ -277,10 +307,21 @@ export async function beginSketch(o: { plane: PlaneDef; face?: string | null; mo
   ui.clearSelection()
   ui.setSketchMode(true)
   ui.setActiveTool(o.model ? null : 'sketch.line')
-  const n = o.plane.normal
+  lookAtSketch()
+}
+
+/** Turn the view square to the sketch plane (Look At). */
+export function lookAtSketch() {
+  const n = get().plane.normal
   if (n[2] > 0.9999) viewportBus.emit('view', 'top')
   else if (n[2] < -0.9999) viewportBus.emit('view', 'bottom')
   else viewportBus.emit('viewVec', n)
+  invalidate()
+}
+
+/** Sketch Palette checkboxes. */
+export function setSketchView(p: Partial<SketchView>) {
+  set({ show: { ...get().show, ...p } })
   invalidate()
 }
 
@@ -315,7 +356,13 @@ export function cancelSketch() {
 
 // ---------------------------------------------------------------- tools
 
+/** The tool the right-click menu's Repeat starts again. */
+let lastTool: { tool: ToolId; ckind: CKind | null } | null = null
+export const repeatableTool = () => lastTool
+export function repeatLastTool() { if (lastTool) setTool(lastTool.tool, lastTool.ckind) }
+
 export function setTool(tool: ToolId, ckind: CKind | null = null) {
+  if (tool !== 'select') lastTool = { tool, ckind }
   extraTools[get().tool]?.cancel?.()
   watchProject(tool === 'project')
   resetTransient({ tool, ckind, box: null })
@@ -503,21 +550,25 @@ function applyRelations(m: SketchModel, line: string, p1: string, p2: string, re
  */
 function pointFor(m: SketchModel, s: Snap): string {
   const id = addPoint(m, s.pos[0], s.pos[1])
-  if (s.pointId && (s.kind === 'point' || s.kind === 'origin' || s.kind === 'center')) { addCoincident(m, id, s.pointId); return id }
+  bindPoint(m, id, s)
+  return id
+}
+/** Tie the point `id` (which sits where the snap `s` was) to what the snap was on. */
+function bindPoint(m: SketchModel, id: string, s: Snap) {
+  if (s.pointId && (s.kind === 'point' || s.kind === 'origin' || s.kind === 'center')) { addCoincident(m, id, s.pointId); return }
   if (s.kind === 'quad' && s.entityId && s.quad) {
     addConstraint(m, { type: 'pointOnCurve', refs: [id, s.entityId] })
     addConstraint(m, { type: s.quad.axis === 'h' ? 'horizontal' : 'vertical', refs: [id, s.quad.center] })
-    return id
+    return
   }
   if (s.kind === 'int' && s.entityIds) {
     for (const eid of s.entityIds) { const t = entityById(m, eid); if (t) addConstraint(m, { type: t.type === 'line' ? 'pointOnLine' : 'pointOnCurve', refs: [id, eid] }) }
-    return id
+    return
   }
   const e = s.entityId ? entityById(m, s.entityId) : undefined
   if (s.kind === 'mid' && e) addConstraint(m, { type: 'midpoint', refs: [id, e.id] })
   else if (s.kind === 'on' && e) addConstraint(m, { type: e.type === 'line' ? 'pointOnLine' : 'pointOnCurve', refs: [id, e.id] })
   else if (s.kind === 'axis' && s.axis) addConstraint(m, { type: 'onAxis', refs: [id], axis: s.axis })
-  return id
 }
 
 // -------- pointer handling
@@ -579,7 +630,7 @@ export function pointerMove(raw: Vec2, wpp: number, mods: Mods) {
       const typedV = valuesOf(s.typed).dist
       let mag = typedV !== undefined ? Math.abs(typedV) : distance
       if (typedV === undefined && useUi.getState().snap && !mods.ctrl) mag = Math.round(mag / gridStep(wpp)) * gridStep(wpp)
-      set({ offset: { ...s.offset, d: side * mag }, cursor: { pos: raw, kind: 'free', guides: [] } })
+      set({ offset: { ...s.offset, d: side * mag * (typedV !== undefined && typedV < 0 ? -1 : 1), side }, cursor: { pos: raw, kind: 'free', guides: [] } })
     }
     invalidate()
     return
@@ -637,8 +688,8 @@ export function pointerUp(raw: Vec2, wpp: number, mods: Mods) {
     const b = get().box
     boxStart = null
     set({ box: null })
-    if (b && dist(b[0], b[1]) > 3 * wpp) select(boxSelect(get().model, b[0], b[1], b[1][0] < b[0][0]), mods.shift)
-    else if (!mods.shift) select([])
+    if (b && dist(b[0], b[1]) > 3 * wpp) select(boxSelect(get().model, b[0], b[1], b[1][0] < b[0][0]), mods.shift || mods.ctrl)
+    else if (!mods.shift && !mods.ctrl) select([])
     invalidate()
   }
 }
@@ -671,7 +722,16 @@ export function doubleClick(raw: Vec2, wpp: number) {
     const h = hitTest(s.model, raw, tolPx() * wpp)
     const c = s.model.constraints.find((k) => k.id === h)
     if (c) editDim(c.id)
+    else if (h && h !== ORIGIN && entityById(s.model, h)?.type !== 'point') select(connectedCurves(s.model, h))
   }
+}
+
+/** Right button pressed at `raw`: a curve under it that is not selected becomes the selection, so the menu acts on it. */
+export function rightDown(raw: Vec2, wpp: number) {
+  const s = get()
+  if (!s.active) return
+  const h = hitTest(s.model, raw, tolPx() * wpp)
+  if (h && h !== ORIGIN && !s.sel.includes(h)) select([h])
 }
 
 export function rightClick() {
@@ -687,7 +747,7 @@ function downSelect(raw: Vec2, mods: Mods, px: Vec2) {
   const s = get()
   const h = hitTest(s.model, raw, tolPx() * wppNow)
   if (!h) { boxStart = raw; set({ box: [raw, raw] }); return }
-  if (mods.shift) select([h], true)
+  if (mods.shift || mods.ctrl) select([h], true)
   else if (!s.sel.includes(h)) select([h])
   if (h === ORIGIN) return
   const e = entityById(s.model, h)
@@ -769,7 +829,8 @@ function refreshed(m: SketchModel): SketchModel {
 function downConstraint(raw: Vec2, mods: Mods) {
   const s = get()
   if (!s.ckind) return
-  const h = hitTest(s.model, raw, tolPx() * wppNow)
+  // the sketch axes can be picked by the constraints that take a line or a curve to lie on
+  const h = hitTest(s.model, raw, tolPx() * wppNow) ?? (s.ckind === 'coincident' || s.ckind === 'symmetric' ? axisHit(raw, tolPx() * wppNow) : null)
   if (!h) return
   const picks = [...s.picks, h]
   if (ready(s.model, s.ckind, picks) || (s.ckind === 'fix')) {
@@ -793,15 +854,10 @@ function downConstraint(raw: Vec2, mods: Mods) {
 const isCurveT = (t?: string) => t === 'circle' || t === 'arc'
 
 /** The sketch axes can be picked in the Dimension tool: they stand in for the origin plus a direction (`axisHint`). */
-const AXIS_X = '~axisX', AXIS_Y = '~axisY'
 const kindOfPick = (m: SketchModel, id: string) => (id === ORIGIN ? 'point' : id === AXIS_X || id === AXIS_Y ? 'axis' : entityById(m, id)?.type)
 /** What the Dimension tool can pick at `p`: the usual geometry, then the sketch axes. */
 function dimHit(m: SketchModel, p: Vec2, tol: number): string | null {
-  const h = hitTest(m, p, tol)
-  if (h) return h
-  if (Math.abs(p[1]) <= tol) return AXIS_X
-  if (Math.abs(p[0]) <= tol) return AXIS_Y
-  return null
+  return hitTest(m, p, tol) ?? axisHit(p, tol)
 }
 
 function placeReady(m: SketchModel, picks: string[]) {
@@ -1135,8 +1191,8 @@ function refreshOffsetDistance() {
   if (!s.offset) return
   const v = valuesOf(s.typed).dist
   if (v === undefined) return
-  const sign = s.offset.d < 0 ? -1 : 1
-  set({ offset: { ...s.offset, d: sign * Math.abs(v) } })
+  // the sign of the typed number turns the copy to the other side of the cursor
+  set({ offset: { ...s.offset, d: (s.offset.side ?? (s.offset.d < 0 ? -1 : 1)) * (v < 0 ? -1 : 1) * Math.abs(v) } })
 }
 
 /** Enter: place the next point at the resolved (typed / cursor) position. */
@@ -1181,9 +1237,9 @@ function downDraw(raw: Vec2, mods: Mods) {
         const p1 = pointFor(m, a)
         const p2 = pointFor(m, sn)
         const l = addLine(m, p1, p2, constr)
-        if (!useTyped && !constr) applyRelations(m, l.id, p1, p2, sn.rel)
-        if (sn.h && !constr) addConstraint(m, { type: 'horizontal', refs: [l.id] })
-        else if (sn.v && !constr) addConstraint(m, { type: 'vertical', refs: [l.id] })
+        if (!useTyped) applyRelations(m, l.id, p1, p2, sn.rel)
+        if (sn.h) addConstraint(m, { type: 'horizontal', refs: [l.id] })
+        else if (sn.v) addConstraint(m, { type: 'vertical', refs: [l.id] })
         const len = textOf(tt, 'len'), ang = textOf(tt, 'ang')
         if (len !== undefined && vals.len !== undefined) typedDim(m, 'distance', [p1, p2], len)
         if (ang !== undefined && vals.ang !== undefined) {
@@ -1224,12 +1280,10 @@ function downDraw(raw: Vec2, mods: Mods) {
           else ids.push(addPoint(m, c[i][0], c[i][1]))
         }
         const ls = [0, 1, 2, 3].map((i) => addLine(m, ids[i], ids[(i + 1) % 4], constr))
-        if (!constr) {
-          addConstraint(m, { type: 'horizontal', refs: [ls[0].id] })
-          addConstraint(m, { type: 'horizontal', refs: [ls[2].id] })
-          addConstraint(m, { type: 'vertical', refs: [ls[1].id] })
-          addConstraint(m, { type: 'vertical', refs: [ls[3].id] })
-        }
+        addConstraint(m, { type: 'horizontal', refs: [ls[0].id] })
+        addConstraint(m, { type: 'horizontal', refs: [ls[2].id] })
+        addConstraint(m, { type: 'vertical', refs: [ls[1].id] })
+        addConstraint(m, { type: 'vertical', refs: [ls[3].id] })
         if (s.tool === 'rectC') {
           // centre point bound to the diagonals' midpoint
           const cp = pointFor(m, a)

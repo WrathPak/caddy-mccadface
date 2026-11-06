@@ -5,8 +5,14 @@ import { useSketch } from '@/sketch/store'
 
 /** Eight slots clockwise from top. */
 const SLOTS = ['solid.extrude', 'solid.fillet', 'sketch.create', 'solid.move', 'inspect.measure', 'view.frame', 'edit.delete', 'app.palette']
+/** The same ring while a sketch is open: what the right button does to curves (Fusion's sketch marking menu). */
+const SKETCH_SLOTS = ['edit.delete', 'sketch.construction', 'sketch.dimension', 'sketch.offset', 'sketch.finish', 'edit.undo', 'sketch.repeat', 'sketch.copy']
+const slotsNow = () => (useSketch.getState().active ? SKETCH_SLOTS : SLOTS)
 /** Short labels so the eight items fit around the ring without overlapping. */
-const SHORT: Record<string, string> = { 'sketch.create': 'Sketch', 'view.frame': 'Frame', 'app.palette': 'Search', 'solid.move': 'Move', 'edit.delete': 'Delete' }
+const SHORT: Record<string, string> = {
+  'sketch.create': 'Sketch', 'view.frame': 'Frame', 'app.palette': 'Search', 'solid.move': 'Move', 'edit.delete': 'Delete',
+  'sketch.construction': 'Construction', 'sketch.dimension': 'Dimension', 'sketch.finish': 'OK', 'edit.undo': 'Undo', 'sketch.repeat': 'Repeat', 'sketch.copy': 'Copy',
+}
 /** Ellipse the items sit on: wide enough that neighbouring pills (74 x 24 px) never touch. */
 const RX = 118
 const RY = 92
@@ -69,7 +75,7 @@ export function MarkingMenu({ target }: { target: RefObject<HTMLElement | null> 
       const c = down
       down = null
       if (s !== null) {
-        runCommand(SLOTS[s])
+        runCommand(slotsNow()[s])
         setPos(null)
       } else if (performance.now() - c.t > 350) setPos(null)
       // quick tap leaves the menu open for click selection
@@ -106,15 +112,16 @@ export function MarkingMenu({ target }: { target: RefObject<HTMLElement | null> 
 
   if (!pos) return null
   return (
-    <div className="marking" style={{ left: pos.x, top: pos.y }}>
+    <div className="marking" role="menu" aria-label="Quick actions" style={{ left: pos.x, top: pos.y, width: 1, height: 1 }}>
       <div className="m-center" />
-      {SLOTS.map((id, i) => {
+      {slotsNow().map((id, i) => {
         const c = getCommand(id)
         if (!c) return null
         const a = (i * Math.PI) / 4
         return (
           <div
             key={id}
+            role="menuitem"
             className="m-item"
             data-hot={hot === i}
             style={{ left: Math.sin(a) * RX, top: -Math.cos(a) * RY }}

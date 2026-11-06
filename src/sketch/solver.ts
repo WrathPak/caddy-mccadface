@@ -11,7 +11,7 @@
  */
 import { GcsWrapper, init_planegcs_module, type SketchPrimitive } from '@salusoft89/planegcs'
 import wasmUrl from '@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url'
-import { ORIGIN, type Constraint, type SketchModel, type Vec2 } from './types'
+import { AXIS_X, AXIS_Y, ORIGIN, type Constraint, type SketchModel, type Vec2 } from './types'
 import { arcInfo } from './geom'
 import { cloneModel, deps, entityById, pos } from './model'
 import { freedom, maxResidual } from './dof'
@@ -76,6 +76,11 @@ function build(m: SketchModel, drag?: DragSpec, extra?: Prim[]): Prim[] {
       prims.push({ id: e.id + '~maj', type: 'line', p1_id: e.c, p2_id: e.m })
       prims.push({ id: e.id + '~min', type: 'circle', c_id: e.c, radius: e.r })
     }
+  }
+  // a sketch axis is a line from the origin to a fixed point one unit along it, there for the constraints that name it
+  for (const ax of [AXIS_X, AXIS_Y]) {
+    if (!m.constraints.some((c) => c.refs.includes(ax))) continue
+    prims.push({ id: ax + '~p', type: 'point', x: ax === AXIS_X ? 1 : 0, y: ax === AXIS_X ? 0 : 1, fixed: true }, { id: ax, type: 'line', p1_id: ORIGIN, p2_id: ax + '~p' })
   }
   // helper geometry some constraints bring along (lines through the points they relate) is not a constraint itself
   for (const c of m.constraints) if (!c.driven) prims.push(...mapConstraint(m, c).map((p) => (weight(p.type) < 2 ? p : { ...p, driving: true })))
@@ -298,7 +303,7 @@ export function analyze(model: SketchModel, info: SolveInfo): Set<string> {
       else if (e.type === 'line') { if (!free.has(e.p1) && !free.has(e.p2)) fixed.add(e.id) }
       else if (e.type === 'circle') { if (!free.has(e.c) && !free.has(e.id)) fixed.add(e.id) }
       else if (e.type === 'ellipse') { if (!free.has(e.c) && !free.has(e.m) && !free.has(e.id)) fixed.add(e.id) }
-      else if (e.type === 'spline' || e.type === 'text') { if (deps(e).every((d) => !free.has(d))) fixed.add(e.id) }
+      else if (e.type === 'spline' || e.type === 'text' || e.type === 'conic') { if (deps(e).every((d) => !free.has(d))) fixed.add(e.id) }
       else if (!free.has(e.c) && !free.has(e.s) && !free.has(e.e)) fixed.add(e.id)
     }
     return fixed

@@ -5,7 +5,7 @@
 import {
   ArrowsOutLineVertical, Circle, CircleDashed, DotOutline, Eraser, FlipHorizontal, GridFour, Knife, LineSegment, Magnet, Parallelogram,
   Polygon, PushPin, Scissors, SplitVertical, SquaresFour, TextT, TrendDown, UploadSimple, Waves, Rows, Hexagon, Table, Path,
-  Rectangle, CircleHalf, ArrowLineRight, ArrowsOutSimple, Dot, ArrowArcLeft, SplitHorizontal, Target,
+  Rectangle, CircleHalf, ArrowLineRight, ArrowsOutSimple, Dot, ArrowArcLeft, SplitHorizontal, Target, ArrowsOutCardinal,
 } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { registerCommand } from '@/app/commands'
@@ -76,6 +76,8 @@ tool('sketch.point', 'point', 'Point', Dot, 'A sketch point')
 tool('sketch.extend', 'extend', 'Extend', ArrowLineRight, 'Grow the end of a line or arc out to the next curve')
 tool('sketch.break', 'break', 'Break', SplitHorizontal, 'Cut a curve into separate curves at its crossings, or at a click')
 tool('sketch.scale', 'scale', 'Sketch Scale', ArrowsOutSimple, 'Scale the selected curves about a point by a factor')
+tool('sketch.conic', 'conic', 'Conic Curve', Waves, 'A conic section from its two ends, the point where the tangents meet and a point it passes through')
+cmd('sketch.moveCopy', 'Sketch Move / Copy', ArrowsOutCardinal, 'Sketch', () => { if (sketching()) setTool('moveCopy') }, 'Move or copy the selected curves by a distance and an angle', 'M')
 tool('sketch.ellipse', 'ellipse', 'Ellipse', Circle, 'Centre, long axis end, short radius')
 tool('sketch.slotCC', 'slotCC', 'Centre to Centre Slot', Rows, 'A slot between two centres')
 tool('sketch.slotOv', 'slotOv', 'Overall Slot', Rows, 'A slot of a given overall length')
@@ -124,10 +126,12 @@ group('solid', 'Document').items.push({ cmd: 'doc.configs' })
     { cmd: 'sketch.slotCC', menu: ['sketch.slotCC', 'sketch.slotOv', 'sketch.slotArc'] }, { cmd: 'sketch.polygon' }, { cmd: 'sketch.point' }, { cmd: 'sketch.text' }, { cmd: 'sketch.import' },
   )
   const modify = group('sketch', 'Modify')
+  const splineItem = create.items.find((i) => i.cmd === 'sketch.spline')
+  if (splineItem) splineItem.menu = ['sketch.spline', 'sketch.splineC', 'sketch.conic']
   const trimItem = modify.items.find((i) => i.cmd === 'sketch.trim')
   if (trimItem) trimItem.menu = ['sketch.trim', 'sketch.extend', 'sketch.break']
   group('sketch', 'Constraints').items.push({ stack: ['sketch.concentric', 'sketch.collinear', 'sketch.symmetric'] }, { stack: ['sketch.smooth'] })
-  modify.items.push({ cmd: 'sketch.scale' }, { cmd: 'sketch.fillet', menu: ['sketch.fillet', 'sketch.chamfer'] }, { cmd: 'sketch.mirror' }, { cmd: 'sketch.patternR', menu: ['sketch.patternR', 'sketch.patternC'] }, { cmd: 'sketch.handles' })
+  modify.items.push({ cmd: 'sketch.moveCopy' }, { cmd: 'sketch.scale' }, { cmd: 'sketch.fillet', menu: ['sketch.fillet', 'sketch.chamfer'] }, { cmd: 'sketch.mirror' }, { cmd: 'sketch.patternR', menu: ['sketch.patternR', 'sketch.patternC'] }, { cmd: 'sketch.handles' })
   group('sketch', 'Snap').items.push({ cmd: 'sketch.snapSettings' })
 }
 

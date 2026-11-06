@@ -15,7 +15,7 @@ import { dimText, layoutDim } from './dims'
 import { curvePoints, entityPolylines, profileGeometry } from './draw'
 import { circumcircle, arcInfo, cross, dist, perp, polar, sampleArc, sub, TAU } from './geom'
 import { circleOf, entityById, lineEnds, pos } from './model'
-import { splineMid } from './curves'
+import { derivedPolys, splineMid } from './curves'
 import { relGlyph } from './infer'
 import { ToolsOverlay } from './ToolsOverlay'
 import { previewPolys } from './offsetTool'
@@ -24,15 +24,17 @@ import { planeQuaternion, toLocal } from './plane'
 import { type Snap } from './snap'
 import { GRID_GLSL, gridFadeRange, gridLevels } from '@/viewport/gridMath'
 import {
-  applyDimEdit, cancelDimEdit, doubleClick, editDim, endDimDrag, moveDimDrag, pointerDown, pointerMove, pointerUp, select, setWpp, startDimDrag, typedKey,
+  applyDimEdit, cancelDimEdit, doubleClick, editDim, endDimDrag, moveDimDrag, pointerDown, pointerMove, pointerUp, rightDown, select, setWpp, startDimDrag, typedKey,
   useSketch, type SketchState,
 } from './store'
-import { isDim, type Constraint, type SketchModel, type Vec2 } from './types'
+import { isDim, type Constraint, type Profile, type SketchModel, type Vec2 } from './types'
 
 const Z = 0.02
+const NO_PROFILES: Profile[] = []
+const EMPTY_MODEL: SketchModel = { entities: [], constraints: [], next: 1 }
 
 /** Tools that place points by clicking in empty space: with a finger they get the offset aiming reticle. */
-const AIM_TOOLS = new Set<string>(['line', 'rect', 'rectC', 'circle', 'arc', 'spline', 'splineC', 'ellipse', 'slotCC', 'slotOv', 'slotArc', 'polygon', 'arcT', 'text', 'rect3', 'circle2', 'circle3', 'arcC', 'point'])
+const AIM_TOOLS = new Set<string>(['line', 'rect', 'rectC', 'circle', 'arc', 'spline', 'splineC', 'ellipse', 'slotCC', 'slotOv', 'slotArc', 'polygon', 'arcT', 'text', 'rect3', 'circle2', 'circle3', 'arcC', 'point', 'conic'])
 /** How far above the fingertip the reticle sits (px). */
 const AIM_OFFSET = 76
 
@@ -204,6 +206,7 @@ function Geometry({ wpp }: { wpp: number }) {
   const sel = useSketch((s) => s.sel)
   const hover = useSketch((s) => s.hover)
   const picks = useSketch((s) => s.picks)
+  const showPoints = useSketch((s) => s.show.points)
 
   const groups = useMemo(() => {
     const g: Record<'free' | 'fixed' | 'sel' | 'hover' | 'cons' | 'ref' | 'broken', Vec2[]> = { free: [], fixed: [], sel: [], hover: [], cons: [], ref: [], broken: [] }
@@ -233,19 +236,19 @@ function Geometry({ wpp }: { wpp: number }) {
       <Segments pairs={groups.fixed} color={c.fixed} width={1.8} wpp={wpp} />
       <Segments pairs={groups.hover} color={c.hover} width={2.8} wpp={wpp} order={13} />
       <Segments pairs={groups.sel} color={c.sel} width={2.8} wpp={wpp} order={14} />
-      <Dots pts={dots.free} color={c.free} size={6} />
-      <Dots pts={dots.fixed} color={c.fixed} size={6} />
-      <Dots pts={dots.ref} color={c.ref} size={5} />
+      {showPoints && <Dots pts={dots.free} color={c.free} size={6} />}
+      {showPoints && <Dots pts={dots.fixed} color={c.fixed} size={6} />}
+      {showPoints && <Dots pts={dots.ref} color={c.ref} size={5} />}
       <Dots pts={dots.broken} color={c.danger} size={6} order={12} />
       <Dots pts={dots.hover} color={c.hover} size={9} order={15} />
       <Dots pts={dots.sel} color={c.sel} size={9} order={16} />
-      <Dots pts={[[0, 0]]} color={info.fixed.size ? c.fixed : c.dim} size={7} order={11} />
+      {showPoints && <Dots pts={[[0, 0]]} color={info.fixed.size ? c.fixed : c.dim} size={7} order={11} />}
     </>
   )
 }
 
 function ProfileFills() {
-  const profiles = useSketch((s) => s.profiles)
+  const profiles = useSketch((s) => (s.show.profile ? s.profiles : NO_PROFILES))
   const colors = useVpColors()
   const geos = useMemo(() => profiles.map((p) => profileGeometry(p)), [profiles])
   useEffect(() => () => geos.forEach((g) => g.dispose()), [geos])
@@ -448,12 +451,13 @@ function anchorOf(m: SketchModel, id: string): Vec2 | null {
   if (e.type === 'spline') return splineMid(m, e)
   if (e.type === 'ellipse') { const c = pos(m, e.c); return [c[0], c[1] + e.r] }
   if (e.type === 'text') return pos(m, e.p)
+  if (e.type === 'conic') { const poly = derivedPolys(m, e)[0] ?? [pos(m, e.a)]; return poly[Math.floor(poly.length / 2)] }
   const i = arcInfo(pos(m, e.c), pos(m, e.s), pos(m, e.e))
   return polar(pos(m, e.c), i.r, i.a0 + (i.a1 - i.a0) / 2)
 }
 
 function Glyphs() {
-  const model = useSketch((s) => s.model)
+  const model = useSketch((s) => (s.show.constraints ? s.model : EMPTY_MODEL))
   const sel = useSketch((s) => s.sel)
   // the glyphs can be clicked to select a constraint; while a drawing tool is active a click on one is a click on the sketch under it
   const glyphsLive = useSketch((s) => s.tool === 'select' || s.tool === 'constraint')
@@ -502,6 +506,7 @@ function DimInput({ c }: { c: Constraint }) {
   }
   return (
     <span className="sk-dim-wrap" onPointerDown={(e) => e.stopPropagation()}>
+      {c.name && <span className="sk-dim-name" title="Other dimensions can use this name in their value">{c.name} =</span>}
       <input
         ref={ref}
         className={'sk-dim-input' + (bad ? ' err' : '')}
@@ -530,10 +535,12 @@ function Dimensions({ wpp }: { wpp: number }) {
   const edit = useSketch((s) => s.dimEdit)
   const sel = useSketch((s) => s.sel)
   const bad = useSketch((s) => s.badDims)
+  const showDims = useSketch((s) => s.show.dims)
   const list = useMemo(() => {
-    const l = model.constraints.filter((k) => isDim(k) && !k.hidden)
-    return placing ? [...l, placing] : l
-  }, [model, placing])
+    // with Show Dimensions off only the one being typed into stays
+    const l = model.constraints.filter((k) => isDim(k) && !k.hidden && (showDims || k.id === edit))
+    return placing && showDims ? [...l, placing] : l
+  }, [model, placing, showDims, edit])
   return (
     <>
       {list.map((k) => {
@@ -558,6 +565,7 @@ function Dimensions({ wpp }: { wpp: number }) {
               ) : (
                 <span
                   className="sk-dim"
+                  title={k.name && k.id !== '~preview' ? k.name : undefined}
                   data-sel={selected}
                   data-bad={col === c.danger}
                   data-preview={k.id === '~preview'}
@@ -685,6 +693,7 @@ function InputController() {
     }
     const down = (e: PointerEvent) => {
       if (e.pointerType === 'touch') { if (useSketch.getState().active) touchDown(e); return }
+      if (e.button === 2 && useSketch.getState().active) { const l = locate(e); if (l) rightDown(l.p, l.wpp); return }
       if (e.button !== 0 || !useSketch.getState().active) return
       const l = locate(e)
       if (!l) return
@@ -748,6 +757,24 @@ function InputController() {
 
 // ---------------------------------------------------------------- root
 
+/** Slice (Sketch Palette): everything in front of the sketch plane is cut away, so the sketch can be seen inside the model. */
+function SliceClip() {
+  const gl = useThree((st) => st.gl)
+  const invalidate = useThree((st) => st.invalidate)
+  const on = useSketch((st) => st.show.slice)
+  const plane = useSketch((st) => st.plane)
+  useEffect(() => {
+    if (!on) return
+    // the plane sits a little in front of the sketch so the sketch itself is not cut with the model
+    const n = new Vector3(...plane.normal)
+    const clip = new Plane().setFromNormalAndCoplanarPoint(n.clone().negate(), new Vector3(...plane.origin).addScaledVector(n, 0.3))
+    gl.clippingPlanes = [clip]
+    invalidate()
+    return () => { gl.clippingPlanes = []; invalidate() }
+  }, [gl, invalidate, on, plane])
+  return null
+}
+
 /** Mounted in the Scene; renders nothing unless a sketch is being edited. */
 export function SketchOverlay() {
   const active = useSketch((s) => s.active)
@@ -770,6 +797,7 @@ export function SketchOverlay() {
       <SelectionBox />
       {cursor && <Marker snap={cursor} wpp={wpp} />}
       <InputController />
+      <SliceClip />
     </group>
   )
 }

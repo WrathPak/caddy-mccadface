@@ -1,11 +1,14 @@
 /** The 3-point rectangle, circles, centre arc, curve corners, Extend / Break / Scale and the extra constraints, solved for real. */
 import { beforeAll, describe, expect, it } from 'vitest'
 import { applyConstraint } from './constraints'
-import { chamferCurves, filletCurves } from './corners'
+import { conicBeziers, derivedSegs } from './curves'
+import { refreshDims } from './dims'
+import { mirrorEntities } from './shapes'
+import { chamferAngle, chamferCurves, filletCurves } from './corners'
 import { dist } from './geom'
-import { breakCurve, extendCurve, scaleCurves } from './modify'
+import { breakCurve, connectedCurves, duplicateCurves, extendCurve, moveCurves, scaleCurves } from './modify'
 import { addArc, addCircle, addConstraint, addCoincident, addLine, addPoint, entityById, pos } from './model'
-import { circleTouching, drawArcCentre, drawCircle2, drawCircle3, drawCircle2Tangent, drawRect3 } from './newShapes'
+import { circleTouching, drawArcCentre, drawCircle2, drawCircle3, drawCircle2Tangent, drawConic, drawRect3 } from './newShapes'
 import { detectProfiles } from './profiles'
 import { ensureSolver, solveModel } from './solver'
 import { emptyModel, type ArcE, type CircleE, type LineE, type SketchModel, type Vec2 } from './types'
@@ -276,5 +279,126 @@ describe('Concentric, Collinear, Symmetry, Smooth and Midpoint on an arc', () =>
     const m = emptyModel()
     const a = line(m, [0, 0], [10, 0]), b = line(m, [20, 0], [30, 0])
     expect(applyConstraint(m, 'smooth', [a.id, b.id])).toMatch(/Smooth/)
+  })
+})
+
+describe('named dimensions', () => {
+  it('every dimension gets a name and an expression may use the others', () => {
+    const m = emptyModel()
+    const a = line(m, [0, 0], [30, 0]), b = line(m, [0, 15], [30, 15])
+    const d1 = addConstraint(m, { type: 'distance', refs: [a.p1, a.p2], value: 25, expr: '25', off: [15, -5] })
+    const d2 = addConstraint(m, { type: 'distance', refs: [b.p1, b.p2], value: 30, expr: 'd1 * 2', off: [15, 20] })
+    expect([d1.name, d2.name]).toEqual(['d1', 'd2'])
+    expect(refreshDims(m)).toEqual([])
+    expect(d2.value).toBe(50)
+    const s = solved(m)
+    expect(dist(pos(s.model, b.p1), pos(s.model, b.p2))).toBeCloseTo(50, 5)
+  })
+  it('dimensions that use each other, or themselves, are reported', () => {
+    const m = emptyModel()
+    const a = line(m, [0, 0], [30, 0])
+    const k = addConstraint(m, { type: 'distance', refs: [a.p1, a.p2], value: 30, expr: 'd1 + 1', off: [0, 5] })
+    expect(refreshDims(m)).toEqual([k.id])
+  })
+})
+
+describe('conic curve', () => {
+  it('runs from end to end through the point that sets rho, tangent to the lines to the apex', () => {
+    const m = emptyModel()
+    const c = drawConic(m, [0, 0], [40, 0], [20, 30], [20, 10]) as { id: string; rho: number }
+    expect(c.rho).toBeCloseTo(1 / 3, 6)
+    const segs = derivedSegs(m, entityById(m, c.id) as never)[0]
+    expect(segs.length).toBeGreaterThan(4)
+    const first = segs[0], last = segs[segs.length - 1]
+    if (first.k !== 'b' || last.k !== 'b') throw new Error('cubic pieces expected')
+    expect(first.a).toEqual([0, 0])
+    expect(last.b[0]).toBeCloseTo(40, 9)
+    // the middle of the curve is at rho of the way from the middle of the chord to the apex
+    const mid = conicBeziers([0, 0], [20, 30], [40, 0], 1 / 3, 2)[0][3]
+    expect(mid[0]).toBeCloseTo(20, 6)
+    expect(mid[1]).toBeCloseTo(10, 6)
+    // leaves the first end towards the apex
+    expect(Math.atan2(first.c1[1] - first.a[1], first.c1[0] - first.a[0])).toBeCloseTo(Math.atan2(30, 20), 4)
+    expect(typeof drawConic(emptyModel(), [0, 0], [40, 0], [20, 0], [20, 5])).toBe('string')
+  })
+})
+
+describe('chamfer by distance and angle', () => {
+  it('cuts a right angle corner at 45 degrees and keeps the dimensions', () => {
+    const m = emptyModel()
+    const a = line(m, [0, 0], [30, 0]), b = line(m, [30, 0], [30, 30])
+    addCoincident(m, a.p2, b.p1)
+    const r = chamferAngle(m, a, b, 6, 45)
+    expect(typeof r).toBe('object')
+    const s = solved(m)
+    const ch = entityById(s.model, (r as { line: string }).line) as LineE
+    const [p, q] = [pos(s.model, ch.p1), pos(s.model, ch.p2)]
+    expect(dist(p, [30, 0])).toBeCloseTo(6, 5)
+    expect(dist(q, [30, 0])).toBeCloseTo(6, 5)
+    expect(s.model.constraints.some((k) => k.type === 'angle')).toBe(true)
+    expect(typeof chamferAngle(m, b, a, 6, 45)).toBe('string')
+  })
+})
+
+describe('copy, move and chains', () => {
+  it('duplicateCurves copies curves with the constraints among them and none to the rest', () => {
+    const m = emptyModel()
+    const a = line(m, [10, 10], [40, 10])
+    addConstraint(m, { type: 'horizontal', refs: [a.id] })
+    addConstraint(m, { type: 'distance', refs: [a.p1, a.p2], value: 30, expr: '30', off: [25, 15] })
+    addConstraint(m, { type: 'fix', refs: [a.p1] })
+    const made = duplicateCurves(m, [a.id], (p) => [p[0] + 5, p[1] + 20])
+    expect(made).toHaveLength(1)
+    expect(m.entities.filter((e) => e.type === 'line')).toHaveLength(2)
+    expect(m.constraints.filter((k) => k.type === 'fix')).toHaveLength(1)
+    expect(m.constraints.filter((k) => k.type === 'horizontal')).toHaveLength(2)
+    const dims = m.constraints.filter((k) => k.type === 'distance')
+    expect(dims).toHaveLength(2)
+    expect(new Set(dims.map((k) => k.name)).size).toBe(2)
+    solved(m)
+  })
+  it('moveCurves shifts and turns, keeping what still holds and releasing what the move breaks', () => {
+    const m = emptyModel()
+    const a = line(m, [10, 0], [30, 0])
+    addConstraint(m, { type: 'horizontal', refs: [a.id] })
+    addConstraint(m, { type: 'distance', refs: [a.p1, a.p2], value: 20, expr: '20', off: [20, 5] })
+    addConstraint(m, { type: 'fix', refs: [a.p1] })
+    expect(moveCurves(m, { ids: [a.id], dx: 5, dy: 5, angle: 0 })).toBeNull()
+    expect(pos(m, a.p1)).toEqual([15, 5])
+    expect(m.constraints.map((k) => k.type).sort()).toEqual(['distance', 'horizontal'])
+    expect(moveCurves(m, { ids: [a.id], dx: 0, dy: 0, angle: 90 })).toBeNull()
+    expect(m.constraints.map((k) => k.type)).toEqual(['distance']) // no longer level
+    const [p, q] = [pos(m, a.p1), pos(m, a.p2)]
+    expect(Math.abs(p[0] - q[0])).toBeLessThan(1e-9)
+    expect(moveCurves(m, { ids: [a.id], dx: 0, dy: 0, angle: 0 })).toMatch(/Set a/)
+  })
+  it('connectedCurves follows shared and coincident ends', () => {
+    const m = emptyModel()
+    const a = line(m, [0, 0], [10, 0]), b = line(m, [10, 0], [10, 10]), c = line(m, [10, 10], [0, 10]), d = line(m, [50, 50], [60, 50])
+    addCoincident(m, a.p2, b.p1)
+    addCoincident(m, b.p2, c.p1)
+    expect(connectedCurves(m, a.id).sort()).toEqual([a.id, b.id, c.id].sort())
+    expect(connectedCurves(m, d.id)).toEqual([d.id])
+  })
+})
+
+describe('the sketch axes', () => {
+  it('Mirror about the Y axis, Coincident onto an axis and Symmetry about an axis all solve', () => {
+    const m = emptyModel()
+    const a = line(m, [10, 20], [30, 10])
+    expect(typeof mirrorEntities(m, [a.id], 'AY')).toBe('object')
+    const s = solved(m)
+    const xs = s.model.entities.filter((e) => e.type === 'point').map((p) => (p as { x: number }).x).sort((u, v) => u - v)
+    expect(xs[0]).toBeCloseTo(-30, 6)
+    expect(xs[3]).toBeCloseTo(30, 6)
+    const p = addPoint(m, 5, 8)
+    expect(applyConstraint(m, 'coincident', [p, 'AX'])).toBeNull()
+    expect(applyConstraint(m, 'coincident', [p, 'AY'])).toBeNull()
+    const q = addPoint(m, 12, 4), r = addPoint(m, -9, 5)
+    expect(applyConstraint(m, 'symmetric', [q, r, 'AY'])).toBeNull()
+    const t = solved(m)
+    expect(pos(t.model, p)).toEqual([0, 0])
+    expect(pos(t.model, q)[0]).toBeCloseTo(-pos(t.model, r)[0], 6)
+    expect(pos(t.model, q)[1]).toBeCloseTo(pos(t.model, r)[1], 6)
   })
 })

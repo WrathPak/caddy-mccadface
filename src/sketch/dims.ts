@@ -1,5 +1,6 @@
 /** Dimension measurement and layout (witness / dimension lines, arrows, label anchor). */
-import { evalNumber } from '@/doc/params'
+import { evaluate } from 'mathjs'
+import { evalNumber, getScope } from '@/doc/params'
 import { add, closestOnLine, cross, dist, dot, intersectLineLine, len, mid, norm, perp, polar, sub } from './geom'
 import { circleOf, entityById, lineEnds, pos } from './model'
 import { isDim, ORIGIN, type Constraint, type SketchModel, type Vec2 } from './types'
@@ -115,14 +116,33 @@ export function refreshDriven(m: SketchModel) {
   }
 }
 
-/** Evaluate `expr` of every dimension (user parameters allowed). Returns the ids that failed. */
+/**
+ * Evaluate `expr` of every dimension (user parameters allowed, and the other dimensions by name: d2 = d1 * 2). Dimensions that use
+ * others are evaluated after them. Returns the ids that failed (a bad expression, or dimensions that use each other).
+ */
 export function refreshDims(m: SketchModel): string[] {
+  const dims = m.constraints.filter((c) => isDim(c))
+  const taken = new Set(dims.map((c) => c.name).filter(Boolean))
+  for (const c of dims) if (!c.name) { let n = 1; while (taken.has('d' + n)) n++; c.name = 'd' + n; taken.add(c.name) }
+  const names = new Map(dims.map((c) => [c.name!, c]))
+  const unit = (c: Constraint) => (c.type === 'angle' ? 'deg' : 'mm')
+  const done = new Set<string>()
+  const values: Record<string, unknown> = {}
+  const scope = () => ({ values: { ...getScope().values, ...values }, errors: {} })
+  const settle = (c: Constraint) => { done.add(c.id); values[c.name!] = evaluate(`${c.value ?? 0} ${unit(c)}`) }
+  // reference dimensions (and ones without text) are known as they stand
+  for (const c of dims) if (c.driven || c.expr === undefined) settle(c)
   const bad: string[] = []
-  for (const c of m.constraints) {
-    if (!isDim(c) || c.expr === undefined || c.driven) continue
-    const v = evalNumber(c.expr, c.type === 'angle' ? 'deg' : 'mm')
-    if (v === null) bad.push(c.id)
-    else c.value = v
+  let pending = dims.filter((c) => !done.has(c.id))
+  while (pending.length) {
+    const ready = pending.filter((c) => (c.expr!.match(/[A-Za-z_]\w*/g) ?? []).every((w) => w === c.name ? false : !names.has(w) || done.has(names.get(w)!.id)))
+    if (!ready.length) { bad.push(...pending.map((c) => c.id)); break }
+    for (const c of ready) {
+      const v = evalNumber(c.expr!, unit(c), scope())
+      if (v === null) bad.push(c.id)
+      else { c.value = v; settle(c) }
+    }
+    pending = pending.filter((c) => !done.has(c.id) && !bad.includes(c.id))
   }
   return bad
 }

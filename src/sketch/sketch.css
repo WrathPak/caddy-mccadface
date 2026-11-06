@@ -59,9 +59,14 @@
 }
 .sk-dim-input.err { border-color: var(--danger); }
 
+/* the options bar with the prompt under it: one stack, so the prompt can never land on the bar, the Finish bar or the view cube */
+.sk-stack {
+  position: absolute; top: 44px; left: 10px; max-width: calc(100% - 140px); z-index: 6;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none;
+}
+.sk-stack > .sk-toolbar { pointer-events: auto; }
 .sk-status {
-  position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
-  z-index: 6; padding: 3px 10px;
+  max-width: 100%; padding: 3px 10px;
   font: 500 11px var(--font-ui); color: var(--text);
   background: var(--bg-3); border: 1px solid var(--line-strong); border-radius: var(--radius);
   box-shadow: var(--shadow-float);
@@ -72,7 +77,7 @@
   position: absolute; right: 116px; top: 10px; z-index: 6;
   display: flex; gap: 6px; align-items: center;
 }
-.sk-bar .info { font: 500 11px var(--font-ui); color: var(--text-dim); padding: 0 6px; }
+.sk-bar .info { font: 500 11px var(--font-ui); color: var(--text-dim); padding: 0 6px; white-space: nowrap; }
 
 /* typed values while drawing */
 .sk-typed {
@@ -101,8 +106,7 @@
 /* options bar of the newer sketch tools */
 .sk-toolbar {
   /* under the Finish bar row, clear of the view cube on the right: it never squeezes into a column on a narrow window */
-  position: absolute; top: 44px; left: 10px;
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: calc(100% - 140px);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 100%;
   padding: 4px 10px; font: 500 11px var(--font-ui); color: var(--text);
   background: var(--bg-2); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow-float); z-index: 5;
 }
@@ -113,3 +117,19 @@
 .sk-opt select { width: auto; }
 .sk-opt input[data-testid='sk-opt-text'], .sk-opt input[data-testid='sk-text-edit'] { width: 150px; }
 .sk-note { color: var(--text-dim); }
+
+/* the Sketch Palette: bottom right, clear of the toolbars at the top and of the work in the middle */
+.sk-palette {
+  position: absolute; right: 10px; bottom: 10px; z-index: 6; width: 150px; padding: 4px 8px 6px;
+  display: flex; flex-direction: column; gap: 3px; font: 500 11px var(--font-ui); color: var(--text);
+  background: var(--bg-2); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow-float);
+}
+.sk-pal-head { display: flex; align-items: center; gap: 4px; padding: 2px 0; font: 600 11px var(--font-ui); color: var(--accent); background: none; border: none; cursor: pointer; text-align: left; }
+.sk-pal-row { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.sk-pal-look { justify-content: center; margin-bottom: 2px; }
+.sk-dim-name { margin-right: 4px; font: 600 10px var(--font-mono); color: var(--text-dim); }
+
+/* a narrow window: the Finish bar shortens to the state and two icon buttons, so it stays on one line inside the view */
+@media (max-width: 1150px) {
+  .sk-bar .more, .sk-bar .lbl { display: none; }
+}

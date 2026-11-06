@@ -8,7 +8,7 @@ import { evalNumber } from '@/doc/params'
 import { cloneModel, addCoincident, addConstraint, entityById, entityPoints, pos } from './model'
 import { entityPolylines } from './draw'
 import { dist, norm, perp, sub, cross, dot, polar, relAngle, sampleArc, TAU } from './geom'
-import { hitTest } from './hit'
+import { axisHit, hitTest } from './hit'
 import { loadFont } from './font'
 import { boundsOfImport, insertImported, parseDxf, parseSvg } from './importers'
 import { defaultOff, measureDim } from './dims'
@@ -16,9 +16,9 @@ import {
   addHandles, chamferCorner, cornerOf, drawEllipse, drawTangentArc, drawPolygon, drawSlotArc, drawSlotCC, drawSlotOverall, drawSpline, drawText, filletCorner,
   mirrorEntities, patternCirc, patternRect, curveEndingAt, pointsOf, type PolygonKind,
 } from './shapes'
-import { circleTouching, drawArcCentre, drawCircle2, drawCircle2Tangent, drawCircle3, drawRect3, isTangentTarget } from './newShapes'
-import { chamferCurves, cornerOfCurves, filletCurves, isCornerCurve } from './corners'
-import { breakCurve, extendCurve, scaleCurves } from './modify'
+import { circleTouching, drawArcCentre, drawCircle2, drawCircle2Tangent, drawCircle3, drawConic, drawRect3, isTangentTarget } from './newShapes'
+import { chamferAngle, chamferCurves, cornerOfCurves, filletCurves, isCornerCurve } from './corners'
+import { breakCurve, duplicateCurves, extendCurve, moveCurves, scaleCurves, transformOf } from './modify'
 import { F, polarFrom, valuesOf, hasText, type FieldKey, type Typed, type TypedField, type Values } from './typed'
 import { extraTools, sketchInternals as K, setTool, tangentDrag, type Mods, type ToolHandlers, type ToolId } from './store'
 import type { Snap } from './snap'
@@ -26,7 +26,8 @@ import { ORIGIN, type ConstraintType, type LineE, type SketchModel, type Vec2 } 
 
 export interface SketchOpts {
   sides: number; polyKind: PolygonKind
-  filletR: number; chamferD: number; chamferD2: number
+  filletR: number; chamferD: number; chamferD2: number; chamferAngle: number; chamferKind: 'equal' | 'two' | 'angle'
+  moveX: number; moveY: number; moveAngle: number; moveCopy: boolean
   rectCount: number; rectSpacing: number; rectAngle: number; rectCount2: number; rectSpacing2: number
   circCount: number; circAngle: number
   scaleF: number
@@ -35,7 +36,8 @@ export interface SketchOpts {
 }
 export const useSketchOpts = create<{ o: SketchOpts; set(p: Partial<SketchOpts>): void }>((set) => ({
   o: {
-    sides: 6, polyKind: 'inscribed', filletR: 3, chamferD: 3, chamferD2: 0,
+    sides: 6, polyKind: 'inscribed', filletR: 3, chamferD: 3, chamferD2: 0, chamferAngle: 45, chamferKind: 'equal',
+    moveX: 10, moveY: 0, moveAngle: 0, moveCopy: false,
     rectCount: 3, rectSpacing: 20, rectAngle: 0, rectCount2: 1, rectSpacing2: 20,
     circCount: 6, circAngle: 360, scaleF: 2,
     splineClosed: false,
@@ -64,9 +66,8 @@ function previewOf(build: (m: SketchModel) => unknown): Vec2[][] {
 /** Bind the clicked points to the geometry they were snapped to. */
 function bindSnaps(m: SketchModel, old: Set<string>, snaps: Snap[]) {
   for (const s of snaps) {
-    if (!s.pointId || !(s.kind === 'point' || s.kind === 'origin' || s.kind === 'center')) continue
     const fresh = m.entities.find((e) => e.type === 'point' && !old.has(e.id) && dist([e.x, e.y], s.pos) < 1e-9)
-    if (fresh) addCoincident(m, fresh.id, s.pointId)
+    if (fresh) K.bindPoint(m, fresh.id, s) // onto a point, a curve, a midpoint, a crossing or an axis
   }
 }
 
@@ -243,6 +244,7 @@ const CLICK_TOOLS: Partial<Record<ToolId, ClickTool>> = {
     live: (s, pts, end) => (s === 1 ? polarLive(pts[0], end, 'rad') : s === 2 ? { sw: deg(relAngle(Math.atan2(end[1] - pts[0][1], end[0] - pts[0][0]), Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]))) } : { wd: 2 * Math.abs(dist(end, pts[0]) - dist(pts[1], pts[0])) }),
   },
   arcT: { need: 2, build: (m, p) => drawTangentArc(m, p[0], p[1]) },
+  conic: { need: 4, build: (m, p) => drawConic(m, p[0], p[1], p[2], p[3]) },
   polygon: {
     need: 2,
     build: (m, p, h) => {
@@ -589,7 +591,11 @@ function cornerHandlers(kind: 'fillet' | 'chamfer'): ToolHandlers {
       const lines = A.type === 'line' && B.type === 'line'
       let r: string | object
       if (kind === 'fillet') r = lines ? filletCorner(m, A, B, o.filletR) : filletCurves(m, A, B, o.filletR)
-      else r = lines ? chamferCorner(m, A, B, o.chamferD, o.chamferD2 > 0 ? o.chamferD2 : o.chamferD) : chamferCurves(m, A, B, o.chamferD, o.chamferD2 > 0 ? o.chamferD2 : o.chamferD)
+      else if (o.chamferKind === 'angle') r = chamferAngle(m, A, B, o.chamferD, o.chamferAngle)
+      else {
+        const d2 = o.chamferKind === 'two' && o.chamferD2 > 0 ? o.chamferD2 : o.chamferD
+        r = lines ? chamferCorner(m, A, B, o.chamferD, d2) : chamferCurves(m, A, B, o.chamferD, d2)
+      }
       return typeof r === 'string' ? r : undefined
     })
     first = null
@@ -672,7 +678,8 @@ extraTools.mirror = {
   down(raw, wpp) {
     if (stages.mirror === 'curves') { toggleCurve(raw, wpp); return }
     const s = K.get()
-    const h = hitTest(s.model, raw, 8 * wpp, (e) => e.type === 'line')
+    // a drawn line, or a sketch axis
+    const h = hitTest(s.model, raw, 8 * wpp, (e) => e.type === 'line') ?? axisHit(raw, 8 * wpp)
     if (!h) return
     const src = mirrorSource
     const ok = K.commit((m) => { const r = mirrorEntities(m, src, h); return typeof r === 'string' ? r : undefined })
@@ -724,6 +731,27 @@ extraTools.patternC = {
     if (ok) setTool('select')
   },
   enter: toolNext,
+}
+
+/** Move or copy the selected curves by the amounts in the bar: turned about their middle, then shifted. */
+export function applyMoveCopy(): boolean {
+  const o = opts()
+  const ids = curveSelection()
+  if (!ids.length) { K.flash('Click the curves to move or copy first'); return false }
+  let made: string[] = []
+  const ok = K.commit((m) => {
+    if (!o.moveCopy) return moveCurves(m, { ids, dx: o.moveX, dy: o.moveY, angle: o.moveAngle }) ?? undefined
+    if (Math.abs(o.moveX) < 1e-12 && Math.abs(o.moveY) < 1e-12 && Math.abs(o.moveAngle) < 1e-12) return 'Set a distance or an angle to copy by'
+    made = duplicateCurves(m, ids, transformOf(m, ids, { dx: o.moveX, dy: o.moveY, angle: o.moveAngle }), m, o.moveAngle)
+  })
+  if (ok && made.length) K.set({ sel: made })
+  return ok
+}
+extraTools.moveCopy = {
+  start() { K.flash(curveSelection().length ? 'Set the distance and angle, then press Apply' : 'Click the curves to move or copy, then set the distance and angle') },
+  move(raw, wpp) { K.set({ hover: hitTest(K.get().model, raw, 8 * wpp, (e) => e.type !== 'point'), cursor: null }); K.invalidate() },
+  down(raw, wpp) { toggleCurve(raw, wpp) },
+  enter() { if (!curveSelection().length) return false; applyMoveCopy(); return true },
 }
 
 extraTools.scale = {

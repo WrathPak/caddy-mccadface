@@ -1,8 +1,8 @@
 import { test, expect, type App } from './helpers'
 
-/* Sketch behaviour measured against Fusion 360. Every test here is a gap found by using the sketcher the way a Fusion user does;
-   they are marked test.fail() so the suite stays green until the gap is closed. When one starts to pass, Playwright flags it:
-   drop the test.fail() and keep the test. docs/fusion-parity/sketch.md lists each gap with what Fusion does. */
+/* Sketch behaviour measured against Fusion 360. Every test here was a gap found by using the sketcher the way a Fusion user does and
+   is closed now; docs/fusion-parity/sketch.md lists each with what Fusion does. The one still marked test.fail() is the 3D Sketch
+   switch of the palette, which needs a real 3D sketch behind it. */
 
 async function startSketch(app: App) {
   const { page } = app
@@ -102,7 +102,6 @@ test('Line: a line started where two lines cross is tied to both of them', async
 })
 
 test('Line: a horizontal line drawn clear of a closed triangle is made, not silently dropped', async ({ app }) => {
-  test.fail() // Fusion: a click always places the point; here the click at (80,40) after closing a triangle snaps to a stray inference and nothing is drawn
   await app.open()
   await startSketch(app)
   await tool(app, 'Line')
@@ -110,8 +109,8 @@ test('Line: a horizontal line drawn clear of a closed triangle is made, not sile
   await click(app, 40, 0)
   await click(app, 20, 30)
   await click(app, 0, 0)
-  await click(app, 60, 40)
-  await click(app, 80, 40)
+  await click(app, 45, 40) // clear of the view cube, which sits over the top right corner of the view
+  await click(app, 65, 40)
   const m = await sk(app)
   expect(types(m, 'line')).toHaveLength(4)
 })
@@ -119,7 +118,6 @@ test('Line: a horizontal line drawn clear of a closed triangle is made, not sile
 // ---------------------------------------------------------------- selection
 
 test('Selection: Ctrl+click takes a selected curve out of the selection again', async ({ app, page }) => {
-  test.fail() // Fusion: Ctrl+click (or Shift+click) on something already selected deselects just that one; ours keeps it
   await app.open()
   await startSketch(app)
   await line(app, [0, 0], [30, 0])
@@ -137,7 +135,6 @@ test('Selection: Ctrl+click takes a selected curve out of the selection again', 
 })
 
 test('Selection: double-clicking a curve selects the whole chain of connected curves', async ({ app }) => {
-  test.fail() // Fusion: double-click on a sketch curve selects everything connected end to end to it
   await app.open()
   await startSketch(app)
   await tool(app, 'Line')
@@ -184,7 +181,6 @@ test('Keyboard: X toggles construction on the selected curves, as in Fusion', as
 })
 
 test('Keyboard: O starts Offset, as in Fusion', async ({ app, page }) => {
-  test.fail() // Fusion hotkey O = Offset. Here O does nothing
   await app.open()
   await startSketch(app)
   await line(app, [0, 0], [30, 0])
@@ -194,7 +190,6 @@ test('Keyboard: O starts Offset, as in Fusion', async ({ app, page }) => {
 })
 
 test('Move / Copy exists inside the sketch: pick curves, type a distance, they move or are copied', async ({ app, page }) => {
-  test.fail() // Fusion: Modify > Move/Copy (M) with move and copy, X/Y offsets and rotation; the sketch ribbon here has none
   await app.open()
   await startSketch(app)
   await line(app, [0, 0], [30, 0])
@@ -204,7 +199,6 @@ test('Move / Copy exists inside the sketch: pick curves, type a distance, they m
 })
 
 test('Conic Curve exists in the Create menus', async ({ app, page }) => {
-  test.fail() // Fusion: Create > Conic Curve (end points, a point to hit, rho). Not in any of our menus
   await app.open()
   await startSketch(app)
   const opts = page.locator('.ribbon-body').getByRole('button', { name: / options$/ })
@@ -231,7 +225,8 @@ const PALETTE = [
 ] as const
 for (const [name, re] of PALETTE) {
   test(`Sketch palette has ${name}`, async ({ app, page }) => {
-    test.fail() // Fusion: the Sketch Palette panel (Options: Linetype, Look At, Sketch Grid, Snap, Slice, Show Profile, Show Points, Show Dimensions, Show Constraints, 3D Sketch). We have no palette at all
+    // a real 3D sketch (curves off the sketch plane, 3D snaps, 3D constraints, sweep paths) is a feature of its own, not a palette toggle: see the notes in docs/fusion-parity/sketch.md
+    if (name === '3D Sketch') test.fail()
     await app.open()
     await startSketch(app)
     await line(app, [0, 0], [30, 0])
@@ -241,7 +236,6 @@ for (const [name, re] of PALETTE) {
 }
 
 test('Show Dimensions off hides the dimension labels (and Show Constraints off the glyphs)', async ({ app, page }) => {
-  test.fail() // Fusion palette checkboxes; we have no way to hide dimensions or constraint glyphs
   await app.open()
   await app.sketchRect('XY', 30, 20)
   await expect(page.locator('.sk-dim').first()).toBeVisible()
@@ -282,7 +276,6 @@ test('Dimension: a circle gets a diameter, an arc a radius, and the label says w
 })
 
 test('Dimension: one dimension can use another in its expression (d1 * 2)', async ({ app, page }) => {
-  test.fail() // Fusion names every dimension d1, d2 ... and an expression may use them (d2 = d1 * 2); ours has no dimension names to refer to
   await app.open()
   await startSketch(app)
   await line(app, [0, 0], [30, 0])
@@ -440,7 +433,6 @@ test('Offset of a rounded rectangle follows all eight tangent-connected curves f
 })
 
 test('Offset of a circle: a negative typed distance goes the other way from the cursor', async ({ app, page }) => {
-  test.fail() // Fusion: the offset distance may be negative, which puts the copy on the opposite side to the cursor; ours ignores the sign and offsets towards the cursor
   await app.open()
   await startSketch(app)
   await circle(app, [0, 0], 15)
@@ -473,21 +465,21 @@ test('Sketch redo: Ctrl+Y and Ctrl+Shift+Z both bring back an undone line', asyn
 // ---------------------------------------------------------------- starting a sketch
 
 test('Starting a sketch: after Sketch, a click on the plane in the viewport picks it', async ({ app, page }) => {
-  test.fail() // Fusion: Create Sketch shows the origin planes in the canvas and you click the one you want; ours only offers them in the browser tree
   await app.open()
   await app.ribbon('Sketch').first().click()
-  const b = (await page.locator('.vp canvas').boundingBox())!
-  // the XY plane is drawn around the origin; clicking just off the origin inside it should pick it
-  const o = await app.project(0, 0, 0)
-  await page.mouse.click(o.x + 30, o.y - 30)
+  // the picker draws a small square for each plane beside the part (not over it); in an empty document the half size is 15, so the
+  // XY square is centred at 15 * 1.08 + 15 * 0.25 along both axes
+  const h = 15 * 1.08 + 15 * 0.25
+  const c = await app.project(h, h, 0)
+  await page.mouse.move(c.x, c.y, { steps: 3 })
+  await page.mouse.click(c.x, c.y)
   await expect(page.locator('.sk-bar')).toBeVisible({ timeout: 3000 })
-  void b
+  expect(await app.ev((x) => x.sketch.getState().plane.normal)).toEqual([0, 0, 1])
 })
 
 // ---------------------------------------------------------------- more gaps found while drawing
 
 test('Copy and paste: Ctrl+C then Ctrl+V of selected curves makes copies', async ({ app, page }) => {
-  test.fail() // Fusion: sketch curves can be copied and pasted (pasted in place, then moved); Ctrl+V here does nothing
   await app.open()
   await startSketch(app)
   await line(app, [0, 20], [30, 25])
@@ -499,7 +491,6 @@ test('Copy and paste: Ctrl+C then Ctrl+V of selected curves makes copies', async
 })
 
 test('Right-click on a selected curve opens a menu (delete, construction, and the like)', async ({ app, page }) => {
-  test.fail() // Fusion: right-click shows the marking menu / context menu with Delete, Normal/Construction, Repeat, Undo; ours shows nothing
   await app.open()
   await startSketch(app)
   await line(app, [0, 20], [30, 25])
@@ -507,11 +498,10 @@ test('Right-click on a selected curve opens a menu (delete, construction, and th
   await click(app, 15, 22.5)
   const p = await app.project(15, 22.5, 0)
   await page.mouse.click(p.x, p.y, { button: 'right' })
-  await expect(page.getByRole('menu').or(page.getByRole('menuitem').first())).toBeVisible({ timeout: 1500 })
+  await expect(page.getByRole('menu').or(page.getByRole('menuitem')).first()).toBeVisible({ timeout: 1500 })
 })
 
 test('Mirror can use the sketch Y axis as the mirror line', async ({ app, page }) => {
-  test.fail() // Fusion: the mirror line may be a sketch axis (the common way to make a symmetric profile); ours only takes a drawn line
   await app.open()
   await startSketch(app)
   await line(app, [10, 20], [30, 10])
@@ -527,7 +517,6 @@ test('Mirror can use the sketch Y axis as the mirror line', async ({ app, page }
 })
 
 test('Symmetry constraint can use a sketch axis as the line of symmetry', async ({ app, page }) => {
-  test.fail() // Fusion: Symmetry takes two points and a line, and the line may be a sketch axis
   await app.open()
   await startSketch(app)
   await line(app, [10, 20], [30, 10])
@@ -544,7 +533,6 @@ test('Symmetry constraint can use a sketch axis as the line of symmetry', async 
 })
 
 test('Sketch chamfer offers distance and angle as well as two distances', async ({ app, page }) => {
-  test.fail() // Fusion: Chamfer in a sketch: Equal Distance, Two Distances, Distance and Angle; ours has two distances only
   await app.open()
   await startSketch(app)
   await tool(app, 'Sketch Fillet')
@@ -582,7 +570,6 @@ test('Sketch on an offset plane: the sketch sits on the plane and the plane stay
 // ---------------------------------------------------------------- inference on construction geometry, axes and trims
 
 test('Construction line drawn up the Y axis from the origin gets Vertical, like a normal line does', async ({ app, page }) => {
-  test.fail() // Fusion adds the same inferred constraints to construction lines; here construction mode skips them and the line is left free to turn
   await app.open()
   await startSketch(app)
   await page.keyboard.press('x')
@@ -593,7 +580,6 @@ test('Construction line drawn up the Y axis from the origin gets Vertical, like 
 })
 
 test('Coincident: a loose point and a sketch axis put the point on the axis', async ({ app, page }) => {
-  test.fail() // Fusion: the origin axes can be picked by Coincident (and every other constraint); here nothing happens when an axis is clicked
   await app.open()
   await startSketch(app)
   await line(app, [-30, -20], [-10, -30])
@@ -607,7 +593,6 @@ test('Coincident: a loose point and a sketch axis put the point on the axis', as
 })
 
 test('Fit point spline: a point clicked on an axis stays on that axis', async ({ app, page }) => {
-  test.fail() // Fusion snaps a spline point onto the axis and constrains it; lines and circles here get that, spline points do not
   await app.open()
   await startSketch(app)
   await tool(app, 'Fit Point Spline')
@@ -620,6 +605,7 @@ test('Fit point spline: a point clicked on an axis stays on that axis', async ({
 const tiedToCurve = (m: any, id: string) => { // eslint-disable-line
   const curves = new Set(m.entities.filter((e: any) => e.type === 'circle' || e.type === 'arc').map((e: any) => e.id)) // eslint-disable-line
   const ends = new Set(m.entities.filter((e: any) => e.type === 'arc').flatMap((e: any) => [e.s, e.e])) // eslint-disable-line
+  if (ends.has(id)) return true // an end of the arc is on the arc by being its end
   return m.constraints.some((k: any) => k.refs.includes(id) && k.refs.some((r: string) => curves.has(r) || (r !== id && ends.has(r) && k.type === 'coincident'))) // eslint-disable-line
 }
 
@@ -639,7 +625,6 @@ test('Trim: the new end of a line cut at a circle is tied to that circle', async
 })
 
 test('Trim: cutting a circle into an arc keeps what other curves were tied to it', async ({ app, page }) => {
-  test.fail() // Fusion keeps the coincident constraints on the remaining arc; here trimming the circle drops the ones on the lines that cut it
   await app.open()
   await startSketch(app)
   await circle(app, [0, 0], 10)
@@ -753,7 +738,6 @@ async function sweepTools(app: App, label: string, touch: boolean) {
 
 for (const size of [{ name: '1280x800', w: 1280, h: 800 }, { name: '1000x700', w: 1000, h: 700 }]) {
   test(`Layout at ${size.name}: no tool puts its prompt over the Cancel / Finish buttons or the options bar`, async ({ app, page }) => {
-    test.fail() // Fusion keeps the toolbar, the prompt and the finish button apart; here the prompt that flashes in is centred and lands on top of the Cancel / Finish bar and on the options bar (see the screenshots)
     test.setTimeout(240_000)
     await page.setViewportSize({ width: size.w, height: size.h })
     await app.open()
@@ -768,7 +752,6 @@ test.describe('Layout on a phone, 390x844', () => {
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
   })
   test('no tool puts its prompt over the options bar', async ({ app, page }) => {
-    test.fail() // the prompt flashes in over the options bar and hides its title (screenshots: phone-390x844-pattern-rect, -fillet, -scale ...)
     test.setTimeout(300_000)
     await app.open()
     await page.locator('.m-strip').getByRole('button', { name: 'Sketch' }).first().tap()

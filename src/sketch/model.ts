@@ -1,5 +1,5 @@
 /** Pure helpers over SketchModel. Mutating helpers expect a model the caller owns (clone first). */
-import { ORIGIN, isDim, type ArcE, type CircleE, type Constraint, type EllipseE, type Entity, type LineE, type PointE, type SketchModel, type SplineE, type TextE, type Vec2 } from './types'
+import { ORIGIN, isDim, type ArcE, type CircleE, type ConicE, type Constraint, type EllipseE, type Entity, type LineE, type PointE, type SketchModel, type SplineE, type TextE, type Vec2 } from './types'
 import { arcInfo, dist } from './geom'
 
 export const cloneModel = (m: SketchModel): SketchModel => JSON.parse(JSON.stringify(m)) as SketchModel
@@ -50,13 +50,27 @@ export function addEllipse(m: SketchModel, c: string, major: string, r: number, 
   m.entities.push(e)
   return e
 }
+export function addConic(m: SketchModel, s: string, a: string, e: string, rho: number, construction = false): ConicE {
+  const c: ConicE = { id: newId(m, 'l'), type: 'conic', s, e, a, rho, ...(construction ? { construction } : {}) }
+  m.entities.push(c)
+  return c
+}
 export function addText(m: SketchModel, p: string, text: string, h: number, a = 0, font?: string): TextE {
   const e: TextE = { id: newId(m, 'l'), type: 'text', p, text, h, a, ...(font ? { font } : {}) }
   m.entities.push(e)
   return e
 }
+/** The lowest free dimension name: d1, d2 ... */
+export function dimName(m: SketchModel): string {
+  const used = new Set(m.constraints.map((c) => c.name))
+  let n = 1
+  while (used.has('d' + n)) n++
+  return 'd' + n
+}
+
 export function addConstraint(m: SketchModel, c: Omit<Constraint, 'id'>): Constraint {
   const k: Constraint = { id: newId(m, 'k'), ...c }
+  if (isDim(k) && !k.name) k.name = dimName(m)
   m.constraints.push(k)
   return k
 }
@@ -71,6 +85,7 @@ export function deps(e: Entity): string[] {
     case 'spline': return [...e.pts, ...(e.t0 ? [e.t0] : []), ...(e.t1 ? [e.t1] : [])]
     case 'ellipse': return [e.c, e.m]
     case 'text': return [e.p]
+    case 'conic': return [e.s, e.a, e.e]
   }
 }
 
@@ -128,7 +143,7 @@ export const dimCount = (m: SketchModel) => m.constraints.filter(isDim).length
 
 /** End point ids of a line / arc (empty for other entities). */
 export function endPointsOf(e: Entity | undefined): string[] {
-  return e?.type === 'line' ? [e.p1, e.p2] : e?.type === 'arc' ? [e.s, e.e] : e?.type === 'spline' && !e.closed ? [e.pts[0], e.pts[e.pts.length - 1]] : []
+  return e?.type === 'line' ? [e.p1, e.p2] : e?.type === 'arc' ? [e.s, e.e] : e?.type === 'spline' && !e.closed ? [e.pts[0], e.pts[e.pts.length - 1]] : e?.type === 'conic' ? [e.s, e.e] : []
 }
 
 /** Point id (taken from curve `a`) where curves `a` and `b` meet end to end, or null. */

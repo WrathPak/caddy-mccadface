@@ -44,8 +44,13 @@ html[data-coarse='true'] body { position: fixed; inset: 0; width: 100%; }
 .m-vp { position: relative; min-height: 0; overflow: hidden; }
 .m-app .vp-toolbar, .m-app .sk-bar { display: none; }
 .m-app .viewcube { top: 4px; right: 4px; transform: scale(0.74); transform-origin: top right; }
-.m-app .sk-status { top: 6px; max-width: calc(100% - 140px); white-space: normal; text-align: center; }
-.m-app .sk-toolbar { top: 6px; left: 6px; right: 112px; transform: none; max-width: none; }
+.m-app .sk-stack { top: 6px; left: 6px; max-width: calc(100% - 118px); }
+.m-app .sk-status { white-space: normal; }
+/* one scrolling row instead of a wrapped block: the options of a tool take a strip, not a third of the sketch area */
+.m-app .sk-toolbar { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
+.m-app .sk-toolbar > * { flex: none; }
+.m-app .sk-toolbar .sk-note { display: none; }
+.m-app .sk-palette { display: none; }
 .m-app .empty-hint { top: 36%; }
 .m-app .empty-hint-sub { display: none; }
 .m-app .preview-banner { flex-wrap: wrap; }

@@ -1,5 +1,5 @@
 /** Applying geometric constraints to a model from a set of picked entity ids. */
-import { ORIGIN, type Constraint, type Entity, type LineE, type SketchModel, type Vec2 } from './types'
+import { AXIS_X, isAxisId, ORIGIN, type Constraint, type Entity, type LineE, type SketchModel, type Vec2 } from './types'
 import { addCoincident, addConstraint, deps, entityById, lineEnds, pos, sharedEnd, tangentValue } from './model'
 import { dist, sub } from './geom'
 import { tangentSpline } from './shapes'
@@ -12,7 +12,7 @@ export const CKIND_LABEL: Record<CKind, string> = {
   concentric: 'Concentric', collinear: 'Collinear', symmetric: 'Symmetry', smooth: 'Smooth',
 }
 
-const kindOf = (m: SketchModel, id: string) => (id === ORIGIN ? 'point' : entityById(m, id)?.type)
+const kindOf = (m: SketchModel, id: string) => (id === ORIGIN ? 'point' : isAxisId(id) ? 'axis' : entityById(m, id)?.type)
 const isCurve = (t?: string) => t === 'circle' || t === 'arc'
 /** things with a direction: lines, and ellipses by their major axis */
 const isLineLike = (t?: string) => t === 'line' || t === 'ellipse'
@@ -57,13 +57,13 @@ function readyIn(m: SketchModel, kind: CKind, ids: string[]): boolean {
     case 'tangent':
       if (t[0] === 'spline' || t[1] === 'spline') return ids.length === 2 && (t[0] === 'spline' ? t[1] === 'line' || isCurve(t[1]) || t[1] === 'spline' : t[0] === 'line' || isCurve(t[0]))
       return ids.length === 2 && (t[0] === 'line' ? isCurve(t[1]) : isCurve(t[0]) && (t[1] === 'line' || isCurve(t[1])))
-    case 'coincident': return ids.length === 2 && ((t[0] === 'point' && t[1] === 'point') || (t[0] === 'point' && (t[1] === 'line' || isCurve(t[1]))))
+    case 'coincident': return ids.length === 2 && ((t[0] === 'point' && t[1] === 'point') || (t[0] === 'point' && (t[1] === 'line' || t[1] === 'axis' || isCurve(t[1]))))
     case 'midpoint': return ids.length === 2 && t[0] === 'point' && (t[1] === 'line' || t[1] === 'arc')
     case 'concentric': return ids.length === 2 && isCentred(t[0]) && isCentred(t[1]) && !(t[0] === 'point' && t[1] === 'point')
     case 'collinear': return ids.length === 2 && t[0] === 'line' && t[1] === 'line'
     case 'smooth': return ids.length === 2 && (t[0] === 'spline' ? t[1] === 'line' || isCurve(t[1]) || t[1] === 'spline' : t[1] === 'spline' && (t[0] === 'line' || isCurve(t[0])))
     // two things and the line they mirror across (picked last): two points, two lines, two circles or two arcs
-    case 'symmetric': return ids.length === 3 && t[2] === 'line' && t[0] === t[1] && (t[0] === 'point' || t[0] === 'line' || t[0] === 'circle' || t[0] === 'arc') && ids[0] !== ids[1] && ids[0] !== ids[2] && ids[1] !== ids[2]
+    case 'symmetric': return ids.length === 3 && (t[2] === 'line' || t[2] === 'axis') && t[0] === t[1] && (t[0] === 'point' || t[0] === 'line' || t[0] === 'circle' || t[0] === 'arc') && ids[0] !== ids[1] && ids[0] !== ids[2] && ids[1] !== ids[2]
     case 'fix': return ids.length >= 1 && t.every((x) => x !== undefined)
   }
 }
@@ -154,6 +154,7 @@ export function applyConstraint(m: SketchModel, kind: CKind, idsIn: string[]): s
     case 'coincident': {
       const [a, b] = ids
       if (kindOf(m, b) === 'point') { addCoincident(m, a, b); return null }
+      if (isAxisId(b)) { if (!m.constraints.some((c) => c.type === 'onAxis' && c.refs[0] === a && c.axis === (b === AXIS_X ? 'x' : 'y'))) addConstraint(m, { type: 'onAxis', refs: [a], axis: b === AXIS_X ? 'x' : 'y' }); return null }
       add(kindOf(m, b) === 'line' ? 'pointOnLine' : 'pointOnCurve', [a, b])
       return null
     }
@@ -171,8 +172,7 @@ export function applyConstraint(m: SketchModel, kind: CKind, idsIn: string[]): s
 /** Symmetry: the point pairs of two curves are mirrored across the line, matched up by which lies nearer the other's reflection. */
 function symmetric(m: SketchModel, ids: string[]): string | null {
   const [a, b, axisId] = ids
-  const axis = entityById(m, axisId) as LineE
-  const [la, lb] = lineEnds(m, axis)
+  const [la, lb] = axisEnds(m, axisId)
   const d = sub(lb, la), l2 = d[0] * d[0] + d[1] * d[1] || 1
   const reflect = (p: Vec2): Vec2 => {
     const t = ((p[0] - la[0]) * d[0] + (p[1] - la[1]) * d[1]) / l2
@@ -200,4 +200,11 @@ function symmetric(m: SketchModel, ids: string[]): string | null {
   for (const [p, q] of pairs) mirror(p, q)
   if (ea.type === 'arc' && eb.type === 'arc') mirror(ea.c, eb.c)
   return null
+}
+
+/** Two points on the mirror line: a drawn line's ends, or the origin and a point one unit along a sketch axis. */
+export function axisEnds(m: SketchModel, id: string): [Vec2, Vec2] {
+  if (id === AXIS_X) return [[0, 0], [1, 0]]
+  if (isAxisId(id)) return [[0, 0], [0, 1]]
+  return lineEnds(m, entityById(m, id) as LineE)
 }
