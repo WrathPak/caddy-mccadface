@@ -32,7 +32,7 @@ export interface TrimSpan {
 
 const EPS = 1e-7
 
-function curveOf(m: SketchModel, e: LineE | ArcE | CircleE): Curve | null {
+export function curveOf(m: SketchModel, e: LineE | ArcE | CircleE): Curve | null {
   if (e.type === 'line') {
     const [a, b] = lineEnds(m, e)
     return dist(a, b) > EPS ? { k: 'l', a, b } : null
@@ -42,11 +42,11 @@ function curveOf(m: SketchModel, e: LineE | ArcE | CircleE): Curve | null {
   return i.r > EPS ? { k: 'a', c: pos(m, e.c), r: i.r, a0: i.a0, span: i.span } : null
 }
 
-const pointAt = (cv: Curve, t: number): Vec2 =>
+export const pointAt = (cv: Curve, t: number): Vec2 =>
   cv.k === 'l' ? [cv.a[0] + (cv.b[0] - cv.a[0]) * t, cv.a[1] + (cv.b[1] - cv.a[1]) * t] : polar(cv.c, cv.r, (cv.k === 'a' ? cv.a0 : 0) + t)
 
 /** Parameter of the point of the curve nearest to `click`. */
-function clickParam(cv: Curve, click: Vec2): number {
+export function clickParam(cv: Curve, click: Vec2): number {
   if (cv.k === 'l') return closestOnSegment(click, cv.a, cv.b).t
   const a = Math.atan2(click[1] - cv.c[1], click[0] - cv.c[0])
   if (cv.k === 'c') return relAngle(a, 0)
@@ -124,6 +124,11 @@ export function cutsOf(m: SketchModel, id: string): { cv: Curve; cuts: Cut[] } |
   if (!e || (e.type !== 'line' && e.type !== 'arc' && e.type !== 'circle')) return null
   const cv = curveOf(m, e)
   if (!cv) return null
+  return { cv, cuts: cutsAlong(m, id, cv) }
+}
+
+/** Where `cv` (the curve `id`, or a stretched-out version of it, which is how Extend looks past its ends) crosses the other curves, sorted along it. */
+export function cutsAlong(m: SketchModel, id: string, cv: Curve): Cut[] {
   const cuts: Cut[] = []
   for (const o of m.entities) {
     if (o.id === id) continue
@@ -141,7 +146,7 @@ export function cutsOf(m: SketchModel, id: string): { cv: Curve; cuts: Cut[] } |
   // merge duplicates (several curves through one point)
   const out: Cut[] = []
   for (const c of cuts) if (!out.length || Math.abs(c.t - out[out.length - 1].t) > 1e-7) out.push(c)
-  return { cv, cuts: out }
+  return out
 }
 
 const polyBetween = (cv: Curve, t0: number, t1: number): Vec2[] => {
@@ -200,16 +205,16 @@ export function trimSpan(m: SketchModel, id: string, click: Vec2): TrimSpan | nu
   return { id, kind, t0: left ? left.t : null, t1: right ? right.t : null, c0: left, c1: right, poly: polyBetween(cv, t0, t1), whole: !left && !right }
 }
 
-const curveConstraint = (m: SketchModel, point: string, cutter: string): Omit<Constraint, 'id'> =>
+export const curveConstraint = (m: SketchModel, point: string, cutter: string): Omit<Constraint, 'id'> =>
   ({ type: entityById(m, cutter)?.type === 'line' ? 'pointOnLine' : 'pointOnCurve', refs: [point, cutter] })
 
-function setPos(m: SketchModel, id: string, p: Vec2) {
+export function setPos(m: SketchModel, id: string, p: Vec2) {
   const e = entityById(m, id)
   if (e && e.type === 'point') { e.x = p[0]; e.y = p[1] }
 }
 
 /** Drop what pinned a point that is about to move (coincidences, dimensions, ...); constraints on the curve itself stay. */
-function unpin(m: SketchModel, point: string, curve: string) {
+export function unpin(m: SketchModel, point: string, curve: string) {
   m.constraints = m.constraints.filter((c) => !(c.refs.includes(point) || (c.type === 'equal' && c.refs.includes(curve))))
 }
 

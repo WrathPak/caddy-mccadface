@@ -5,6 +5,7 @@
 import {
   ArrowsOutLineVertical, Circle, CircleDashed, DotOutline, Eraser, FlipHorizontal, GridFour, Knife, LineSegment, Magnet, Parallelogram,
   Polygon, PushPin, Scissors, SplitVertical, SquaresFour, TextT, TrendDown, UploadSimple, Waves, Rows, Hexagon, Table, Path,
+  Rectangle, CircleHalf, ArrowLineRight, ArrowsOutSimple, Dot, ArrowArcLeft, SplitHorizontal, Target,
 } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { registerCommand } from '@/app/commands'
@@ -66,6 +67,15 @@ const tool = (id: string, t: ToolId, label: string, icon: Icon, tip?: string) =>
 tool('sketch.spline', 'spline', 'Fit Point Spline', Waves, 'A smooth curve through the points you click')
 tool('sketch.splineC', 'splineC', 'Control Point Spline', Waves, 'A curve shaped by control points')
 tool('sketch.arcT', 'arcT', 'Tangent Arc', Waves, 'An arc that leaves the end of a line or arc tangentially')
+tool('sketch.arcC', 'arcC', 'Centre Point Arc', ArrowArcLeft, 'An arc from its centre, then its start, then its end')
+tool('sketch.rect3', 'rect3', '3-Point Rectangle', Rectangle, 'A rectangle from one side (two points), then how far it reaches, at any angle')
+tool('sketch.circle2', 'circle2', '2-Point Circle', Circle, 'A circle from the two ends of its diameter')
+tool('sketch.circle3', 'circle3', '3-Point Circle', Circle, 'A circle through three points')
+tool('sketch.circle2T', 'circle2T', '2-Tangent Circle', CircleHalf, 'A circle that touches two lines, circles or arcs')
+tool('sketch.point', 'point', 'Point', Dot, 'A sketch point')
+tool('sketch.extend', 'extend', 'Extend', ArrowLineRight, 'Grow the end of a line or arc out to the next curve')
+tool('sketch.break', 'break', 'Break', SplitHorizontal, 'Cut a curve into separate curves at its crossings, or at a click')
+tool('sketch.scale', 'scale', 'Sketch Scale', ArrowsOutSimple, 'Scale the selected curves about a point by a factor')
 tool('sketch.ellipse', 'ellipse', 'Ellipse', Circle, 'Centre, long axis end, short radius')
 tool('sketch.slotCC', 'slotCC', 'Centre to Centre Slot', Rows, 'A slot between two centres')
 tool('sketch.slotOv', 'slotOv', 'Overall Slot', Rows, 'A slot of a given overall length')
@@ -102,14 +112,22 @@ group('solid', 'Modify').items.push({ cmd: 'solid.pressPull', menu: ['solid.pres
 group('solid', 'Document').items.push({ cmd: 'doc.configs' })
 {
   const create = group('sketch', 'Create')
-  const arcItem = create.items.find((i) => i.cmd === 'sketch.arc')
-  if (arcItem) arcItem.menu = ['sketch.arc', 'sketch.arcT']
+  const item = (cmd: string) => create.items.find((i) => i.cmd === cmd)
+  const arcItem = item('sketch.arc')
+  if (arcItem) arcItem.menu = ['sketch.arc', 'sketch.arcC', 'sketch.arcT']
+  const rectItem = item('sketch.rect')
+  if (rectItem) rectItem.menu = ['sketch.rect', 'sketch.rect3', 'sketch.rectCenter']
+  const circleItem = item('sketch.circle')
+  if (circleItem) circleItem.menu = ['sketch.circle', 'sketch.circle2', 'sketch.circle3', 'sketch.circle2T']
   create.items.push(
     { cmd: 'sketch.spline', menu: ['sketch.spline', 'sketch.splineC'] }, { cmd: 'sketch.ellipse' },
-    { cmd: 'sketch.slotCC', menu: ['sketch.slotCC', 'sketch.slotOv', 'sketch.slotArc'] }, { cmd: 'sketch.polygon' }, { cmd: 'sketch.text' }, { cmd: 'sketch.import' },
+    { cmd: 'sketch.slotCC', menu: ['sketch.slotCC', 'sketch.slotOv', 'sketch.slotArc'] }, { cmd: 'sketch.polygon' }, { cmd: 'sketch.point' }, { cmd: 'sketch.text' }, { cmd: 'sketch.import' },
   )
   const modify = group('sketch', 'Modify')
-  modify.items.push({ cmd: 'sketch.fillet', menu: ['sketch.fillet', 'sketch.chamfer'] }, { cmd: 'sketch.mirror' }, { cmd: 'sketch.patternR', menu: ['sketch.patternR', 'sketch.patternC'] }, { cmd: 'sketch.handles' })
+  const trimItem = modify.items.find((i) => i.cmd === 'sketch.trim')
+  if (trimItem) trimItem.menu = ['sketch.trim', 'sketch.extend', 'sketch.break']
+  group('sketch', 'Constraints').items.push({ stack: ['sketch.concentric', 'sketch.collinear', 'sketch.symmetric'] }, { stack: ['sketch.smooth'] })
+  modify.items.push({ cmd: 'sketch.scale' }, { cmd: 'sketch.fillet', menu: ['sketch.fillet', 'sketch.chamfer'] }, { cmd: 'sketch.mirror' }, { cmd: 'sketch.patternR', menu: ['sketch.patternR', 'sketch.patternC'] }, { cmd: 'sketch.handles' })
   group('sketch', 'Snap').items.push({ cmd: 'sketch.snapSettings' })
 }
 

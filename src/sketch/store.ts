@@ -9,7 +9,7 @@ import { getKernel } from '@/kernel/client'
 import type { ProjectedCurve } from '@/kernel/sketch-ops'
 import { useUi, type SelectionRef } from '@/store/ui'
 import { viewportBus } from '@/viewport/bus'
-import { applyConstraint, ready, type CKind } from './constraints'
+import { applyConstraint, expects, ready, type CKind } from './constraints'
 import { defaultOff, measure, measureDim, refreshDims } from './dims'
 import {
   addArc, addCircle, addCoincident, addConstraint, addLine, addPoint, cloneModel, entityById, entityPoints, lineEnds, pos, removeIds, tangentValue,
@@ -35,6 +35,7 @@ import { ORIGIN, emptyModel, type Constraint, type ConstraintType, type PlaneDef
 export type ToolId =
   | 'select' | 'line' | 'rect' | 'rectC' | 'circle' | 'arc' | 'dimension' | 'constraint' | 'trim' | 'offset' | 'project'
   | 'spline' | 'splineC' | 'ellipse' | 'slotCC' | 'slotOv' | 'slotArc' | 'polygon' | 'fillet' | 'chamfer' | 'mirror' | 'patternR' | 'patternC' | 'text' | 'arcT'
+  | 'rect3' | 'circle2' | 'circle3' | 'circle2T' | 'arcC' | 'point' | 'extend' | 'break' | 'scale'
 
 /**
  * Handlers of the tools that live outside this file (sketch/toolsUi.ts). A tool registered here gets the pointer and keyboard
@@ -49,6 +50,17 @@ export interface ToolHandlers {
   enter?(): boolean
   /** Escape / right click: drop what is in progress; returns true when there was something to drop */
   cancel?(): boolean
+  /** Ctrl+Z / Undo point: take back the last point placed (and nothing else); returns true when there was one */
+  undoPoint?(): boolean
+  /** The tool's own typed values: the value boxes next to the cursor */
+  typed?: ToolTyped
+}
+export interface ToolTyped {
+  /** a key for the boxes; true when it was used */
+  key(e: { key: string; shiftKey: boolean }): boolean
+  info(): { label: string; unit: 'mm' | 'deg'; text: string; index: number; count: number } | null
+  set(text: string): void
+  next(): void
 }
 export const extraTools: Partial<Record<ToolId, ToolHandlers>> = {}
 /** The pieces of this file the extra tools build on. */
@@ -220,6 +232,7 @@ export function undoSketch() {
 /** Ctrl+Z: while a polyline (or arc) is being drawn it takes back the last point and the tool carries on; otherwise the last change. */
 export function undoKey() {
   const s = get()
+  if (s.active && !s.dimEdit && extraTools[s.tool]?.undoPoint?.()) { invalidate(); return }
   if (s.active && !s.dimEdit && s.draft && ((s.tool === 'line' && draftStack.length) || (s.tool === 'arc' && s.draft.pts.length > 1))) { undoPoint(); return }
   undoSketch()
 }
@@ -737,7 +750,7 @@ function downConstraint(raw: Vec2, mods: Mods) {
     return
   }
   // an incomplete or invalid pair: keep only the latest pick if the pair is nonsense
-  if (picks.length >= 2) { flash('Pick valid entities'); set({ picks: [h] }); return }
+  if (picks.length >= 2 && !expects(s.model, s.ckind, picks)) { flash('Pick valid entities'); set({ picks: [h] }); return }
   set({ picks })
   void mods
 }
@@ -1045,6 +1058,8 @@ function typedFor(): Typed | null {
 export function typedKey(e: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; altKey: boolean }): boolean {
   const s = get()
   if (!s.active || e.ctrlKey || e.metaKey || e.altKey) return false
+  const own = extraTools[s.tool]?.typed
+  if (own) return own.key(e)
   const t = typedFor()
   if (!t || !t.fields.length) return false
   const k = e.key
@@ -1248,7 +1263,7 @@ function downDraw(raw: Vec2, mods: Mods) {
 export function undoPoint() {
   const s = get()
   if (!s.active || s.dimEdit) return
-  if (extraTools[s.tool]?.cancel?.()) { invalidate(); return }
+  if (extraTools[s.tool]?.undoPoint?.() || extraTools[s.tool]?.cancel?.()) { invalidate(); return }
   const d = s.draft
   if (s.tool === 'line' && d && draftStack.length) {
     const rest = draftStack.slice(0, -1)
@@ -1270,6 +1285,8 @@ export function undoPoint() {
 
 /** The value box being typed into while a draft or offset is open (null when there is none). */
 export function typedInfo(): { label: string; unit: 'mm' | 'deg'; text: string; index: number; count: number } | null {
+  const own = extraTools[get().tool]?.typed
+  if (own) return own.info()
   const t = typedFor()
   if (!t || !t.fields.length) return null
   const f = t.fields[t.active]
@@ -1277,6 +1294,8 @@ export function typedInfo(): { label: string; unit: 'mm' | 'deg'; text: string; 
 }
 /** Put text into the active value box (the on-screen number field). */
 export function setTypedText(text: string) {
+  const own = extraTools[get().tool]?.typed
+  if (own) { own.set(text); invalidate(); return }
   const t = typedFor()
   if (!t) return
   set({ typed: { ...t, fields: t.fields.map((x, i) => (i === t.active ? { ...x, text } : x)) } })
@@ -1285,6 +1304,8 @@ export function setTypedText(text: string) {
 }
 /** Tab: the next value box. */
 export function nextTypedField() {
+  const own = extraTools[get().tool]?.typed
+  if (own) { own.next(); invalidate(); return }
   const t = typedFor()
   if (!t || t.fields.length < 2) return
   set({ typed: { ...t, active: (t.active + 1) % t.fields.length } })
