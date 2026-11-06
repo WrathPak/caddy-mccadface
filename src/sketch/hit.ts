@@ -2,7 +2,7 @@
 import { arcInfo, closestOnArc, closestOnCircle, closestOnSegment, dist, sampleArc } from './geom'
 import { circleOf, deps, lineEnds, pos } from './model'
 import { closestOnDerived, derivedPolys, isDerived } from './curves'
-import { ORIGIN, type Entity, type SketchModel, type Vec2 } from './types'
+import { AXIS_X, AXIS_Y, ORIGIN, type Entity, type SketchModel, type Vec2 } from './types'
 
 /** Nearest entity under `p` within `tol` (points win over curves). Returns null for none. */
 export function hitTest(m: SketchModel, p: Vec2, tol: number, filter?: (e: Entity) => boolean): string | null {
@@ -31,6 +31,13 @@ export function hitTest(m: SketchModel, p: Vec2, tol: number, filter?: (e: Entit
     }
   }
   return best ? (best as { id: string }).id : null
+}
+
+/** The sketch axis (X: along y = 0, Y: along x = 0) within `tol` of `p`, for the tools that may pick one. */
+export function axisHit(p: Vec2, tol: number): string | null {
+  if (Math.abs(p[1]) <= tol) return AXIS_X
+  if (Math.abs(p[0]) <= tol) return AXIS_Y
+  return null
 }
 
 /** Does the segment p-q touch the box? (Liang-Barsky clip) */

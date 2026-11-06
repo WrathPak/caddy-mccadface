@@ -2,9 +2,9 @@
  * Model builders for the 3-point rectangle, the 2-point / 3-point / 2-tangent circles and the centre-point arc. Same rules as
  * shapes.ts: they mutate a model the caller owns and leave the new geometry constrained.
  */
-import { add, circumcircle, dist, dot, intersectCircleCircle, intersectLineCircle, intersectLineLine, mul, norm, perp, polar, relAngle, sub, TAU } from './geom'
-import { addArc, addCircle, addConstraint, addLine, addPoint, circleOf, entityById, lineEnds } from './model'
-import type { ArcE, CircleE, Entity, LineE, SketchModel, Vec2 } from './types'
+import { add, circumcircle, cross, dist, dot, intersectCircleCircle, intersectLineCircle, intersectLineLine, mul, norm, perp, polar, relAngle, sub, TAU } from './geom'
+import { addArc, addCircle, addConic, addConstraint, addLine, addPoint, circleOf, entityById, lineEnds } from './model'
+import type { ArcE, CircleE, ConicE, Entity, LineE, SketchModel, Vec2 } from './types'
 
 // ------------------------------------------------------------------------------------------------ 3-point rectangle
 
@@ -136,3 +136,17 @@ export function drawArcCentre(m: SketchModel, centre: Vec2, start: Vec2, end: Ve
   return ccw ? addArc(m, C, S, E, construction) : addArc(m, C, E, S, construction)
 }
 
+
+// ------------------------------------------------------------------------------------------------ conic curve
+
+/** Conic from its two end points, the apex (where the tangents at the ends meet) and a point it passes through (which sets rho). */
+export function drawConic(m: SketchModel, s: Vec2, e: Vec2, apex: Vec2, through: Vec2, construction = false): string | ConicE {
+  const mid: Vec2 = [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2]
+  const ma = sub(apex, mid)
+  const l2 = dot(ma, ma)
+  if (dist(s, e) < 1e-6) return 'The two end points are the same: pick two different points'
+  if (Math.sqrt(l2) < 1e-6 || Math.abs(cross(sub(e, s), ma)) < 1e-9 * Math.max(1, dist(s, e))) return 'Put the apex away from the line between the end points'
+  // how far along from the middle of the chord towards the apex the curve passes the chosen point
+  const rho = Math.min(0.95, Math.max(0.05, dot(sub(through, mid), ma) / l2))
+  return addConic(m, addPoint(m, s[0], s[1]), addPoint(m, apex[0], apex[1]), addPoint(m, e[0], e[1]), rho, construction)
+}

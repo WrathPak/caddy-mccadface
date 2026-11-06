@@ -4,7 +4,7 @@ import { getCommand, registerCommand, type Command } from '@/app/commands'
 import { useUi } from '@/store/ui'
 import { startSketchCommand, stopPicking, useSketchPick } from './create'
 import {
-  deleteSelection, enterSketch, escapeSketch, finishSketch, redoSketch, runConstraintCommand, selectAllSketch, undoKey, setTool, toggleConstruction, useSketch,
+  copySketch, deleteSelection, enterSketch, escapeSketch, finishSketch, pasteSketch, redoSketch, repeatLastTool, repeatableTool, runConstraintCommand, selectAllSketch, undoKey, setTool, toggleConstruction, useSketch,
   type ToolId,
 } from './store'
 import type { CKind } from './constraints'
@@ -53,6 +53,9 @@ export function installSketchCommands() {
   registerCommand({ id: 'sketch.smooth', label: 'Smooth', icon: Waves, category: 'Sketch', run: () => { if (sketching()) runConstraintCommand('smooth') } })
   registerCommand({ id: 'sketch.construction', label: 'Construction', icon: DotsThree, shortcut: 'X', category: 'Sketch', run: () => { if (sketching()) toggleConstruction() } })
   registerCommand({ id: 'sketch.selectAll', label: 'Select All', icon: Square, shortcut: 'Ctrl+A', category: 'Sketch', hidden: true, run: () => { if (sketching()) selectAllSketch() } })
+  registerCommand({ id: 'sketch.copy', label: 'Copy', icon: Square, shortcut: 'Ctrl+C', category: 'Sketch', hidden: true, run: () => { if (sketching()) copySketch() } })
+  registerCommand({ id: 'sketch.paste', label: 'Paste', icon: Square, shortcut: 'Ctrl+V', category: 'Sketch', hidden: true, run: () => { if (sketching()) pasteSketch() } })
+  registerCommand({ id: 'sketch.repeat', label: 'Repeat', icon: Square, category: 'Sketch', hidden: true, run: () => { if (sketching() && repeatableTool()) repeatLastTool() } })
   registerCommand({ id: 'sketch.select', label: 'Select', icon: Square, shortcut: 'Q', category: 'Sketch', run: () => { if (sketching()) setTool('select') } })
 
   /** Wrap a document command so it does something else while a sketch is open. */

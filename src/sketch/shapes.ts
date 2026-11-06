@@ -10,7 +10,7 @@ import { defaultOff } from './dims'
 import {
   addArc, addCircle, addConstraint, addEllipse, addLine, addPoint, addSpline, addText, deps, entityById, lineEnds, newId, pos, removeIds, tangentOf, tangentValue,
 } from './model'
-import { ORIGIN, type ArcE, type Entity, type LineE, type SketchModel, type SplineE, type Vec2 } from './types'
+import { AXIS_X, isAxisId, ORIGIN, type ArcE, type Entity, type LineE, type SketchModel, type SplineE, type Vec2 } from './types'
 
 const DIM_K = 6 // dimension offset scale: a few mm
 
@@ -307,8 +307,7 @@ function copyCurves(m: SketchModel, src: Entity[], pm: Map<string, string>, flip
   return out
 }
 
-const sameLineAs = (m: SketchModel, pid: string, line: LineE) => {
-  const [a, b] = lineEnds(m, line)
+const sameLineAs = (m: SketchModel, pid: string, a: Vec2, b: Vec2) => {
   const p = pos(m, pid)
   const d = sub(b, a), l = Math.hypot(d[0], d[1]) || 1
   return Math.abs(cross(d, sub(p, a))) / l < 1e-7
@@ -317,10 +316,10 @@ const sameLineAs = (m: SketchModel, pid: string, line: LineE) => {
 /** Mirror the selected entities across a line; the copy stays linked to the original by symmetric point constraints. */
 export function mirrorEntities(m: SketchModel, ids: string[], lineId: string): string | { ids: string[] } {
   const axis = entityById(m, lineId)
-  if (!axis || axis.type !== 'line') return 'Pick a line to mirror across'
+  if (!isAxisId(lineId) && (!axis || axis.type !== 'line')) return 'Pick a line to mirror across'
   const src = curvesOf(m, ids.filter((i) => i !== lineId))
   if (!src.length) return 'Select the curves to mirror first'
-  const [la, lb] = lineEnds(m, axis)
+  const [la, lb]: [Vec2, Vec2] = isAxisId(lineId) ? (lineId === AXIS_X ? [[0, 0], [1, 0]] : [[0, 0], [0, 1]]) : lineEnds(m, axis as LineE)
   const dir = norm(sub(lb, la))
   const reflect = (p: Vec2): Vec2 => {
     const d = sub(p, la), t = d[0] * dir[0] + d[1] * dir[1]
@@ -329,7 +328,7 @@ export function mirrorEntities(m: SketchModel, ids: string[], lineId: string): s
   }
   const pm = new Map<string, string>()
   for (const pid of pointsOf(m, src.map((e) => e.id))) {
-    if (sameLineAs(m, pid, axis)) { pm.set(pid, pid); continue } // on the mirror line: shared, so the outline stays closed
+    if (sameLineAs(m, pid, la, lb)) { pm.set(pid, pid); continue } // on the mirror line: shared, so the outline stays closed
     const q = reflect(pos(m, pid))
     const np = addPoint(m, q[0], q[1])
     pm.set(pid, np)

@@ -162,7 +162,7 @@ def('sketch.tangent', 'Tangent', Target, 'Sketch')
 def('sketch.equal', 'Equal', Equals, 'Sketch')
 def('sketch.fix', 'Fix / Lock', Lock, 'Sketch')
 def('sketch.trim', 'Trim', Scissors, 'Sketch', 'T')
-def('sketch.offset', 'Offset', Stack, 'Sketch')
+def('sketch.offset', 'Offset', Stack, 'Sketch', 'O')
 def('sketch.project', 'Project / Include', Exclude, 'Sketch')
 
 // ---- View

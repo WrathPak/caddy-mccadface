@@ -180,14 +180,24 @@ export const GUIDES: Guide[] = [
           'Click Sketch Dimension (D), click a line, a circle, or two points.',
           'Type the size and press Enter. The sketch changes to match it.',
         ],
-        note: 'A fully constrained sketch is easy to trust. The bar in the viewport tells you where you stand.',
+        note: 'A fully constrained sketch is easy to trust. The bar in the viewport tells you where you stand. Every dimension has a name (d1, d2 ...): type d1 * 2 in another dimension to make it follow the first.',
+      },
+      {
+        id: 'palette',
+        title: 'The Sketch Palette',
+        steps: [
+          'The palette at the right of the viewport turns parts of the sketch on and off: profiles, points, dimensions and constraint symbols.',
+          'Look At turns the view square to the sketch again after you have orbited. Slice cuts away the model in front of the sketch plane so you can see what you are drawing against.',
+          'Snap switches grid snapping on and off.',
+        ],
       },
       {
         id: 'modify',
         title: 'Trim, Offset and Construction',
         steps: [
           'Trim (T): click the piece of a curve between two crossings to remove it. The small arrow beside Trim also offers Extend, which grows a free end out to the next curve, and Break, which cuts a curve into separate pieces at its crossings or at your click.',
-          'Fillet and Chamfer round or cut the corner of two lines, a line and an arc, or two arcs.',
+          'Fillet and Chamfer round or cut the corner of two lines, a line and an arc, or two arcs. Chamfer can be an equal distance, two distances, or a distance and an angle.',
+          'Move / Copy (M) moves or copies the selected curves by a distance and an angle. Ctrl+C and Ctrl+V copy and paste curves, and a double click on a curve selects the whole chain it belongs to. Right-click opens a menu for the selection.',
           'Sketch Scale: pick the curves and a base point, set the factor in the bar. Mirror and Circular Pattern also let you click the curves inside the tool, then press Enter to go on.',
           'Offset: select a chain of curves, then give a distance.',
           'Construction (X): turn selected curves into guide lines that are ignored when you extrude.',

@@ -74,9 +74,9 @@ test('3-point rectangle: two corners of a side, then the width, at any angle; or
   near(m.profiles[0], 1000, 0.002)
   expect(m.dof).toBe(5) // where, which way, how long, how wide
   // typed: the first side level, then a width of 15 below it
-  await click(app, 60, -40)
-  await click(app, 90, -40)
-  await hover(app, 75, -50)
+  await click(app, 30, -35)
+  await click(app, 60, -35)
+  await hover(app, 45, -45)
   await type(app, '15')
   await page.keyboard.press('Enter')
   m = await sk(app)

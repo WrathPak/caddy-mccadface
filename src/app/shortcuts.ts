@@ -35,8 +35,9 @@ export function installShortcuts() {
       if (c.category === 'Sketch' && !sketch) continue
       const p = parse(c.shortcut)
       if (p.key === key && p.ctrl === ctrl && p.shift === e.shiftKey && p.alt === e.altKey) {
-        hit = c
-        break
+        // while sketching, a sketch command wins over a document one on the same keys (Ctrl+C copies curves, not a component)
+        if (!hit || (sketch && c.category === 'Sketch')) hit = c
+        if (!sketch || c.category === 'Sketch') break
       }
     }
     if (!hit) return

@@ -7,10 +7,11 @@
  *  - Scale: selected curves grow or shrink about a base point; the dimensions among them follow
  */
 import { dist, relAngle, TAU } from './geom'
-import { addArc, addConstraint, addLine, addPoint, deps, entityById, pos, removeIds } from './model'
+import { holds } from './holds'
+import { addArc, addCircle, addConic, addConstraint, addEllipse, addLine, addPoint, addSpline, addText, deps, endPointsOf, entityById, newId, pos, removeIds } from './model'
 import { pointsOf } from './shapes'
-import { clickParam, curveConstraint, cutsAlong, cutsOf, curveOf, pointAt, setPos, unpin } from './trim'
-import { isDim, ORIGIN, type ArcE, type Constraint, type SketchModel, type Vec2 } from './types'
+import { clickParam, curveConstraint, cutsAlong, cutsOf, curveOf, pointAt, release, setPos } from './trim'
+import { isDim, ORIGIN, type ArcE, type Constraint, type Entity, type SketchModel, type Vec2 } from './types'
 import { isDerived } from './curves'
 
 const EPS = 1e-7
@@ -59,8 +60,8 @@ export function extendCurve(m: SketchModel, id: string, click: Vec2): string | n
     }
   }
   if (!hit) return 'There is nothing in the way to extend to'
-  unpin(m, P, id)
   setPos(m, P, hit.p)
+  release(m, P, id)
   bindTo(m, P, hit.cutter)
   return null
 }
@@ -160,3 +161,97 @@ function scaleDim(c: Constraint, f: number) {
   c.expr = String(+c.value.toFixed(6))
 }
 
+
+// ------------------------------------------------------------------------------------------------ chain, copy, move
+
+/** The curve `id` and every curve joined to it end to end (a shared point, coincident ends, or ends in the same place), the way a double click selects them. */
+export function connectedCurves(m: SketchModel, id: string): string[] {
+  const curves = m.entities.filter((e) => e.type !== 'point')
+  const joined = (a: Entity, b: Entity) => {
+    for (const p of endPointsOf(a)) {
+      for (const q of endPointsOf(b)) {
+        if (p === q || dist(pos(m, p), pos(m, q)) < 1e-6) return true
+        if (m.constraints.some((c) => c.type === 'coincident' && c.refs.includes(p) && c.refs.includes(q))) return true
+      }
+    }
+    return false
+  }
+  const out = [id]
+  for (let i = 0; i < out.length; i++) {
+    const here = entityById(m, out[i])
+    if (!here) continue
+    for (const o of curves) if (!out.includes(o.id) && joined(here, o)) out.push(o.id)
+  }
+  return out
+}
+
+/**
+ * Copies of curves (and the points they are made of, moved by `tf`) added to `m`. `from` is the model they are read from - `m`
+ * itself, or a snapshot taken by Copy. The constraints among the copied things come along; ties to anything else (the origin, a
+ * fixed point, geometry that is not copied) do not, so the copy is free to be moved.
+ */
+export function duplicateCurves(m: SketchModel, ids: string[], tf: (p: Vec2) => Vec2, from: SketchModel = m, rotateBy = 0): string[] {
+  const curves = ids.map((i) => entityById(from, i)).filter((e): e is Entity => !!e && e.type !== 'point' && !e.ref)
+  const pm = new Map<string, string>()
+  for (const p of pointsOf(from, curves.map((c) => c.id))) {
+    if (entityById(from, p)?.type === 'point' && (entityById(from, p) as { ref?: boolean }).ref) { pm.set(p, p); continue }
+    const q = tf(pos(from, p))
+    pm.set(p, addPoint(m, q[0], q[1]))
+  }
+  const P = (id: string) => pm.get(id) ?? id
+  const cm = new Map<string, string>()
+  for (const e of curves) {
+    let n: Entity | null = null
+    if (e.type === 'line') n = addLine(m, P(e.p1), P(e.p2), e.construction)
+    else if (e.type === 'circle') n = addCircle(m, P(e.c), e.r, e.construction)
+    else if (e.type === 'arc') n = addArc(m, P(e.c), P(e.s), P(e.e), e.construction)
+    else if (e.type === 'ellipse') n = addEllipse(m, P(e.c), P(e.m), e.r, e.construction)
+    else if (e.type === 'conic') n = addConic(m, P(e.s), P(e.a), P(e.e), e.rho, e.construction)
+    else if (e.type === 'spline') {
+      const sp = addSpline(m, e.pts.map(P), e.mode, e.closed, e.construction)
+      if (e.t0) sp.t0 = P(e.t0)
+      if (e.t1) sp.t1 = P(e.t1)
+      n = sp
+    } else if (e.type === 'text') n = addText(m, P(e.p), e.text, e.h, e.a + rotateBy, e.font)
+    if (n) cm.set(e.id, n.id)
+  }
+  const inside = (r: string) => pm.has(r) || cm.has(r)
+  const groups = new Map<string, string>()
+  for (const c of from.constraints) {
+    if (c.type === 'fix' || !c.refs.every(inside) || c.refs.some((r) => pm.get(r) === r)) continue
+    const group = c.group ? (groups.get(c.group) ?? groups.set(c.group, newId(m, 'k')).get(c.group)) : undefined
+    const { id: _id, name: _name, ...rest } = c
+    void _id; void _name
+    addConstraint(m, { ...rest, refs: c.refs.map((r) => cm.get(r) ?? P(r)), ...(group ? { group } : {}) })
+  }
+  // a copy that is turned is no longer level, upright or on an axis
+  if (Math.abs(rotateBy) > 1e-9) {
+    const made = new Set([...pm.values(), ...cm.values()])
+    m.constraints = m.constraints.filter((c) => !(c.refs.some((r) => made.has(r)) && !holds(m, c)))
+  }
+  return [...cm.values()]
+}
+
+export interface MoveOpts { ids: string[]; dx: number; dy: number; angle: number }
+
+/** Move the curves by (dx, dy) after turning them `angle` degrees about their middle. Constraints the move breaks are released. */
+export function moveCurves(m: SketchModel, o: MoveOpts): string | null {
+  const curves = o.ids.map((i) => entityById(m, i)).filter((e): e is Entity => !!e && e.type !== 'point' && !e.ref)
+  if (!curves.length) return 'Select the curves to move first'
+  if (Math.abs(o.dx) < 1e-12 && Math.abs(o.dy) < 1e-12 && Math.abs(o.angle) < 1e-12) return 'Set a distance or an angle to move by'
+  const tf = transformOf(m, curves.map((c) => c.id), o)
+  const pts = pointsOf(m, curves.map((c) => c.id)).filter((p) => !(entityById(m, p) as { ref?: boolean } | undefined)?.ref)
+  const moved = new Set(pts)
+  for (const p of pts) { const q = tf(pos(m, p)); setPos(m, p, q) }
+  for (const c of curves) if (c.type === 'text') c.a += o.angle
+  m.constraints = m.constraints.filter((c) => !c.refs.some((r) => moved.has(r) || curves.some((k) => k.id === r)) || holds(m, c))
+  return null
+}
+
+/** The turn-then-shift of a Move / Copy as a function of a point. */
+export function transformOf(m: SketchModel, ids: string[], o: { dx: number; dy: number; angle: number }): (p: Vec2) => Vec2 {
+  const pts = pointsOf(m, ids).map((p) => pos(m, p))
+  const cx = pts.reduce((a, p) => a + p[0], 0) / (pts.length || 1), cy = pts.reduce((a, p) => a + p[1], 0) / (pts.length || 1)
+  const a = (o.angle * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a)
+  return (p) => [cx + (p[0] - cx) * cs - (p[1] - cy) * sn + o.dx, cy + (p[0] - cx) * sn + (p[1] - cy) * cs + o.dy]
+}
