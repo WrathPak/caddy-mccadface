@@ -21,6 +21,9 @@ export function PlanePicker() {
   const rollback = useDoc((st) => st.rollback)
   const cdata = usePlanes((st) => st.data)
   if (!picking) return null
+  // beside the part, not over it: each square sits just past the corner of the model in its own plane
+  const size = S * 0.5
+  const h = S * 1.08 + size / 2
   const choices: { id: string; plane: PlaneDef }[] = [
     ...NAMES.map((n) => ({ id: originPlaneId(n), plane: originPlane(n) })),
     ...features.filter((f, i) => PLANE_FEATURES.has(f.type) && i < rollback && !f.suppressed && cdata[f.id]).map((f) => ({ id: f.id, plane: cdata[f.id] })),
@@ -30,18 +33,19 @@ export function PlanePicker() {
       {choices.map(({ id, plane }) => {
         const hot = hover === id
         return (
-          <mesh
-            key={id}
-            position={plane.origin}
-            quaternion={planeQuaternion(plane)}
-            renderOrder={5}
-            onPointerMove={(e) => { e.stopPropagation(); if (hover !== id) setHover(id) }}
-            onPointerOut={() => setHover(null)}
-            onClick={(e) => { e.stopPropagation(); useUi.getState().setSelection([{ kind: 'plane', id }]) }}
-          >
-            <planeGeometry args={[S * 2, S * 2]} />
-            <meshBasicMaterial color={hot ? colors.sel : colors.accent} transparent opacity={hot ? 0.38 : 0.14} side={DoubleSide} depthWrite={false} />
-          </mesh>
+          // a small square off to the side of each plane: big planes through the origin hid the faces of the part
+          <group key={id} position={plane.origin} quaternion={planeQuaternion(plane)}>
+            <mesh
+              position={[h, h, 0]}
+              renderOrder={5}
+              onPointerMove={(e) => { e.stopPropagation(); if (hover !== id) setHover(id) }}
+              onPointerOut={() => setHover(null)}
+              onClick={(e) => { e.stopPropagation(); useUi.getState().setSelection([{ kind: 'plane', id }]) }}
+            >
+              <planeGeometry args={[size, size]} />
+              <meshBasicMaterial color={hot ? colors.sel : colors.accent} transparent opacity={hot ? 0.45 : 0.22} side={DoubleSide} depthWrite={false} depthTest={false} />
+            </mesh>
+          </group>
         )
       })}
     </group>

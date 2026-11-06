@@ -142,7 +142,7 @@ export interface OffsetResult {
 }
 
 /** Geometry of the offset by signed distance `d` (left of travel positive; for a circle, outward positive). */
-export function offsetGeometry(m: SketchModel, chain: Chain, d: number, style: CornerStyle = 'round'): OffsetResult {
+export function offsetGeometry(m: SketchModel, chain: Chain, d: number, style: CornerStyle = 'miter'): OffsetResult {
   if (chain.circle) {
     const { r } = circleOf(m, entityById(m, chain.circle) as CircleE)
     return { segs: null, circleR: r + d > 1e-9 ? r + d : undefined }
@@ -209,7 +209,8 @@ export function applyOffset(m: SketchModel, chain: Chain, d: number, text: strin
     return null
   }
 
-  const res = offsetChain(chainSegs(m, chain), chain.closed, d, 'round')
+  // sharp corners stay sharp (the offset lines are extended to meet), as in Fusion; only a very sharp spike falls back to an arc
+  const res = offsetChain(chainSegs(m, chain), chain.closed, d, 'miter')
   if (!res || !res.length) return 'The offset would collapse the geometry'
 
   interface Made { id: string; first: string; last: string; item: OffsetSeg }

@@ -400,6 +400,39 @@ export function select(ids: string[], additive = false) {
   invalidate()
 }
 
+// -------- moving a placed dimension (drag its value)
+
+let dimDrag: { id: string; start: Vec2; off0: Vec2; started: boolean } | null = null
+
+/** Pressed on a dimension's value: dragging it from here moves where the dimension sits. */
+export function startDimDrag(id: string, at: Vec2) {
+  const c = get().model.constraints.find((x) => x.id === id)
+  if (!c) return
+  dimDrag = { id, start: at, off0: c.off ?? defaultOff(get().model, c.type, c.refs, wppNow * 20), started: false }
+}
+export function moveDimDrag(at: Vec2) {
+  const d = dimDrag
+  if (!d) return
+  const s = get()
+  if (!d.started) {
+    if (dist(at, d.start) < 3 * wppNow) return
+    d.started = true
+    set({ past: [...s.past.slice(-100), s.model], future: [] })
+  }
+  const m = cloneModel(s.model)
+  const c = m.constraints.find((x) => x.id === d.id)
+  if (!c) return
+  c.off = [d.off0[0] + at[0] - d.start[0], d.off0[1] + at[1] - d.start[1]]
+  set({ model: m })
+  invalidate()
+}
+/** Released: true when the dimension was moved (so the press was not a click). */
+export function endDimDrag(): boolean {
+  const moved = !!dimDrag?.started
+  dimDrag = null
+  return moved
+}
+
 // -------- dimension editing
 
 export function editDim(id: string, isNew = false) {
