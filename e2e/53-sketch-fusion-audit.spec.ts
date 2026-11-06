@@ -84,11 +84,12 @@ test('Horizontal and Equal apply to everything selected, box-selected points inc
   for (const l of types(m, 'line')) near(pt(m, l.p1).y - pt(m, l.p2).y, 0)
 
   // three circles of different sizes, all picked with a window that also catches their centres
-  await circle(app, [0, 60], 4)
-  await circle(app, [30, 60], 6)
-  await circle(app, [60, 60], 9)
+  // (a little lower than the top of the view, where the Cancel / Finish bar sits)
+  await circle(app, [0, 48], 4)
+  await circle(app, [30, 48], 6)
+  await circle(app, [60, 48], 9)
   await select(app)
-  await drag(app, [-20, 40], [80, 80])
+  await drag(app, [-20, 38], [80, 59])
   expect((await sk(app)).sel.length).toBeGreaterThanOrEqual(6)
   await app.ev((c) => c.runCommand('sketch.equal'))
   m = await sk(app)

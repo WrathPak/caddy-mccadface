@@ -1,4 +1,4 @@
-import { test, expect, type App } from './helpers'
+import { test, expect, type App, viewBox } from './helpers'
 
 /* Sketch behaviour measured against Fusion 360. Every test here was a gap found by using the sketcher the way a Fusion user does and
    is closed now; docs/fusion-parity/sketch.md lists each with what Fusion does. The one still marked test.fail() is the 3D Sketch
@@ -717,7 +717,7 @@ async function sweepTools(app: App, label: string, touch: boolean) {
   for (const s of TOOL_STEPS) {
     await openTool(app, s, touch)
     if (!touch && ['line', 'rectangle', 'circle', 'arc', 'polygon', 'ellipse', 'slot-cc', 'rect-centre', 'spline-fit'].includes(s.name)) {
-      const b = (await page.locator('.vp canvas').boundingBox())!
+      const b = (await viewBox(page))
       await page.mouse.move(b.x + b.width * 0.4, b.y + b.height * 0.5)
       await page.mouse.click(b.x + b.width * 0.4, b.y + b.height * 0.5)
       await page.mouse.move(b.x + b.width * 0.55, b.y + b.height * 0.42, { steps: 4 })

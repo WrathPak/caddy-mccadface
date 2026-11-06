@@ -1,4 +1,5 @@
 /** Hair face-selection state and algorithms: click, screen-space brush, angle-bounded flood fill. */
+import { visH } from '@/viewport/visible'
 import { Vector3, type Camera } from 'three'
 import { create } from 'zustand'
 import type { Body } from '@/kernel/types'
@@ -136,7 +137,9 @@ export function brushTris(body: Body, hit: Vector3, camera: Camera, w: number, h
   const t = topoOf(body)
   const cam = camera as Camera & { isOrthographicCamera?: boolean; zoom: number; top: number; bottom: number; fov: number }
   const dist = camera.position.distanceTo(hit)
-  const perPx = cam.isOrthographicCamera ? (cam.top - cam.bottom) / cam.zoom / h : (2 * dist * Math.tan((cam.fov * Math.PI) / 360)) / h
+  // (world per pixel: the camera spreads its field of view over the visible window, not over the whole canvas)
+  const vh = visH({ width: w, height: h })
+  const perPx = cam.isOrthographicCamera ? (cam.top - cam.bottom) / cam.zoom / vh : (2 * dist * Math.tan((cam.fov * Math.PI) / 360)) / vh
   const rw = radiusPx * perPx * 1.6
   const out: number[] = []
   const v = new Vector3()

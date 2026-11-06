@@ -18,15 +18,15 @@ export function SnapPopover() {
         </P.Trigger>
       </Tip>
       <P.Portal>
-        <P.Content className="menu" side="top" align="start" sideOffset={6} data-testid="snap-popover" style={{ padding: 10, minWidth: 250 }}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Snap and inference</div>
+        <P.Content className="menu" side="top" align="start" sideOffset={6} data-testid="snap-popover" style={{ padding: 14, minWidth: 270 }}>
+          <div style={{ fontWeight: 650, fontSize: 'var(--fs-md)', marginBottom: 8 }}>Snap and inference</div>
           {SNAP_LABELS.map((s) => (
-            <Tip key={s.key} label={s.label} desc={s.help} side="right"><label style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0', cursor: 'pointer' }}>
+            <Tip key={s.key} label={s.label} desc={s.help} side="right"><label style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 0', cursor: 'pointer', fontSize: 'var(--fs-md)' }}>
               <input type="checkbox" data-testid={'snap-' + s.key} checked={flags[s.key]} onChange={(e) => set(s.key, e.target.checked)} />
               {s.label}
             </label></Tip>
           ))}
-          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', color: 'var(--text-dim)', fontSize: 11 }}>
+          <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, color: 'var(--text-dim)', fontSize: 'var(--fs-sm)' }}>
             <span>Hold Ctrl to pause, Shift to lock</span>
             <button type="button" className="btn" onClick={reset}>Reset</button>
           </div>

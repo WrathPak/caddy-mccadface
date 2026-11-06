@@ -1,4 +1,5 @@
 /** Live feature previews: translucent result/tool meshes, profile picking, and the distance-arrow manipulator. */
+import { visH } from '@/viewport/visible'
 import { markGrab } from './touchGrab'
 import { useDevice } from '@/app/device'
 import { Tip } from '@/ui/Tooltip'
@@ -229,7 +230,7 @@ function ArrowHandle({ store, suffix }: { store: typeof useManip; suffix: string
     if (!g) return
     const cam = state.camera as PerspectiveCamera & OrthographicCamera
     const p = new Vector3(...m.origin).addScaledVector(new Vector3(...m.dir), m.tip)
-    const s = cam.isOrthographicCamera ? 46 / cam.zoom : (cam.position.distanceTo(p) * 2 * Math.tan(MathUtils.degToRad(cam.fov) / 2) * 46) / state.size.height
+    const s = cam.isOrthographicCamera ? 46 / cam.zoom : (cam.position.distanceTo(p) * 2 * Math.tan(MathUtils.degToRad(cam.fov) / 2) * 46) / visH(state.size)
     g.scale.setScalar(s)
   })
 

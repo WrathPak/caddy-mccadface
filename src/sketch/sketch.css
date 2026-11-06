@@ -1,133 +1,150 @@
-/* Sketch overlay HTML (labels, glyphs, hints). Colors come from the app tokens. */
+/* Sketch overlay HTML (labels, glyphs, hints, bars). Colors come from the app tokens: mint for the work, amber for what is selected. */
 .sk-hint, .sk-tip {
-  transform: translate(12px, 10px);
+  transform: translate(14px, 12px);
   white-space: nowrap;
-  padding: 1px 5px;
-  font: 500 10px var(--font-ui);
+  padding: 3px 9px;
+  font: 500 var(--fs-sm) var(--font-ui);
   color: var(--text);
   background: var(--bg-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
+  -webkit-backdrop-filter: var(--glass-filter-lite);
+  backdrop-filter: var(--glass-filter-lite);
+  box-shadow: var(--shadow-float);
+  border-radius: var(--radius-pill);
   pointer-events: none;
 }
-.sk-tip { font-family: var(--font-mono); transform: translate(14px, -22px); }
+.sk-tip { font-variant-numeric: tabular-nums; transform: translate(16px, -26px); }
 
-.sk-glyphs { display: flex; gap: 2px; transform: translate(8px, -20px); pointer-events: none; }
+.sk-glyphs { display: flex; gap: 3px; transform: translate(8px, -22px); pointer-events: none; }
 .sk-glyph {
   pointer-events: auto;
-  min-width: 14px; height: 14px; padding: 0 2px;
+  min-width: 16px; height: 16px; padding: 0 3px;
   display: inline-flex; align-items: center; justify-content: center;
-  font: 600 9px var(--font-mono);
+  font: 600 10px var(--font-ui);
   color: var(--text-dim);
-  background: var(--bg-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  box-shadow: 0 0 0 1px var(--line-strong), 0 2px 6px rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
   cursor: default;
+  transition: color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
 }
-.sk-glyph:hover { color: var(--text); border-color: var(--accent-line); }
-.sk-glyph[data-sel='true'] { color: var(--warn); border-color: var(--warn); }
+.sk-glyph:hover { color: var(--text); box-shadow: 0 0 0 1px var(--accent-line), 0 2px 6px rgba(0, 0, 0, 0.25); }
+.sk-glyph[data-sel='true'] { color: var(--accent-2); box-shadow: 0 0 0 1px var(--accent-2), 0 2px 6px rgba(0, 0, 0, 0.25); }
 
 .sk-dim {
   pointer-events: auto;
   display: inline-block;
-  padding: 0 4px;
-  font: 500 11px var(--font-mono);
+  padding: 1px 8px;
+  font: 600 var(--fs-sm)/1.25 var(--font-ui);
+  font-variant-numeric: tabular-nums;
   color: var(--text);
-  background: var(--bg-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  box-shadow: 0 0 0 1px var(--line-strong), 0 2px 8px rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-pill);
   cursor: default;
   user-select: none;
   white-space: nowrap;
+  transition: box-shadow var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
-.sk-dim:hover { border-color: var(--accent-line); }
-.sk-dim[data-sel='true'] { color: var(--warn); border-color: var(--warn); }
-.sk-dim[data-bad='true'] { color: var(--danger); border-color: var(--danger); }
-.sk-dim[data-preview='true'] { opacity: 0.8; border-style: dashed; pointer-events: none; }
+.sk-dim:hover { box-shadow: 0 0 0 1px var(--accent-line), 0 2px 8px rgba(0, 0, 0, 0.25); }
+.sk-dim[data-sel='true'] { color: var(--accent-2); box-shadow: 0 0 0 1.5px var(--accent-2), 0 2px 8px rgba(0, 0, 0, 0.25); }
+.sk-dim[data-bad='true'] { color: var(--danger); box-shadow: 0 0 0 1.5px var(--danger), 0 2px 8px rgba(0, 0, 0, 0.25); }
+.sk-dim[data-preview='true'] { opacity: 0.8; pointer-events: none; }
 
 .sk-dim-input {
   pointer-events: auto;
-  width: 96px; height: 20px;
-  padding: 0 5px;
-  font: 500 11px var(--font-mono);
+  width: 110px; height: 28px;
+  padding: 0 10px;
+  font: 600 var(--fs-md) var(--font-ui);
+  font-variant-numeric: tabular-nums;
   color: var(--text);
-  background: var(--bg-input);
+  background: var(--bg-3);
   border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 0 3px var(--accent-dim), 0 4px 14px rgba(0, 0, 0, 0.3);
   outline: none;
   user-select: text;
 }
-.sk-dim-input.err { border-color: var(--danger); }
+.sk-dim-input.err { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(255, 122, 110, 0.2); }
 
 /* the options bar with the prompt under it: one stack, so the prompt can never land on the bar, the Finish bar or the view cube */
 .sk-stack {
-  position: absolute; top: 44px; left: 10px; max-width: calc(100% - 140px); z-index: 6;
-  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none;
+  position: absolute; top: calc(var(--in-t) + var(--hud) + 46px); left: calc(var(--in-l) + var(--hud)); max-width: calc(100% - var(--in-l) - var(--in-r) - 150px - 2 * var(--hud)); z-index: 6;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none;
 }
 .sk-stack > .sk-toolbar { pointer-events: auto; }
 .sk-status {
-  max-width: 100%; padding: 3px 10px;
-  font: 500 11px var(--font-ui); color: var(--text);
-  background: var(--bg-3); border: 1px solid var(--line-strong); border-radius: var(--radius);
-  box-shadow: var(--shadow-float);
+  max-width: 100%; padding: 7px 14px;
+  font: 500 var(--fs-md) var(--font-ui); color: var(--text);
+  border-radius: var(--radius-pill);
   pointer-events: none;
 }
-.sk-status[data-kind='warn'] { border-color: var(--warn); }
+.sk-status[data-kind='warn'] { box-shadow: var(--shadow-float), inset 0 0 0 1px var(--accent-2); color: var(--accent-2); }
 .sk-bar {
-  position: absolute; right: 116px; top: 10px; z-index: 6;
-  display: flex; gap: 6px; align-items: center;
+  position: absolute; right: calc(var(--in-r) + 122px); top: calc(var(--in-t) + var(--hud)); z-index: 6;
+  display: flex; gap: 6px; align-items: center; padding: 4px 4px 4px 16px; border-radius: var(--radius-pill);
+  background: var(--glass); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); box-shadow: var(--shadow-panel), var(--shadow-inner);
 }
-.sk-bar .info { font: 500 11px var(--font-ui); color: var(--text-dim); padding: 0 6px; white-space: nowrap; }
+.sk-bar .info { font: 500 var(--fs-sm)/16px var(--font-ui); color: var(--text-dim); padding: 0 6px 0 0; white-space: nowrap; }
+.sk-bar .btn { height: 32px; padding: 0 14px; border-radius: var(--radius-pill); }
 
 /* typed values while drawing */
 .sk-typed {
-  display: flex; flex-direction: column; gap: 2px;
-  transform: translate(16px, 12px);
+  display: flex; flex-direction: column; gap: 4px;
+  transform: translate(18px, 14px);
   pointer-events: none;
 }
 .sk-field {
-  display: flex; align-items: center; gap: 6px; justify-content: space-between;
-  min-width: 118px; padding: 1px 6px;
-  font: 500 11px var(--font-mono);
+  display: flex; align-items: center; gap: 10px; justify-content: space-between;
+  min-width: 132px; padding: 4px 12px;
+  font: 600 var(--fs-sm) var(--font-ui);
+  font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   background: var(--bg-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
+  -webkit-backdrop-filter: var(--glass-filter-lite);
+  backdrop-filter: var(--glass-filter-lite);
+  box-shadow: 0 0 0 1px var(--line-strong), 0 4px 12px rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-pill);
 }
-.sk-field .lbl { font: 500 10px var(--font-ui); color: var(--text-faint); }
+.sk-field .lbl { font: 500 var(--fs-xs) var(--font-ui); color: var(--text-faint); }
 .sk-field .val { color: var(--text-dim); }
 .sk-field[data-typed='true'] .val { color: var(--text); }
-.sk-field[data-active='true'] { border-color: var(--accent); }
-.sk-field .caret { display: inline-block; width: 1px; height: 11px; margin-left: 1px; background: var(--accent); vertical-align: -2px; animation: sk-blink 1s steps(1) infinite; }
-.sk-keys { font: 500 9px var(--font-ui); color: var(--text-faint); padding: 0 2px; }
+.sk-field[data-active='true'] { box-shadow: 0 0 0 1.5px var(--accent), 0 4px 12px rgba(0, 0, 0, 0.25); }
+.sk-field .caret { display: inline-block; width: 1px; height: 12px; margin-left: 1px; background: var(--accent); vertical-align: -2px; animation: sk-blink 1s steps(1) infinite; }
+.sk-keys { font: 500 var(--fs-xs) var(--font-ui); color: var(--text-faint); padding: 0 4px; }
 @keyframes sk-blink { 50% { opacity: 0; } }
-.sk-tip-input { background: var(--bg-input); border: 1px solid var(--accent); border-radius: 3px; color: var(--text); padding: 1px 4px; outline: none; }
+.sk-tip-input { background: var(--bg-3); border: 1px solid var(--accent); border-radius: var(--radius-pill); color: var(--text); padding: 2px 10px; outline: none; }
 
 /* options bar of the newer sketch tools */
 .sk-toolbar {
   /* under the Finish bar row, clear of the view cube on the right: it never squeezes into a column on a narrow window */
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 100%;
-  padding: 4px 10px; font: 500 11px var(--font-ui); color: var(--text);
-  background: var(--bg-2); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow-float); z-index: 5;
+  display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; max-width: 100%;
+  padding: 7px 14px; font: 500 var(--fs-sm) var(--font-ui); color: var(--text);
+  border-radius: var(--radius-lg); z-index: 5;
 }
-.sk-toolbar b { font-weight: 600; color: var(--accent); }
-.sk-opt { display: inline-flex; align-items: center; gap: 4px; }
+.sk-toolbar b { font-weight: 650; font-size: var(--fs-md); color: var(--accent); letter-spacing: -0.005em; }
+.sk-opt { display: inline-flex; align-items: center; gap: 7px; }
 .sk-opt span { color: var(--text-dim); }
-.sk-opt input:not([type='checkbox']), .sk-opt select { width: 64px; height: 20px; padding: 0 4px; font: 11px var(--font-mono); color: var(--text); background: var(--bg-1); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+.sk-opt input:not([type='checkbox']), .sk-opt select { width: 72px; height: 26px; padding: 0 9px; font: 500 var(--fs-sm) var(--font-ui); font-variant-numeric: tabular-nums; color: var(--text); background: var(--bg-input); border: 1px solid transparent; border-radius: 8px; outline: none; transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
+.sk-opt input:not([type='checkbox']):focus, .sk-opt select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
 .sk-opt select { width: auto; }
-.sk-opt input[data-testid='sk-opt-text'], .sk-opt input[data-testid='sk-text-edit'] { width: 150px; }
+.sk-opt input[data-testid='sk-opt-text'], .sk-opt input[data-testid='sk-text-edit'] { width: 160px; }
 .sk-note { color: var(--text-dim); }
 
-/* the Sketch Palette: bottom right, clear of the toolbars at the top and of the work in the middle */
+/* on a desktop the options of the tool are a card in the Inspector, above the palette */
+.panel .sk-toolbar { margin: 0 12px 10px; padding: 10px 12px; background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--line); -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* the Sketch Palette: a card in the Inspector while a sketch is open */
 .sk-palette {
-  position: absolute; right: 10px; bottom: 10px; z-index: 6; width: 150px; padding: 4px 8px 6px;
-  display: flex; flex-direction: column; gap: 3px; font: 500 11px var(--font-ui); color: var(--text);
-  background: var(--bg-2); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow-float);
+  margin: 0 12px 12px; padding: 6px 14px 12px;
+  display: flex; flex-direction: column; gap: 6px; font: 500 var(--fs-md) var(--font-ui); color: var(--text);
+  background: var(--bg-2); border-radius: var(--radius-lg); box-shadow: inset 0 0 0 1px var(--line);
 }
-.sk-pal-head { display: flex; align-items: center; gap: 4px; padding: 2px 0; font: 600 11px var(--font-ui); color: var(--accent); background: none; border: none; cursor: pointer; text-align: left; }
-.sk-pal-row { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-.sk-pal-look { justify-content: center; margin-bottom: 2px; }
-.sk-dim-name { margin-right: 4px; font: 600 10px var(--font-mono); color: var(--text-dim); }
+.sk-pal-head { display: flex; align-items: center; gap: 6px; padding: 4px 0; font: 650 var(--fs-md) var(--font-ui); color: var(--text); background: none; border: none; cursor: pointer; text-align: left; }
+.sk-pal-head svg { color: var(--text-faint); }
+.sk-pal-row { display: flex; align-items: center; gap: 9px; cursor: pointer; color: var(--text-dim); min-height: 22px; }
+.sk-pal-row:hover { color: var(--text); }
+.sk-pal-look { justify-content: center; margin-bottom: 2px; width: 100%; }
+.sk-dim-name { margin-right: 6px; font: 650 var(--fs-xs) var(--font-ui); color: var(--text-dim); }
 
 /* a narrow window: the Finish bar shortens to the state and two icon buttons, so it stays on one line inside the view */
 @media (max-width: 1150px) {

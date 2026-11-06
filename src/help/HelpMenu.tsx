@@ -20,21 +20,21 @@ export function HelpMenu() {
     <D.Root>
       <Tip label="Help" desc="Getting started, keyboard shortcuts, a guide for each workspace and a replay of the intro tour." side="bottom">
         <D.Trigger asChild>
-          <button type="button" className="rbtn small" aria-label="Help" data-testid="help-menu" style={{ minWidth: 0, padding: '1px 5px' }}>
-            <Question size={13} />
+          <button type="button" className="rbtn small" aria-label="Help" data-testid="help-menu">
+            <Question size={16} />
           </button>
         </D.Trigger>
       </Tip>
       <D.Portal>
         <D.Content className="menu" sideOffset={2} align="end" data-testid="help-menu-content">
-          <D.Item className="menu-item" onSelect={() => show({ kind: 'start' })}><Compass size={14} /> Getting started</D.Item>
-          <D.Item className="menu-item" onSelect={() => show({ kind: 'shortcuts' })}><Keyboard size={14} /> Keyboard shortcuts</D.Item>
-          <D.Item className="menu-item" onSelect={() => openGuide(guide.id)}><BookOpen size={14} /> {tab?.label ?? guide.title} guide</D.Item>
-          <D.Item className="menu-item" onSelect={() => openGuide('solid')}><BookOpen size={14} /> All workspace guides</D.Item>
+          <D.Item className="menu-item" onSelect={() => show({ kind: 'start' })}><Compass size={16} /> Getting started</D.Item>
+          <D.Item className="menu-item" onSelect={() => show({ kind: 'shortcuts' })}><Keyboard size={16} /> Keyboard shortcuts</D.Item>
+          <D.Item className="menu-item" onSelect={() => openGuide(guide.id)}><BookOpen size={16} /> {tab?.label ?? guide.title} guide</D.Item>
+          <D.Item className="menu-item" onSelect={() => openGuide('solid')}><BookOpen size={16} /> All workspace guides</D.Item>
           <D.Separator className="menu-sep" />
-          <D.Item className="menu-item" onSelect={startTour}><Sparkle size={14} /> Take the tour</D.Item>
-          <D.Item className="menu-item" onSelect={giveFeedback} data-testid="help-feedback"><ChatCircleText size={14} /> Give feedback</D.Item>
-          <D.Item className="menu-item" onSelect={() => show({ kind: 'about' })}><Info size={14} /> About</D.Item>
+          <D.Item className="menu-item" onSelect={startTour}><Sparkle size={16} /> Take the tour</D.Item>
+          <D.Item className="menu-item" onSelect={giveFeedback} data-testid="help-feedback"><ChatCircleText size={16} /> Give feedback</D.Item>
+          <D.Item className="menu-item" onSelect={() => show({ kind: 'about' })}><Info size={16} /> About</D.Item>
         </D.Content>
       </D.Portal>
     </D.Root>

@@ -1,4 +1,4 @@
-import { test, expect, type App } from './helpers'
+import { test, expect, type App, viewBox } from './helpers'
 import type { Page } from '@playwright/test'
 
 /** Box, framed from the home view. */
@@ -15,7 +15,7 @@ const turn = (app: App) => app.ev(() => (window as any).__nav.turntable() as { a
 
 /** Canvas client rect and its centre. */
 async function vp(page: Page) {
-  const b = (await page.locator('.vp canvas').first().boundingBox())!
+  const b = (await viewBox(page))
   return { b, cx: b.x + b.width / 2, cy: b.y + b.height / 2 }
 }
 

@@ -1,4 +1,4 @@
-import { test, expect, type App } from './helpers'
+import { test, expect, type App, viewBox } from './helpers'
 
 /**
  * Renders the scene once and returns, for every canvas row, how far the pixels around the centre column are from the background
@@ -18,7 +18,9 @@ async function centreColumn(app: App): Promise<{ rows: number[]; height: number 
     const ctx = cv.getContext('2d')!
     ctx.drawImage(img, 0, 0)
     const bg = ctx.getImageData(2, 2, 1, 1).data // the top corner is above the horizon: pure background
-    const cx = Math.floor(img.width / 2)
+    // the view is centred in the window the panels leave open (the canvas runs behind them), so the axis is up the middle of that window
+    const hole = document.querySelector('.vp-hole')?.getBoundingClientRect(), cvr = t.gl.domElement.getBoundingClientRect()
+    const cx = hole ? Math.round(((hole.left + hole.width / 2 - cvr.left) / cvr.width) * img.width) : Math.floor(img.width / 2)
     const col = ctx.getImageData(cx - 2, 0, 5, img.height).data
     const rows: number[] = []
     for (let y = 0; y < img.height; y++) {
@@ -56,7 +58,7 @@ test('perspective ground grid fades smoothly into the background towards the hor
   await app.open()
   await app.ev((c) => c.ui.getState().setProjection('perspective'))
   await app.ev((c) => c.ui.setState({ showOrigin: false })) // the origin marker would sit on the sampled column
-  const vp = (await page.locator('.vp canvas').boundingBox())!
+  const vp = (await viewBox(page))
   await page.mouse.move(vp.x + vp.width * 0.5, vp.y + vp.height * 0.5)
 
   for (const [label, elevDeg, wheel] of [['grazing', 3, 0], ['grazing, zoomed out', 3, 6], ['low', 8, 0]] as [string, number, number][]) {

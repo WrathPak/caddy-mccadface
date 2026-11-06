@@ -6,10 +6,11 @@ import { Tip } from '@/ui/Tooltip'
 import { useSketch, finishSketch, cancelSketch, lookAtSketch, setSketchView, type SketchView } from './store'
 import { useSketchPick } from './create'
 import { SketchToolBar } from './ToolBar'
+import { useDevice } from '@/app/device'
 import './sketch.css'
 
-/** Fusion's Sketch Palette: what the sketch shows, Look At, Slice and the grid snap. */
-function SketchPalette() {
+/** Fusion's Sketch Palette: what the sketch shows, Look At, Slice and the grid snap. It lives in the Inspector while a sketch is open (the panel has nothing else to show then), so it never sits on the drawing. */
+export function SketchPalette() {
   const show = useSketch((s) => s.show)
   const snap = useUi((s) => s.snap)
   const [open, setOpen] = useState(true)
@@ -42,15 +43,16 @@ export function SketchHud() {
   const tool = useSketch((s) => s.tool)
   const construction = useSketch((s) => s.construction)
   const picking = useSketchPick((s) => s.picking)
+  const compact = useDevice((s) => s.compact)
   const text = status ?? (picking ? 'Select a plane or a planar face to sketch on' : null)
   const state = info.ok ? (info.dof === 0 ? 'Fully constrained' : 'Under-constrained') : 'Conflict'
   return (
     <>
       <div className="sk-stack">
-        <SketchToolBar />
+        {/* (on a desktop the options of the tool sit in the Inspector, beside the Sketch Palette, so they never cover the drawing) */}
+        {compact && <SketchToolBar />}
         {text && <div className="sk-status" data-kind={status ? 'warn' : 'info'}>{text}</div>}
       </div>
-      {active && <SketchPalette />}
       {active && (
         <div className="sk-bar">
           <span className="info">

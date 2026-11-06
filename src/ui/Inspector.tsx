@@ -1,3 +1,6 @@
+import { useSketch } from '@/sketch/store'
+import { SketchPalette } from '@/sketch/SketchHud'
+import { SketchToolBar } from '@/sketch/ToolBar'
 import { Tip } from './Tooltip'
 import { tapProps } from './tapProps'
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -188,7 +191,14 @@ const KIND_OF: Record<string, string> = { body: 'body', mesh: 'body', face: 'fac
 /** Schema-driven feature dialog. Renders `ui.inspector` (any ParamSchema) with OK / Cancel. */
 export function Inspector() {
   const session = useUi((s) => s.inspector)
-  if (!session) return <div className="panel" data-tour="inspector"><div className="panel-title">Inspector</div><div className="empty">Select a feature or start a tool to edit its parameters.</div></div>
+  const sketching = useSketch((s) => s.active)
+  if (!session) {
+    return (
+      <div className="panel" data-tour="inspector">
+        {sketching ? <><div className="panel-title">Sketch</div><SketchToolBar /><SketchPalette /></> : <div className="inspector-empty" />}
+      </div>
+    )
+  }
   // a fresh form per dialog: its initial state is the session's values (never an empty object). Values a preview pushes into the
   // same dialog update the form in place, so a box being typed in keeps its text and its focus
   return <InspectorForm key={session.formId ?? sessionKey(session)} session={session} />

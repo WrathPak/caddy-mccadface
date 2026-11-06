@@ -1,3 +1,4 @@
+import { visibleOf, visH } from './visible'
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Box3, MathUtils, Matrix4, Mesh, OrthographicCamera, PerspectiveCamera, Plane, Quaternion, Raycaster, Sphere, Vector2, Vector3 } from 'three'
@@ -212,27 +213,35 @@ export function NavControls() {
     cam.quaternion.copy(st.q)
     cam.up.set(0, 1, 0).applyQuaternion(st.q)
     // near / far follow the scene: everything lies within [d - R, d + R] of the camera; the near plane never reaches the geometry
+    const vis = visibleOf(state.size)
     const dc = cam.position.distanceTo(sph.center)
     const floor = Math.max(0.01, R * 4e-4)
     // the extra reach (8x the orbit distance) is for the ground grid, which fades out well inside it instead of hitting the clip plane
     const far = dc + R * 1.25 + 10 + st.dist * 8
     if ((cam as OrthographicCamera).isOrthographicCamera) {
       const o = cam as OrthographicCamera
-      o.zoom = sizeRef.current.height / (2 * st.dist * Math.tan(MathUtils.degToRad(FOV) / 2))
+      o.zoom = vis.h / (2 * st.dist * Math.tan(MathUtils.degToRad(FOV) / 2))
+      // the frustum spans the visible window; the canvas is a bigger sub-rectangle of the same picture
+      o.left = -vis.w / 2; o.right = vis.w / 2; o.top = vis.h / 2; o.bottom = -vis.h / 2
       // as deep in front as behind: an orthographic view sees the ground plane run past the camera, and a shallow near plane cut it off in a hard line
       o.near = -far
       o.far = far
+      if (vis.inset) o.setViewOffset(vis.w, vis.h, -vis.l, -vis.t, state.size.width, state.size.height)
+      else o.clearViewOffset()
       o.updateProjectionMatrix()
     } else {
       const p = cam as PerspectiveCamera
       p.near = dc > R * 1.05 ? Math.max(floor, Math.min((dc - R) * 0.5, dc * 0.05)) : floor // capped so a grazing view of the ground is not cut off by the near plane
       p.far = far
+      p.aspect = vis.w / vis.h
+      if (vis.inset) p.setViewOffset(vis.w, vis.h, -vis.l, -vis.t, state.size.width, state.size.height)
+      else p.clearViewOffset()
       p.updateProjectionMatrix()
     }
     cam.updateMatrixWorld()
     // a fingertip covers a few millimetres of screen: edges and points are picked from further away (world units, so it follows the zoom)
     if (isCoarse()) {
-      const wpp = (cam as OrthographicCamera).isOrthographicCamera ? 1 / (cam as OrthographicCamera).zoom : (2 * st.dist * Math.tan(MathUtils.degToRad(FOV) / 2)) / state.size.height
+      const wpp = (cam as OrthographicCamera).isOrthographicCamera ? 1 / (cam as OrthographicCamera).zoom : (2 * st.dist * Math.tan(MathUtils.degToRad(FOV) / 2)) / vis.h
       const params = state.raycaster.params
       if (params.Line) params.Line.threshold = Math.max(1.2, wpp * 13)
       if (params.Points) params.Points.threshold = Math.max(1, wpp * 15)
@@ -318,7 +327,7 @@ export function NavControls() {
     const worldPerPixel = (c: PerspectiveCamera | OrthographicCamera) =>
       (c as OrthographicCamera).isOrthographicCamera
         ? 1 / (c as OrthographicCamera).zoom
-        : (2 * s.current.dist * Math.tan(MathUtils.degToRad(FOV) / 2)) / sizeRef.current.height
+        : (2 * s.current.dist * Math.tan(MathUtils.degToRad(FOV) / 2)) / visH(sizeRef.current)
 
     /** Animate towards a goal; unspecified parts stay as they are (or at the current goal, so repeated clicks accumulate). */
     const goTo = (g: { q?: Quaternion; dist?: number; target?: Vector3 }, ms = 380) => {
@@ -334,15 +343,16 @@ export function NavControls() {
       }
       invalidate()
     }
+    const goalQ = () => anim.current?.q1.clone() ?? s.current.q.clone()
+    // (a generous margin: the part gets a comfortable margin of the visible window)
     const fitSphere = (center: Vector3, radius: number) =>
-      goTo({ dist: (Math.max(radius, 0.5) / Math.sin(MathUtils.degToRad(FOV) / 2)) * 1.15, target: center })
+      goTo({ dist: (Math.max(radius, 0.5) / Math.sin(MathUtils.degToRad(FOV) / 2)) * 1.32, target: center })
     const frame = () => {
       const box = sceneBox(scene)
       if (box.isEmpty()) return fitSphere(new Vector3(0, 0, 0), 40)
       const sph = box.getBoundingSphere(new Sphere())
       fitSphere(sph.center.clone(), sph.radius)
     }
-    const goalQ = () => anim.current?.q1.clone() ?? s.current.q.clone()
     const setPivot = (p: Vector3 | null, on: boolean) => {
       navDebug.pivot = p
       if (mk) { mk.on = on; if (!on) mk.until = navClock.now() + 450 }

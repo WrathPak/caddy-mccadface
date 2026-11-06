@@ -1,4 +1,5 @@
 /** Rotary drag handle for angles (Revolve): a knob on an arc about the axis. Same value box and typing as the distance arrow. */
+import { visH } from '@/viewport/visible'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Html, Line } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
@@ -72,7 +73,7 @@ function AngleHandle({ store, suffix }: { store: typeof useAngleManip; suffix: s
     if (!g) return
     const cam = state.camera as PerspectiveCamera & OrthographicCamera
     const p = g.getWorldPosition(new Vector3())
-    g.scale.setScalar(cam.isOrthographicCamera ? 46 / cam.zoom : (cam.position.distanceTo(p) * 2 * Math.tan(MathUtils.degToRad(cam.fov) / 2) * 46) / state.size.height)
+    g.scale.setScalar(cam.isOrthographicCamera ? 46 / cam.zoom : (cam.position.distanceTo(p) * 2 * Math.tan(MathUtils.degToRad(cam.fov) / 2) * 46) / visH(state.size))
   })
 
   const arc = useMemo(() => {

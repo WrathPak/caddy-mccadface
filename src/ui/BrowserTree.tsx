@@ -26,16 +26,16 @@ const KIND_HELP: Partial<Record<EntityKind, string>> = {
 
 /** The icons of the rows, made once: a new element on every render would make every row look changed to `memo`. */
 const ICON = {
-  Cube: <Cube size={13} />,
-  DotOutline: <DotOutline size={13} />,
-  FileText: <FileText size={13} />,
-  Folder: <Folder size={13} />,
-  GridFour: <GridFour size={13} />,
-  LineSegment: <LineSegment size={13} />,
-  Parallelogram: <Parallelogram size={13} />,
-  PencilSimpleLine: <PencilSimpleLine size={13} />,
-  Planet: <Planet size={13} />,
-  SelectionBackground: <SelectionBackground size={13} />,
+  Cube: <Cube size={16} />,
+  DotOutline: <DotOutline size={16} />,
+  FileText: <FileText size={16} />,
+  Folder: <Folder size={16} />,
+  GridFour: <GridFour size={16} />,
+  LineSegment: <LineSegment size={16} />,
+  Parallelogram: <Parallelogram size={16} />,
+  PencilSimpleLine: <PencilSimpleLine size={16} />,
+  Planet: <Planet size={16} />,
+  SelectionBackground: <SelectionBackground size={16} />,
 }
 
 /** Open a sketch for editing, the same as double-clicking it in the timeline. */
@@ -100,11 +100,11 @@ const Row = memo(function Row({ id, name, depth, kind, icon, open, onToggle, col
     <div
       className={'tree-row' + (isGroup ? ' group' : '')}
       data-selected={selected}
-      style={{ paddingLeft: 4 + depth * 12 }}
+      style={{ paddingLeft: 4 + depth * 14 }}
       onClick={(e) => (isGroup ? onToggle!() : kind && (activate && useDoc.getState().setActiveOcc(activate), setSelection([{ kind, id, path }], e.ctrlKey || e.shiftKey)))}
       onDoubleClick={() => (kind === 'sketch' ? editSketch(id) : coll && setEditing(true))}
     >
-      <span className="caret">{isGroup ? open ? <CaretDown size={9} weight="bold" /> : <CaretRight size={9} weight="bold" /> : null}</span>
+      <span className="caret">{isGroup ? open ? <CaretDown size={11} weight="bold" /> : <CaretRight size={11} weight="bold" /> : null}</span>
       <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}>{icon}</span>
       {editing ? (
         <input
@@ -122,7 +122,7 @@ const Row = memo(function Row({ id, name, depth, kind, icon, open, onToggle, col
         <Tip label={hidden ? 'Show' : 'Hide'} desc={hidden ? 'Bring this back into the view.' : 'Hide this from the view. It stays in the document.'} side="right">
           <button type="button" className="eye" data-off={hidden} aria-label={hidden ? 'Show' : 'Hide'}
             onClick={(e) => { e.stopPropagation(); toggleHidden(id) }}>
-            {hidden ? <EyeSlash size={12} /> : <Eye size={12} />}
+            {hidden ? <EyeSlash size={15} /> : <Eye size={15} />}
           </button>
         </Tip>
       )}
@@ -208,7 +208,7 @@ export function BrowserTree() {
 
   return (
     <div className="panel" data-tour="browser">
-
+      <div className="panel-head">Browser</div>
       <div className="panel-scroll" style={{ paddingTop: 2 }}>
         <Group label={`Document: ${doc.name}`} depth={0} icon={ICON.FileText}>
           <Group label="Origin" depth={1} icon={ICON.Planet}>

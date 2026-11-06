@@ -14,8 +14,8 @@ const SHORT: Record<string, string> = {
   'sketch.construction': 'Construction', 'sketch.dimension': 'Dimension', 'sketch.finish': 'OK', 'edit.undo': 'Undo', 'sketch.repeat': 'Repeat', 'sketch.copy': 'Copy',
 }
 /** Ellipse the items sit on: wide enough that neighbouring pills (74 x 24 px) never touch. */
-const RX = 118
-const RY = 92
+const RX = 132
+const RY = 104
 const DEAD = 22
 
 /** Keep the whole ring on screen: a long press near an edge opens the menu a little inward. */
@@ -133,7 +133,7 @@ export function MarkingMenu({ target }: { target: RefObject<HTMLElement | null> 
               }
             }}
           >
-            <c.icon size={13} />
+            <c.icon size={16} />
             {SHORT[id] ?? c.label.split(' ')[0]}
           </div>
         )

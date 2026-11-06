@@ -27,6 +27,8 @@ export function installShortcuts() {
     if (typing && e.key !== 'Escape') return
     if (typing) return
     const ctrl = e.ctrlKey || e.metaKey
+    // F6 is taken by the browser's own address bar in some browsers: Home fits everything too
+    if (e.key === 'Home' && !ctrl && !e.shiftKey && !e.altKey) { e.preventDefault(); runCommand('view.frame'); return }
     const key = e.key.length === 1 ? e.key.toUpperCase() : e.key
     const sketch = useUi.getState().sketchMode
     let hit: Command | undefined

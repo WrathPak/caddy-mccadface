@@ -1,4 +1,4 @@
-import { test, expect } from './helpers'
+import { test, expect, viewBox } from './helpers'
 import type { Page } from '@playwright/test'
 
 /** The first-run tour is off for every spec by the fixture; this puts it back for the pages that need it. */
@@ -150,7 +150,7 @@ test('Settings: reversing the zoom direction flips what the wheel does', async (
   await app.ok()
   await app.cameraStable()
   const dist = () => page.evaluate(() => (window as any).__nav.pose().dist as number) // eslint-disable-line
-  const b = (await page.locator('.vp canvas').boundingBox())!
+  const b = (await viewBox(page))
   const wheelDown = async () => {
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
     await page.mouse.wheel(0, 240)

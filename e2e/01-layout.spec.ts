@@ -1,22 +1,27 @@
 import { test, expect } from './helpers'
 
-test('initial layout is Fusion-like: thin timeline, slim side panels', async ({ app, page }) => {
+test('initial layout: slim floating side panels, a slim bottom dock, the model owns the rest', async ({ app, page }) => {
   await app.open()
   const sizes = await page.evaluate(() => {
     const r = (sel: string) => document.querySelector(sel)!.getBoundingClientRect()
-    const groups = [...document.querySelectorAll('.dv-groupview')].map((g) => g.getBoundingClientRect())
-    return { groups: groups.map((g) => ({ w: Math.round(g.width), h: Math.round(g.height) })), vp: r('.vp').toJSON(), tl: r('.tl').toJSON() }
+    const groups = [...document.querySelectorAll('.dv-groupview')].map((g) => ({ box: g.getBoundingClientRect(), dock: !!g.querySelector('.bottom-dock'), hole: !!g.querySelector('.vp-hole') }))
+    return { groups: groups.filter((g) => !g.hole).map((g) => ({ w: Math.round(g.box.width), h: Math.round(g.box.height), dock: g.dock })), vp: r('.vp').toJSON(), win: window.innerWidth }
   })
-  const timeline = sizes.groups.find((g) => g.h < 130 && g.w > 600)!
-  expect(timeline, 'timeline strip').toBeTruthy()
-  expect(timeline.h).toBeGreaterThanOrEqual(60)
-  expect(timeline.h).toBeLessThanOrEqual(100)
-  const side = sizes.groups.filter((g) => g.w < 400)
-  expect(side).toHaveLength(2)
-  for (const s of side) {
-    expect(s.w).toBeGreaterThanOrEqual(240)
-    expect(s.w).toBeLessThanOrEqual(300)
-  }
+  const dock = sizes.groups.find((g) => g.dock)!
+  expect(dock, 'the bottom dock').toBeTruthy()
+  expect(dock.h).toBeGreaterThanOrEqual(44)
+  expect(dock.h).toBeLessThanOrEqual(60)
+  // nothing selected: the Inspector is not there, the Browser is a slim panel
+  const side = sizes.groups.filter((g) => !g.dock && g.w > 0)
+  expect(side).toHaveLength(1)
+  expect(side[0].w).toBeGreaterThanOrEqual(240)
+  expect(side[0].w).toBeLessThanOrEqual(300)
+  // a tool opens it again, as a slim sheet of its own
+  await app.ev((c) => c.runCommand('solid.box'))
+  await expect(app.inspector()).toBeVisible()
+  const insp = await app.inspector().evaluate((el) => Math.round(el.closest('.dv-groupview')!.getBoundingClientRect().width))
+  expect(insp).toBeGreaterThanOrEqual(240)
+  expect(insp).toBeLessThanOrEqual(300)
   expect(sizes.vp.height).toBeGreaterThan(550)
   await app.shot('layout-initial')
 })
@@ -89,5 +94,5 @@ test('a crashing panel shows an inline error with Reload panel; the app stays up
   await app.ev((c) => c.ui.getState().closeInspector())
   await err.getByRole('button', { name: 'Reload panel' }).click()
   await expect(err).toBeHidden()
-  await expect(page.locator('.panel-title', { hasText: 'Inspector' })).toBeVisible()
+  await expect(page.locator('.inspector-empty')).toHaveCount(1) // (an empty Inspector is not shown at all)
 })

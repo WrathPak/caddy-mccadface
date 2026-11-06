@@ -258,7 +258,7 @@ export function Canvas({ sheet, out }: { sheet: Sheet; out: SheetOutput | null }
         <rect x={0} y={0} width={d.w} height={d.h} fill="#ffffff" data-testid="drawing-paper" />
         {out && <Layer prims={out.prims} h={H} />}
         {out && so && <Layer prims={out.prims} h={H} color="#1f9bb5" extra={0.5} only={so} />}
-        {out && hover && hover !== so && !tool && <Layer prims={out.prims} h={H} color="#5fb3c4" extra={0.25} only={hover} />}
+        {out && hover && hover !== so && !tool && <Layer prims={out.prims} h={H} color="#5fd7a2" extra={0.25} only={hover} />}
         {targetRect && <rect x={targetRect.x} y={targetRect.y} width={targetRect.w} height={targetRect.h} fill="rgba(31,155,181,0.08)" stroke="#1f9bb5" strokeWidth={0.4} strokeDasharray="2 1.5" />}
         {preview.length > 0 && <Layer prims={preview} h={H} color="#d98a1f" extra={0.15} />}
         {marker && <circle cx={marker[0]} cy={H - marker[1]} r={5 / cam.zoom} fill="none" stroke="#d98a1f" strokeWidth={1.6 / cam.zoom} data-testid="drawing-snap" />}

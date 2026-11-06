@@ -1,4 +1,4 @@
-import { test, expect, type App } from './helpers'
+import { test, expect, type App, viewBox } from './helpers'
 import { writeBig3mf, writeBigStl } from './bigStl'
 import { startProdServer } from './prodServer'
 
@@ -87,7 +87,7 @@ test('a 3 million triangle STL imports without a long main-thread task and orbit
   // orbit: shift + middle drag under the default (Fusion) navigation preset, sampling frame times
   await app.ev((c) => c.runCommand('view.frame'))
   await app.cameraStable()
-  const b = (await page.locator('.vp canvas').boundingBox())!
+  const b = (await viewBox(page))
   const cx = b.x + b.width / 2, cy = b.y + b.height / 2
   await page.evaluate(() => {
     const w = window as unknown as { __frames: [number, number, boolean][]; __stop: boolean; __caddy: { lodState: () => boolean[][] } }

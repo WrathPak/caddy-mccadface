@@ -15,8 +15,11 @@ async function closeSettings(page: Page) {
   await expect(page.getByTestId('settings-dialog')).toHaveCount(0)
 }
 
-/** Render a frame, then count the canvas pixels that are clearly green (a colour nothing else in the scene has). */
-async function greenPixels(app: App): Promise<number> {
+/**
+ * Render a frame, then count the canvas pixels that are clearly magenta: the custom selection colour of these specs, a colour nothing
+ * else in the scene has (the theme accent is a green, the axes are red, green and blue).
+ */
+async function magentaPixels(app: App): Promise<number> {
   return app.page.evaluate(() => {
     const t = (window as any).__caddy.three // eslint-disable-line
     t.gl.render(t.scene, t.camera)
@@ -25,7 +28,7 @@ async function greenPixels(app: App): Promise<number> {
     const px = new Uint8Array(w * h * 4)
     g.readPixels(0, 0, w, h, g.RGBA, g.UNSIGNED_BYTE, px)
     let n = 0
-    for (let i = 0; i < px.length; i += 4) if (px[i + 1] > px[i] + 30 && px[i + 1] > px[i + 2] + 30) n++
+    for (let i = 0; i < px.length; i += 4) if (px[i] > px[i + 1] + 20 && px[i + 2] > px[i + 1] + 20) n++
     return n
   })
 }
@@ -51,66 +54,66 @@ async function boxScene(app: App) {
 test('selection colour: picked in Settings, drawn on faces and edges and sketch lines, hover follows, persists', async ({ app, page }) => {
   await boxScene(app)
   const body = await app.ev((c) => c.doc.getState().geometry[0].id)
-  // the green Y axis (and the grid's) would count as green pixels
+  // (the custom colour is a magenta: nothing else in the scene is)
   await app.ev((c) => c.ui.setState({ showOrigin: false, showGrid: false }))
   const select = (kind: string, index: number) => app.ev((c, a) => c.ui.getState().setSelection([{ kind: a.kind, id: a.id, index: a.index }]), { kind, id: body, index })
 
-  // default: the theme accent, nothing green
+  // default: the theme accent, nothing magenta
   await select('face', 0)
   await app.cameraStable()
   const accent = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())
   const before = await highlightHex(app)
   expect(before.length).toBeGreaterThan(0)
   expect(before[0].toLowerCase()).toBe(accent.toLowerCase())
-  expect(await greenPixels(app)).toBe(0)
+  expect(await magentaPixels(app)).toBe(0)
 
-  // pick green with the custom colour input
+  // pick magenta with the custom colour input
   await openDisplay(page)
   await expect(page.getByTestId('sel-color-default')).toHaveAttribute('aria-checked', 'true')
-  await page.getByTestId('sel-color-custom').fill('#33dd33')
+  await page.getByTestId('sel-color-custom').fill('#dd33dd')
   await closeSettings(page)
   await app.cameraStable()
-  expect((await highlightHex(app))[0]).toBe('#33dd33')
-  const faceGreen = await greenPixels(app)
-  expect(faceGreen).toBeGreaterThan(500) // the face is tinted green on screen
+  expect((await highlightHex(app))[0]).toBe('#dd33dd')
+  const faceCustom = await magentaPixels(app)
+  expect(faceCustom).toBeGreaterThan(300) // the face is tinted magenta on screen (the box is framed with a generous margin: a face is a few hundred pixels)
 
   // hover (pre-selection) is drawn in the same colour: clear the selection, hover a face
   await app.ev((c) => c.ui.getState().setSelection([]))
   await app.ev((c, id) => c.ui.setState({ hover: { kind: 'face', id, index: 0 } }), body)
   await app.cameraStable()
-  expect(await greenPixels(app)).toBeGreaterThan(500)
+  expect(await magentaPixels(app)).toBeGreaterThan(300)
   await app.ev((c) => c.ui.setState({ hover: null }))
 
   // edges
   await app.ev((c) => c.ui.getState().setSelectionFilter('edge'))
   await select('edge', 0)
   await app.cameraStable()
-  const edgeGreen = await greenPixels(app)
-  expect(edgeGreen).toBeGreaterThan(0) // a thin antialiased line, nothing else is green
-  await app.shot('selection-color-green')
+  const edgeCustom = await magentaPixels(app)
+  expect(edgeCustom).toBeGreaterThan(0) // a thin antialiased line, nothing else is magenta
+  await app.shot('selection-color-custom')
 
   // persisted in the settings, and picked up again after a reload
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('caddy.settings')!).selectionColor)).toBe('#33dd33')
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('caddy.settings')!).selectionColor)).toBe('#dd33dd')
   await page.reload()
   await boxScene(app)
   await app.ev((c) => c.ui.getState().setSelection([]))
   const body2 = await app.ev((c) => c.doc.getState().geometry[0].id)
   await app.ev((c, id) => c.ui.getState().setSelection([{ kind: 'face', id, index: 0 }]), body2)
   await app.cameraStable()
-  expect((await highlightHex(app))[0]).toBe('#33dd33')
+  expect((await highlightHex(app))[0]).toBe('#dd33dd')
   await openDisplay(page)
-  await expect(page.getByTestId('sel-color-custom')).toHaveValue('#33dd33')
+  await expect(page.getByTestId('sel-color-custom')).toHaveValue('#dd33dd')
 
-  // sketch entities: a selected sketch line is green too
+  // sketch entities: a selected sketch line is magenta too
   await closeSettings(page)
   await app.sketchRect('XY', 40, 30)
   await app.ev((c) => c.sketch.setState({ sel: c.sketch.getState().model.entities.filter((e: any) => e.type !== 'point').map((e: any) => e.id) })) // eslint-disable-line
   await app.cameraStable()
-  const skSel = await greenPixels(app)
+  const skSel = await magentaPixels(app)
   await app.ev((c) => c.sketch.setState({ sel: [] }))
   await app.cameraStable()
-  const unselected = await greenPixels(app)
-  expect(skSel).toBeGreaterThan(unselected + 50) // (the sketch grid's own Y axis is green too, so compare)
+  const unselected = await magentaPixels(app)
+  expect(skSel).toBeGreaterThan(unselected + 50)
   await app.finishSketch()
 
   // Default goes back to the accent
@@ -121,7 +124,7 @@ test('selection colour: picked in Settings, drawn on faces and edges and sketch 
   await app.ev((c, id) => c.ui.getState().setSelection([{ kind: 'face', id, index: 0 }]), body2)
   await app.cameraStable()
   expect((await highlightHex(app))[0].toLowerCase()).toBe(accent.toLowerCase())
-  expect(await greenPixels(app)).toBe(0)
+  expect(await magentaPixels(app)).toBe(0)
 })
 
 test('origin axes: hidden and shown from Settings, in step with the viewport button, and persisted', async ({ app, page }) => {

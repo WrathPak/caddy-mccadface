@@ -1,8 +1,10 @@
-import { test, expect, type App } from './helpers'
+import { test, expect, type App, viewBox } from './helpers'
 
-/** Screenshot the viewport canvas, then measure a block of pixels: the share that deviates from the block median, and the std. */
-async function blockStats(app: App, box: { x: number; y: number; w: number; h: number }) {
-  const cb = (await app.page.locator('.vp canvas').boundingBox())!
+/** Screenshot the visible viewport (the part of the canvas the panels leave open; the glass panels, bars and the view cube are hidden for the shot, so only the 3D picture is measured), then measure a block of pixels: the share that deviates from the block median, and the std. */
+async function blockStats(app: App, box: { x: number; y: number; w: number; h: number }, anchor: 'view' | 'canvas' = 'view') {
+  // (positions count from the top left of the visible viewport, or of the whole canvas, which runs behind the panels: its far corner is bare background)
+  const cb = anchor === 'canvas' ? (await app.page.locator('.vp canvas').boundingBox())! : await viewBox(app.page)
+  await app.page.addStyleTag({ content: '.app > :not(.stage), .viewcube, .vp-toolbar, .empty-hint, .nav-pivot { visibility: hidden !important; } .vp::after { display: none !important; }' })
   const png = await app.page.screenshot({ clip: { x: cb.x + box.x, y: cb.y + box.y, width: box.w, height: box.h } })
   const url = 'data:image/png;base64,' + png.toString('base64')
   return app.page.evaluate(async (u) => {
@@ -41,7 +43,7 @@ test('light theme, AO on, empty scene: ground and background are grain free', as
   await setup(app, true)
   await app.ev((c) => c.bus.emit('view', 'top'))
   await app.cameraStable()
-  const cb = (await app.page.locator('.vp canvas').boundingBox())!
+  const cb = (await viewBox(app.page))
   // a block of ground with the grid on, AO on and then off: the grid draws the same either way, so any change is AO grain
   const block = { x: Math.floor(cb.width / 2) + 20, y: Math.floor(cb.height / 2) + 20, w: 30, h: 30 }
   const ground = await blockStats(app, block)
@@ -56,7 +58,7 @@ test('light theme, AO on, empty scene: ground and background are grain free', as
   await app.ev((c) => c.ui.setState({ showGrid: false, showOrigin: false }))
   await app.page.waitForTimeout(600)
   const bare = await blockStats(app, { x: 300, y: 300, w: 200, h: 200 })
-  const corner = await blockStats(app, { x: 4, y: 4, w: 40, h: 40 })
+  const corner = await blockStats(app, { x: 4, y: 4, w: 40, h: 40 }, 'canvas')
   expect(bare.std).toBeLessThan(0.05)
   expect(corner.std).toBeLessThan(0.05)
 })
@@ -71,7 +73,7 @@ test('light theme, AO on, box: flat lit face has near zero variance', async ({ a
   // the AO pass really is drawing once the camera has settled
   await expect.poll(() => app.ev((c) => c.ui.getState().aoActive), { timeout: 60_000 }).toBe(true)
   const p = await app.project(0, 0, 40) // centre of the top face
-  const cb = (await app.page.locator('.vp canvas').boundingBox())!
+  const cb = (await viewBox(app.page))
   const face = await blockStats(app, { x: p.x - cb.x - 12, y: p.y - cb.y - 12, w: 24, h: 24 })
   console.log('face', face)
   expect(face.std).toBeLessThan(1.5)

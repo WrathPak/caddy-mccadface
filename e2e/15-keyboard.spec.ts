@@ -1,4 +1,4 @@
-import { test, expect, type App } from './helpers'
+import { test, expect, type App, viewBox } from './helpers'
 
 /** A 30 x 20 sketch rectangle on XY, finished, ready to extrude. */
 async function rectSketch(app: App) {
@@ -167,7 +167,7 @@ test('sketcher: Enter / Escape end the polyline, then the tool; Enter with no to
   await page.getByText('XY plane').click()
   await expect(page.locator('.sk-bar')).toBeVisible()
   await app.ribbon('Line').first().click()
-  const b = (await page.locator('.vp canvas').boundingBox())!
+  const b = (await viewBox(page))
   const at = (dx: number, dy: number) => ({ x: b.x + b.width / 2 + dx, y: b.y + b.height / 2 + dy })
   const click = async (dx: number, dy: number) => { const p = at(dx, dy); await page.mouse.move(p.x, p.y, { steps: 3 }); await page.mouse.click(p.x, p.y) }
   const st = () => app.ev((c) => { const s = c.sketch.getState(); return { draft: !!s.draft, tool: s.tool, active: s.active, lines: s.model.entities.filter((e: any) => e.type === 'line').length } })

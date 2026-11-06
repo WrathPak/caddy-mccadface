@@ -13,6 +13,8 @@ import { isCoarse } from '@/app/device'
 const KEY = 'caddy.settings'
 
 export type ThemeMode = Theme | 'system'
+/** The frosted-glass blur behind the panels: Auto switches it off where the picture is drawn on the CPU, where it would stall the app. */
+export type GlassMode = 'auto' | 'on' | 'off'
 export const WORKSPACES: { id: string; label: string }[] = [
   { id: 'solid', label: 'Solid' },
   { id: 'assemble', label: 'Assemble' },
@@ -47,6 +49,7 @@ interface Persisted {
   projection: Projection
   gridDensity: GridDensity
   pixelRatio: PixelRatio
+  glass: GlassMode
   showOrigin: boolean
   selectionColor: string
   autosave: boolean
@@ -72,6 +75,7 @@ const DEFAULTS: Persisted = {
   projection: 'orthographic',
   gridDensity: 'normal',
   pixelRatio: 'auto',
+  glass: 'auto',
   showOrigin: true,
   selectionColor: '',
   autosave: true,
@@ -105,6 +109,7 @@ function load(): Persisted {
       projection: oneOf(v.projection, ['perspective', 'orthographic'], DEFAULTS.projection),
       gridDensity: oneOf(v.gridDensity, ['fine', 'normal', 'coarse'], DEFAULTS.gridDensity),
       pixelRatio: oneOf(v.pixelRatio, ['auto', '1', '1.5', '2', 'native'], DEFAULTS.pixelRatio),
+      glass: oneOf(v.glass, ['auto', 'on', 'off'], DEFAULTS.glass),
       showOrigin: v.showOrigin !== false,
       selectionColor: validSelectionColor(v.selectionColor),
       autosave: v.autosave !== false,
@@ -127,6 +132,7 @@ interface SettingsState {
   themeMode: ThemeMode
   gridDensity: GridDensity
   pixelRatio: PixelRatio
+  glass: GlassMode
   /** Colour of selected and pre-selected (hovered) things in the viewport; empty means the accent. */
   selectionColor: string
   autosave: boolean
@@ -143,6 +149,7 @@ interface SettingsState {
   tourSeen: boolean
   setSelectionColor: (c: string) => void
   setPixelRatio: (p: PixelRatio) => void
+  setGlass: (g: GlassMode) => void
   setDefaultWorkspace: (w: string) => void
   setThemeMode: (m: ThemeMode) => void
   /** Flip between dark and light (the ribbon button, the palette command). */
@@ -173,6 +180,7 @@ export const useSettings = create<SettingsState>((set, get) => {
     themeMode: init.themeMode,
     gridDensity: init.gridDensity,
     pixelRatio: init.pixelRatio,
+    glass: init.glass,
     selectionColor: init.selectionColor,
     autosave: init.autosave,
     autosaveSeconds: init.autosaveSeconds,
@@ -184,6 +192,7 @@ export const useSettings = create<SettingsState>((set, get) => {
     beginnerTips: init.beginnerTips,
     tourSeen: init.tourSeen,
     setPixelRatio: (pixelRatio) => set({ pixelRatio }),
+    setGlass: (glass) => set({ glass }),
     setSelectionColor: (c) => set({ selectionColor: validSelectionColor(c) }),
     setDefaultWorkspace: (defaultWorkspace) => set({ defaultWorkspace }),
     setThemeMode: (themeMode) => {
@@ -211,7 +220,7 @@ export const useSettings = create<SettingsState>((set, get) => {
       const s = get()
       s.setThemeMode(d.themeMode)
       s.setGridDensity(d.gridDensity)
-      set({ pixelRatio: d.pixelRatio, selectionColor: d.selectionColor, defaultWorkspace: d.defaultWorkspace, autosave: d.autosave, autosaveSeconds: d.autosaveSeconds, diskAutosave: d.diskAutosave, autosaveVersions: d.autosaveVersions, tooltips: d.tooltips, beginnerTips: d.beginnerTips })
+      set({ pixelRatio: d.pixelRatio, glass: d.glass, selectionColor: d.selectionColor, defaultWorkspace: d.defaultWorkspace, autosave: d.autosave, autosaveSeconds: d.autosaveSeconds, diskAutosave: d.diskAutosave, autosaveVersions: d.autosaveVersions, tooltips: d.tooltips, beginnerTips: d.beginnerTips })
       useUi.setState({ units: d.units, showGrid: d.showGrid, showOrigin: d.showOrigin, ssao: defaultSsao(), displayMode: d.displayMode, projection: d.projection })
     },
   }
@@ -230,6 +239,7 @@ function save() {
     projection: u.projection,
     gridDensity: s.gridDensity,
     pixelRatio: s.pixelRatio,
+    glass: s.glass,
     showOrigin: u.showOrigin,
     selectionColor: s.selectionColor,
     autosave: s.autosave,

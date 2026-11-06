@@ -1,3 +1,4 @@
+import { visH } from '@/viewport/visible'
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Color, DoubleSide, MathUtils, Vector2, Vector3, type OrthographicCamera, type PerspectiveCamera, type ShaderMaterial } from 'three'
@@ -44,7 +45,7 @@ void main() {
   if (uOrtho < 0.5) f *= smoothstep(uNear, uNear * 2.0, d); // dissolve instead of being cut by the near plane
   float k = gridStrength(p, uStep, uBlend, f);
   vec3 col = gridColor(k, uMinor, uMajor);
-  float a = 0.8 * k;
+  float a = 0.85 * k;
   vec2 ad = fwidth(p) * 1.2;
   float ax = 1.0 - min(abs(p.y) / max(ad.y, 1e-6), 1.0); // X axis (y = 0)
   float ay = 1.0 - min(abs(p.x) / max(ad.x, 1e-6), 1.0); // Y axis (x = 0)
@@ -52,6 +53,7 @@ void main() {
   if (ay > 0.0) { col = uAxisY; a = max(a, ay * 0.9 * f); }
   if (a < 0.004) discard;
   gl_FragColor = vec4(col, a);
+  #include <colorspace_fragment>
 }`
 
 /**
@@ -92,14 +94,16 @@ export function InfiniteGrid() {
   useFrame((state) => {
     const u = mat.current?.uniforms
     if (!u) return
-    u.uMinor.value.set(colors.grid)
-    u.uMajor.value.set(colors.gridMajor)
+    // the ground grid reads a little stronger than the sketch grid's colours (an empty document is mostly grid): lifted towards white on dark, towards black on light
+    const lift = document.documentElement.dataset.theme === 'light' ? '#000000' : '#ffffff'
+    u.uMinor.value.set(colors.grid).lerp(new Color(lift), 0)
+    u.uMajor.value.set(colors.gridMajor).lerp(new Color(lift), 0)
     u.uAxisX.value.set(colors.axisX)
     u.uAxisY.value.set(colors.axisY)
     const cam = state.camera as PerspectiveCamera & OrthographicCamera
     const ortho = !!cam.isOrthographicCamera
     const d = cam.position.length() || 100
-    const wpp = ortho ? 1 / cam.zoom : (2 * d * Math.tan(MathUtils.degToRad(cam.fov) / 2)) / state.size.height
+    const wpp = ortho ? 1 / cam.zoom : (2 * d * Math.tan(MathUtils.degToRad(cam.fov) / 2)) / visH(state.size)
     const { step, blend } = gridLevels(wpp)
     u.uStep.value = step
     u.uBlend.value = blend
