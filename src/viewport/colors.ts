@@ -26,7 +26,7 @@ export function useVpColors() {
       /** selected and pre-selected (hovered) things: the chosen colour, else the accent */
       sel: custom || read('--accent'),
       /** the hover colour that goes with it: the same hue, lighter */
-      hover: custom ? '#' + new Color(custom).lerp(new Color('#ffffff'), 0.35).getHexString() : (read('--accent-hover') === '#888888' ? '#78c4d3' : read('--accent-hover')),
+      hover: custom ? '#' + new Color(custom).lerp(new Color('#ffffff'), 0.35).getHexString() : (read('--accent-hover') === '#888888' ? '#82e4b8' : read('--accent-hover')),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [theme, custom],

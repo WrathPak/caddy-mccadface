@@ -1,3 +1,4 @@
+import { studioPatch } from './Studio'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Line } from '@react-three/drei'
 import { useThree, type ThreeEvent } from '@react-three/fiber'
@@ -154,12 +155,13 @@ export function Bodies() {
 
   const mats = useMemo<Mats>(() => {
     const base = new MeshStandardMaterial({
-      color: colors.body, roughness: 0.62, metalness: 0.05, side: DoubleSide,
+      color: colors.body, roughness: 0.4, metalness: 0.1, side: DoubleSide,
       polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
       transparent: displayMode === 'xray', opacity: displayMode === 'xray' ? 0.32 : 1, depthWrite: displayMode !== 'xray',
       wireframe: displayMode === 'wireframe',
       clippingPlanes: clip,
     })
+    studioPatch(base)
     const surf = new MeshStandardMaterial({
       color: colors.surface, roughness: 0.5, metalness: 0.05, side: DoubleSide,
       polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
@@ -168,7 +170,7 @@ export function Bodies() {
       clippingPlanes: clip,
     })
     const hi = new MeshBasicMaterial({ color: colors.sel, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: DoubleSide, clippingPlanes: clip })
-    const dim = new MeshStandardMaterial({ color: colors.body, roughness: 0.62, metalness: 0.05, side: DoubleSide, transparent: true, opacity: 0.28, depthWrite: false, clippingPlanes: clip })
+    const dim = new MeshStandardMaterial({ color: colors.body, roughness: 0.4, metalness: 0.1, side: DoubleSide, transparent: true, opacity: 0.28, depthWrite: false, clippingPlanes: clip })
     const flag = new MeshStandardMaterial({ color: '#d9625a', roughness: 0.55, metalness: 0.05, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes: clip, wireframe: displayMode === 'wireframe' })
     return { base, surf, hi, dim, flag }
   }, [displayMode, colors, clip])
@@ -355,6 +357,7 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
         )}
         <mesh
           ref={chunked ? undefined : (fullRef as never)}
+          userData={{ casts: true, selected: wholeBody }}
           geometry={geo}
           material={chunked ? HIDDEN : bodyMat}
           // three uploads the geometry of every mesh it walks, even one with an invisible material, so the picking mesh of a

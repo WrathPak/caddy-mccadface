@@ -1,4 +1,5 @@
 /** Finished sketches in the viewport (curves only; profile picking lives with the features that consume them). */
+import { visH } from '@/viewport/visible'
 import { useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { BufferGeometry, Float32BufferAttribute } from 'three'
@@ -66,7 +67,7 @@ export function SketchDisplay() {
   useFrame((state) => {
     if (!pick) return
     const cam = state.camera as { isOrthographicCamera?: boolean; zoom: number; fov: number; position: { length(): number } }
-    const wpp = cam.isOrthographicCamera ? 1 / cam.zoom : (2 * cam.position.length() * Math.tan((cam.fov * Math.PI) / 360)) / state.size.height
+    const wpp = cam.isOrthographicCamera ? 1 / cam.zoom : (2 * cam.position.length() * Math.tan((cam.fov * Math.PI) / 360)) / visH(state.size)
     state.raycaster.params.Line = { threshold: wpp * 6 }
   })
   return (

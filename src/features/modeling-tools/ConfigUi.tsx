@@ -70,13 +70,13 @@ function ConfigDialog() {
                       onChange={(e) => upd(i, (c) => ({ ...c, values: { ...c.values, [p.name]: e.target.value } }))} />
                   </div>
                 ))}
-                <button type="button" className="rbtn small" style={{ minWidth: 0, padding: 2 }} aria-label="Remove configuration" onClick={() => setRows(rows.filter((_, k) => k !== i))}><Trash size={13} /></button>
+                <button type="button" className="rbtn small" style={{ minWidth: 0, padding: 2 }} aria-label="Remove configuration" onClick={() => setRows(rows.filter((_, k) => k !== i))}><Trash size={16} /></button>
               </Fragment>
             ))}
           </div>
           <button type="button" className="btn" data-testid="config-add" style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}
             onClick={() => setRows([...rows, { name: ['S', 'M', 'L', 'XL'][rows.length] ?? `Config ${rows.length + 1}`, values: {} }])}>
-            <Plus size={12} /> Add configuration
+            <Plus size={15} /> Add configuration
           </button>
         </>
       )}
@@ -89,11 +89,11 @@ export function ConfigurationsGroup({ depth }: { depth: number }) {
   const [open, setOpen] = useState(true)
   const configs = useDoc((s) => s.configs)
   const active = useDoc((s) => s.activeConfig)
-  const pad = (d: number) => ({ paddingLeft: 4 + d * 12 })
-  const row = (key: string, label: string, on: boolean, click: () => void, extra?: React.ReactNode) => (
-    <div key={key} className="tree-row" data-selected={on} data-testid={'config-row-' + key} style={pad(depth + 1)} onClick={click}>
+  const pad = (d: number) => ({ paddingLeft: 4 + d * 14 })
+  const row = (key: string, label: string, on: boolean, click: () => void, extra?: React.ReactNode, cls = '') => (
+    <div key={key} className={'tree-row' + cls} data-selected={on} data-testid={'config-row-' + key} style={pad(depth + 1)} onClick={click}>
       <span className="caret" />
-      <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}>{on ? <Check size={13} /> : null}</span>
+      <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}>{on ? <Check size={16} /> : null}</span>
       <span className="name">{label}</span>
       {extra}
     </div>
@@ -101,15 +101,15 @@ export function ConfigurationsGroup({ depth }: { depth: number }) {
   return (
     <>
       <div className="tree-row group" style={pad(depth)} data-testid="configs-group" onClick={() => setOpen(!open)}>
-        <span className="caret">{open ? <CaretDown size={9} weight="bold" /> : <CaretRight size={9} weight="bold" />}</span>
-        <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}><Pencil size={13} /></span>
+        <span className="caret">{open ? <CaretDown size={11} weight="bold" /> : <CaretRight size={11} weight="bold" />}</span>
+        <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}><Pencil size={16} /></span>
         <span className="name">Configurations{active ? `: ${active}` : ''}</span>
       </div>
       {open && (
         <>
           {configs.length > 0 && row('base', 'Base parameters', active === null, () => useDoc.getState().setActiveConfig(null))}
           {configs.map((c) => row(c.name, c.name, active === c.name, () => useDoc.getState().setActiveConfig(c.name)))}
-          {row('edit', configs.length ? 'Edit configurations...' : 'Add configurations...', false, () => useConfigDialog.getState().set(true))}
+          {row('edit', configs.length ? 'Edit configurations...' : 'Add configurations...', false, () => useConfigDialog.getState().set(true), undefined, ' link')}
         </>
       )}
       <ConfigDialog />

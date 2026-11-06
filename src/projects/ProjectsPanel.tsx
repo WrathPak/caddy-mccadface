@@ -61,7 +61,7 @@ function Row({ node, depth, showPath }: { node: FileNode; depth: number; showPat
             autoFocus
             aria-label="Project name"
             defaultValue={baseOf(node.name)}
-            style={{ height: 18, background: 'var(--bg-input)', border: '1px solid var(--accent)', color: 'var(--text)', outline: 'none', fontSize: 'var(--fs-md)', padding: '0 3px', borderRadius: 2, userSelect: 'text' }}
+            style={{ height: 26, background: 'var(--bg-input)', border: '1px solid var(--accent)', color: 'var(--text)', outline: 'none', fontSize: 'var(--fs-md)', padding: '0 8px', borderRadius: 8, userSelect: 'text' }}
             onFocus={(e) => e.currentTarget.select()}
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}

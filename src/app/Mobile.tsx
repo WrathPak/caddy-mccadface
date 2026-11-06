@@ -226,7 +226,7 @@ function TimelineSheet() {
   )
 }
 
-const PEEK = 136
+const PEEK = 236
 const SNAPS: InspectorSnap[] = ['peek', 'half', 'full']
 
 /** Pixels the sheet may use: the visible page, less the top bar so it never covers the way back. */

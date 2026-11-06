@@ -1,4 +1,5 @@
 /** Viewport layer of the DETAIL tools: emboss / engrave solid, textured model preview, the on-surface text handle and the readout. */
+import { visH } from '@/viewport/visible'
 import { markGrab } from '@/viewport/touchGrab'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Html } from '@react-three/drei'
@@ -83,7 +84,7 @@ function EmbossHandle({ view }: { view: EmbossView }) {
     if (!k) return
     const cam = state.camera as PerspectiveCamera & OrthographicCamera
     const p = new Vector3(...view.point)
-    const s = cam.isOrthographicCamera ? 9 / cam.zoom : (cam.position.distanceTo(p) * 2 * Math.tan(MathUtils.degToRad(cam.fov) / 2) * 9) / state.size.height
+    const s = cam.isOrthographicCamera ? 9 / cam.zoom : (cam.position.distanceTo(p) * 2 * Math.tan(MathUtils.degToRad(cam.fov) / 2) * 9) / visH(state.size)
     k.scale.setScalar(s)
   })
 

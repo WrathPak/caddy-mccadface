@@ -23,7 +23,7 @@ export function CommandPalette() {
             <Command.Group key={cat} heading={cat}>
               {cmds.map((c) => (
                 <Command.Item key={c.id} value={`${c.label} ${c.id}`} onSelect={() => { setOpen(false); runCommand(c.id) }}>
-                  <c.icon size={14} />
+                  <c.icon size={16} />
                   <span>{c.label}</span>
                   {c.shortcut && <span className="kbd">{c.shortcut}</span>}
                 </Command.Item>

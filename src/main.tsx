@@ -12,6 +12,7 @@ import './app/commands'
 import './app/docCommands'
 import './help/commands'
 import { startSettings } from './settings/settings'
+import { startGlass } from './app/glass'
 import { startDevice } from './app/device'
 import { App } from './app/App'
 import { installDebugHandle } from './app/debug'
@@ -49,6 +50,7 @@ if (DEBUG_HANDLE) installDebugHandle()
 document.documentElement.dataset.theme = 'dark'
 startDevice()
 startSettings()
+startGlass()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

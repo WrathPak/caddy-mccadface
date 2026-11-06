@@ -1,99 +1,177 @@
-/* CADdy McCADFace design tokens. Dark graphite default; light via [data-theme="light"]. */
+/* CADdy McCADFace design tokens.
+   The look: frosted glass floating over the model. The 3D view runs edge to edge behind every panel, and panels, the ribbon, the
+   timeline and the status bar are translucent, blurred sheets with a hairline light edge and a soft layered shadow.
+   Dark is the default, light via [data-theme="light"]. Accent pair: mint (primary) and amber (highlights, selection in sketches, warnings). */
 :root {
-  --font-ui: 'Inter', system-ui, sans-serif;
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
-  --fs-xs: 10px;
-  --fs-sm: 11px;
-  --fs-md: 12px;
-  --fs-lg: 13px;
+  /* type scale */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 14px;
+  --fs-title: 15px;
 
-  --radius: 3px;
-  --radius-sm: 2px;
+  /* radii: sheets, controls, small bits; pills use 999px */
+  --radius-card: 16px;
+  --radius-lg: 12px;
+  --radius: 9px;
+  --radius-sm: 6px;
+  --radius-pill: 999px;
 
-  /* surfaces: 0 base, 1 panel, 2 raised, 3 floating */
-  --bg-0: #16181b;
-  --bg-1: #1b1d21;
-  --bg-2: #22252a;
-  --bg-3: #2a2d33;
-  --bg-input: #15171a;
-  --bg-hover: #2b2f35;
-  --bg-active: #323740;
+  /* spacing */
+  --gap: 12px;
 
-  --line: #2a2d33;
-  --line-strong: #3a3e46;
+  /* motion */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --t-fast: 140ms;
+  --t-med: 200ms;
 
-  --text: #d4d7dc;
-  --text-dim: #9096a0;
-  --text-faint: #636973;
-  --text-on-accent: #0b1417;
+  /* surfaces. bg-0 is the opaque app base; bg-1 is a sheet of glass, bg-2 a subtle raised fill on top of a sheet, bg-3 a near-opaque float
+     (menus, tooltips, small labels over the model). */
+  --bg-0: #0c0e0d;
+  --bg-1: rgba(78, 86, 90, 0.30);
+  --bg-2: rgba(255, 255, 255, 0.06);
+  --bg-3: rgba(44, 48, 50, 0.92);
+  --bg-input: rgba(255, 255, 255, 0.07);
+  --bg-hover: rgba(255, 255, 255, 0.075);
+  --bg-active: rgba(255, 255, 255, 0.125);
 
-  --accent: #5fb3c4;
-  --accent-hover: #78c4d3;
-  --accent-dim: rgba(95, 179, 196, 0.16);
-  --accent-line: rgba(95, 179, 196, 0.55);
+  --glass: rgba(78, 86, 90, 0.30);
+  --glass-strong: rgba(52, 58, 62, 0.62);
+  --glass-edge: rgba(255, 255, 255, 0.16);
+  --glass-edge-soft: rgba(255, 255, 255, 0.10);
+  --glass-filter: blur(36px) saturate(190%) brightness(1.06);
+  --glass-filter-lite: blur(18px) saturate(170%);
+  --seg-thumb: rgba(255, 255, 255, 0.20);
 
-  --danger: #d9625a;
-  --warn: #d2a24a;
-  --ok: #6dae7a;
+  --line: rgba(255, 255, 255, 0.075);
+  --line-strong: rgba(255, 255, 255, 0.14);
 
-  --shadow-float: 0 4px 14px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.35);
+  --text: #eef1ef;
+  --text-dim: #a6aeaa;
+  --text-faint: #747d78;
+  --text-on-accent: #05150d;
 
-  --ribbon-h: 84px;
-  --tabs-h: 24px;
-  --status-h: 22px;
+  --accent: #5fd7a2;
+  --accent-hover: #82e4b8;
+  --accent-dim: rgba(95, 215, 162, 0.16);
+  --accent-line: rgba(95, 215, 162, 0.5);
+  --accent-2: #f3b55c;
+  --accent-2-dim: rgba(243, 181, 92, 0.16);
+
+  --danger: #ff7a6e;
+  --warn: #f3b55c;
+  --ok: #5fd7a2;
+
+  --shadow-float: 0 0 0 1px var(--glass-edge-soft), 0 2px 8px rgba(0, 0, 0, 0.18), 0 28px 72px rgba(0, 0, 0, 0.42);
+  --shadow-panel: 0 0 0 1px var(--glass-edge-soft), 0 1px 3px rgba(0, 0, 0, 0.16), 0 22px 60px rgba(0, 0, 0, 0.30);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --focus-ring: 0 0 0 3px var(--accent-dim), 0 0 0 1px var(--accent);
+
+  --status-h: 34px;
+  --tabs-h: 36px;
+
+  /* how far the visible 3D area is inset from the window by the panels floating over it (measured, set by the dock) */
+  --in-t: 0px;
+  --in-r: 0px;
+  --in-b: 0px;
+  --in-l: 0px;
+  --hud: 12px;
 
   /* viewport colors (also read from JS via getComputedStyle) */
-  --vp-bg: #1f2227;
-  --vp-grid: #3b4048;
-  --vp-grid-major: #4d535d;
-  --vp-axis-x: #c0584f;
-  --vp-axis-y: #6aa36a;
-  --vp-axis-z: #5a85c4;
-  --vp-body: #8e969f;
-  --vp-surface: #5aa3bd;
-  --vp-edge: #14161a;
+  --vp-bg: #171b1d;
+  --vp-grid: #4a565c;
+  --vp-grid-major: #6a7a81;
+  --vp-axis-x: #e0675d;
+  --vp-axis-y: #6fcf86;
+  --vp-axis-z: #5e8fe8;
+  --vp-body: #98a19d;
+  --vp-surface: #62b79a;
+  --vp-edge: #05070a;
 
   color-scheme: dark;
 }
 
 :root[data-theme='light'] {
-  --bg-0: #e4e6e9;
-  --bg-1: #f0f1f3;
-  --bg-2: #e8eaed;
-  --bg-3: #dcdfe3;
-  --bg-input: #ffffff;
-  --bg-hover: #dde0e4;
-  --bg-active: #d0d5db;
+  --bg-0: #dde2df;
+  --bg-1: rgba(255, 255, 255, 0.42);
+  --bg-2: rgba(20, 30, 26, 0.045);
+  --bg-3: rgba(255, 255, 255, 0.96);
+  --bg-input: rgba(20, 30, 26, 0.055);
+  --bg-hover: rgba(20, 30, 26, 0.065);
+  --bg-active: rgba(20, 30, 26, 0.11);
 
-  --line: #d2d5da;
-  --line-strong: #b9bec6;
+  --glass: rgba(255, 255, 255, 0.40);
+  --glass-strong: rgba(255, 255, 255, 0.72);
+  --glass-edge: rgba(255, 255, 255, 0.9);
+  --glass-edge-soft: rgba(20, 30, 26, 0.10);
+  --glass-filter: blur(36px) saturate(200%);
+  --glass-filter-lite: blur(18px) saturate(180%);
+  --seg-thumb: #ffffff;
 
-  --text: #1f2328;
-  --text-dim: #565d67;
-  --text-faint: #8a919b;
+  --line: rgba(20, 30, 26, 0.09);
+  --line-strong: rgba(20, 30, 26, 0.17);
+
+  --text: #1a1f1c;
+  --text-dim: #566059;
+  --text-faint: #86918a;
   --text-on-accent: #ffffff;
 
-  --accent: #1f7f94;
-  --accent-hover: #186a7c;
-  --accent-dim: rgba(31, 127, 148, 0.14);
-  --accent-line: rgba(31, 127, 148, 0.6);
+  --accent: #17895b;
+  --accent-hover: #0f7149;
+  --accent-dim: rgba(23, 137, 91, 0.13);
+  --accent-line: rgba(23, 137, 91, 0.55);
+  --accent-2: #b4690a;
+  --accent-2-dim: rgba(180, 105, 10, 0.14);
 
-  --danger: #b8443c;
-  --warn: #9a7220;
-  --ok: #3f8150;
+  --danger: #c4372b;
+  --warn: #b4690a;
+  --ok: #17895b;
 
-  --shadow-float: 0 4px 14px rgba(20, 24, 30, 0.22), 0 0 0 1px rgba(20, 24, 30, 0.12);
+  --shadow-float: 0 0 0 1px rgba(20, 30, 26, 0.08), 0 2px 8px rgba(20, 30, 26, 0.08), 0 26px 64px rgba(20, 30, 26, 0.18);
+  --shadow-panel: 0 0 0 1px rgba(20, 30, 26, 0.07), 0 1px 3px rgba(20, 30, 26, 0.06), 0 20px 54px rgba(20, 30, 26, 0.12);
+  --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
 
-  --vp-bg: #d9dce0;
-  --vp-grid: #b4b9c1;
-  --vp-grid-major: #959ca6;
-  --vp-axis-x: #b24a42;
-  --vp-axis-y: #4f8c4f;
-  --vp-axis-z: #3f6cae;
-  --vp-body: #9aa1aa;
-  --vp-surface: #4f95b0;
-  --vp-edge: #2a2d33;
+  --vp-bg: #e7ebe8;
+  --vp-grid: #a3aea9;
+  --vp-grid-major: #78877f;
+  --vp-axis-x: #d0493e;
+  --vp-axis-y: #2f9a52;
+  --vp-axis-z: #3f6fd1;
+  --vp-body: #a4aca8;
+  --vp-surface: #4fa585;
+  --vp-edge: #151a17;
 
   color-scheme: light;
+}
+
+/* No blur (the setting is off, the browser has no backdrop-filter, or the picture is drawn on the CPU): the glass becomes a plain sheet with
+   the same look. It is more opaque, since the grid and the model behind it would otherwise show through unblurred. */
+:root[data-glass='off'] {
+  --glass: rgba(26, 29, 28, 0.93);
+  --glass-strong: rgba(33, 37, 35, 0.97);
+  --bg-1: rgba(26, 29, 28, 0.93);
+  --glass-filter: none;
+  --glass-filter-lite: none;
+}
+:root[data-glass='off'][data-theme='light'] {
+  --glass: rgba(250, 251, 250, 0.94);
+  --glass-strong: rgba(255, 255, 255, 0.98);
+  --bg-1: rgba(250, 251, 250, 0.94);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass: rgba(26, 29, 28, 0.93);
+    --glass-strong: rgba(33, 37, 35, 0.97);
+    --bg-1: rgba(26, 29, 28, 0.93);
+    --glass-filter: none;
+    --glass-filter-lite: none;
+  }
+  :root[data-theme='light'] {
+    --glass: rgba(250, 251, 250, 0.94);
+    --glass-strong: rgba(255, 255, 255, 0.98);
+    --bg-1: rgba(250, 251, 250, 0.94);
+  }
 }

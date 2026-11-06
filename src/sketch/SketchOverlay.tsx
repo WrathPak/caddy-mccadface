@@ -1,4 +1,5 @@
 /** Viewport overlay for sketch mode: plane grid, geometry, profiles, drafts, snaps, constraint glyphs, dimensions, input. */
+import { visH, visibleOf } from '@/viewport/visible'
 import './sketch.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Html, Line } from '@react-three/drei'
@@ -60,7 +61,7 @@ function useWpp(): number {
   const [w, setW] = useState(1)
   const last = useRef(1)
   useFrame((state) => {
-    const v = wppFor(state.camera, state.size.height, useSketch.getState().plane)
+    const v = wppFor(state.camera, visH(state.size), useSketch.getState().plane)
     setWpp(v)
     if (Math.abs(v - last.current) / last.current > 0.03) { last.current = v; setW(v) }
   })
@@ -110,7 +111,7 @@ void main() {
   float f = (1.0 - smoothstep(uFadeA, uFadeB, d)) * (1.0 - smoothstep(uHalf * 0.55, uHalf, length(p - uCenter)));
   float k = gridStrength(p, uStep, uBlend, f);
   vec3 col = gridColor(k, uMinor, uMajor);
-  float a = 0.85 * k;
+  float a = min(1.0, 0.85 * k);
   vec2 ad = fwidth(p) * 1.2;
   float ax = 1.0 - min(abs(p.y) / max(ad.y, 1e-6), 1.0);
   float ay = 1.0 - min(abs(p.x) / max(ad.x, 1e-6), 1.0);
@@ -118,6 +119,7 @@ void main() {
   if (ay > 0.0) { col = uAxisY; a = max(a, ay * 0.95 * f); }
   if (a < 0.004) discard;
   gl_FragColor = vec4(col, a);
+  #include <colorspace_fragment>
 }`
 
 function SketchGrid() {
@@ -137,7 +139,7 @@ function SketchGrid() {
     u.uAxisX.value.set(colors.axisX)
     u.uAxisY.value.set(colors.axisY)
     const plane = useSketch.getState().plane
-    const wpp = wppFor(state.camera, state.size.height, plane)
+    const wpp = wppFor(state.camera, visH(state.size), plane)
     const { step, blend } = gridLevels(wpp)
     u.uStep.value = step
     u.uBlend.value = blend
@@ -152,7 +154,9 @@ function SketchGrid() {
     u.uFadeB.value = range.end
     u.uOrtho.value = ortho ? 1 : 0
     // the quad follows the view; the lines themselves are fixed to the sketch origin (multiples of the step), so nothing swims
-    ray.setFromCamera(new Vector2(0, 0), state.camera)
+    // (the middle of the visible window, which the panels leave open: the camera is centred on it, not on the whole canvas)
+    const vis = visibleOf(state.size)
+    ray.setFromCamera(new Vector2(((vis.l + vis.w / 2) / state.size.width) * 2 - 1, -(((vis.t + vis.h / 2) / state.size.height) * 2 - 1)), state.camera)
     const hit = new Vector3()
     const pl = new Plane().setFromNormalAndCoplanarPoint(new Vector3(...plane.normal), new Vector3(...plane.origin))
     if (ray.ray.intersectPlane(pl, hit)) {

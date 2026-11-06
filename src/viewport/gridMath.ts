@@ -50,13 +50,14 @@ float gridLine(vec2 p, float size) {
   vec2 q = p / size;
   vec2 w = fwidth(q);
   vec2 g = abs(fract(q - 0.5) - 0.5) / max(w, vec2(1e-6));
-  vec2 l = 1.0 - min(g, vec2(1.0));
+  // a line is about two pixels wide at the foot: a line that falls between two pixel centres still reads, instead of two faint half-covered pixels
+  vec2 l = clamp(vec2(1.1) - g, vec2(0.0), vec2(1.0));
   vec2 vis = 1.0 - smoothstep(vec2(0.18), vec2(0.45), w);
   return max(l.x * vis.x, l.y * vis.y);
 }
 float gridStrength(vec2 p, float step, float blend, float fade) {
   float k0 = 0.55 * (1.0 - smoothstep(0.1, 0.45, blend)) * fade * fade * fade;
-  float k1 = mix(1.0, 0.55, smoothstep(0.0, 0.5, blend)) * fade * fade;
+  float k1 = mix(0.78, 0.5, smoothstep(0.0, 0.5, blend)) * fade * fade;
   // the ladder: fine (fading out) < minor 0.55 < major 1.0; every layer coarser than the major stays at the major strength
   return max(max(gridLine(p, step) * k0, gridLine(p, step * 10.0) * k1), gridLine(p, step * 100.0) * fade);
 }

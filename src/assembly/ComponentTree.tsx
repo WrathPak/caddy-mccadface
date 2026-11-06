@@ -71,16 +71,16 @@ function ComponentRow({ node, depth, children }: { node: OccNode; depth: number;
       data-selected={selected}
       data-active={isActive}
       data-hidden={hidden}
-      style={{ paddingLeft: 4 + depth * 12 }}
+      style={{ paddingLeft: 4 + depth * 14 }}
       onClick={(e) => setSelection([{ kind: 'component', id: node.id }], e.ctrlKey || e.shiftKey)}
       onDoubleClick={() => activateOcc(isActive ? parentPath(node.id) : node.id)}
     >
-      <span className="caret" onClick={(e) => { e.stopPropagation(); setOpen(!open) }}>{hasKids ? open ? <CaretDown size={9} weight="bold" /> : <CaretRight size={9} weight="bold" /> : null}</span>
+      <span className="caret" onClick={(e) => { e.stopPropagation(); setOpen(!open) }}>{hasKids ? open ? <CaretDown size={11} weight="bold" /> : <CaretRight size={11} weight="bold" /> : null}</span>
       <Tip label={isActive ? 'Active component: new features go in here. Click to leave it.' : 'Make this the active component: new features go in here'}>
         <button type="button" className="comp-active" data-on={isActive} aria-label={isActive ? 'Deactivate component' : 'Activate component'} aria-pressed={isActive}
           onClick={(e) => { e.stopPropagation(); activateOcc(isActive ? parentPath(node.id) : node.id) }} />
       </Tip>
-      <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}>{ext ? <LinkSimple size={13} /> : <Package size={13} />}</span>
+      <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}>{ext ? <LinkSimple size={16} /> : <Package size={16} />}</span>
       {editing ? (
         <input
           className="rename" autoFocus defaultValue={def?.name ?? label} onClick={(e) => e.stopPropagation()}
@@ -93,14 +93,14 @@ function ComponentRow({ node, depth, children }: { node: OccNode; depth: number;
       )}
       {changed && ext && (
         <Tip label={`${ext.fileName} changed on disk. Click to update this component`}>
-          <button type="button" className="comp-badge update" data-testid={'ext-update-' + ext.id} aria-label="Update linked component" onClick={(e) => { e.stopPropagation(); void applyExternalUpdate(ext.id) }}><ArrowsClockwise size={12} /></button>
+          <button type="button" className="comp-badge update" data-testid={'ext-update-' + ext.id} aria-label="Update linked component" onClick={(e) => { e.stopPropagation(); void applyExternalUpdate(ext.id) }}><ArrowsClockwise size={15} /></button>
         </Tip>
       )}
-      {error && <Tip label={error}><span className="comp-badge err" data-testid={'comp-error-' + node.id}><Warning size={12} /></span></Tip>}
-      {assembly.occurrences.find((o) => o.id === node.occ)?.grounded && <Tip label="Grounded: this component does not move"><span className="comp-badge"><PushPin size={12} /></span></Tip>}
+      {error && <Tip label={error}><span className="comp-badge err" data-testid={'comp-error-' + node.id}><Warning size={15} /></span></Tip>}
+      {assembly.occurrences.find((o) => o.id === node.occ)?.grounded && <Tip label="Grounded: this component does not move"><span className="comp-badge"><PushPin size={15} /></span></Tip>}
       <Tip label={hidden ? 'Show' : 'Hide'} desc={hidden ? 'Bring this component back into the view.' : 'Hide this component from the view. It stays in the document.'} side="right">
   <button type="button" className="eye" data-off={hidden} aria-label={hidden ? 'Show component' : 'Hide component'} onClick={(e) => { e.stopPropagation(); toggleHidden(node.id) }}>
-        {hidden ? <EyeSlash size={12} /> : <Eye size={12} />}
+        {hidden ? <EyeSlash size={15} /> : <Eye size={15} />}
       </button>
       </Tip>
     </div>
@@ -154,9 +154,9 @@ export function ComponentsSection({ depth, content }: { depth: number; content: 
   const top = nodes.filter((n) => n.parent === null)
   return (
     <>
-      <div className="tree-row group" data-testid="components-group" style={{ paddingLeft: 4 + depth * 12 }} onClick={() => setOpen(!open)}>
-        <span className="caret">{open ? <CaretDown size={9} weight="bold" /> : <CaretRight size={9} weight="bold" />}</span>
-        <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}><Folder size={13} /></span>
+      <div className="tree-row group" data-testid="components-group" style={{ paddingLeft: 4 + depth * 14 }} onClick={() => setOpen(!open)}>
+        <span className="caret">{open ? <CaretDown size={11} weight="bold" /> : <CaretRight size={11} weight="bold" />}</span>
+        <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}><Folder size={16} /></span>
         <span className="name">Components</span>
         <span className="comp-count">{nodes.length}</span>
       </div>
@@ -173,12 +173,12 @@ export function JointsSection({ depth }: { depth: number }) {
   const selected = useAssemblyRuntime((s) => s.selectedJoint)
   const [open, setOpen] = useState(true)
   if (!joints.length) return null
-  const pad = (d: number) => ({ paddingLeft: 4 + d * 12 })
+  const pad = (d: number) => ({ paddingLeft: 4 + d * 14 })
   return (
     <>
       <div className="tree-row group" data-testid="joints-group" style={pad(depth)} onClick={() => setOpen(!open)}>
-        <span className="caret">{open ? <CaretDown size={9} weight="bold" /> : <CaretRight size={9} weight="bold" />}</span>
-        <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}><Folder size={13} /></span>
+        <span className="caret">{open ? <CaretDown size={11} weight="bold" /> : <CaretRight size={11} weight="bold" />}</span>
+        <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}><Folder size={16} /></span>
         <span className="name">Joints</span>
         <span className="comp-count">{joints.length}</span>
       </div>
@@ -193,10 +193,10 @@ export function JointsSection({ depth }: { depth: number }) {
                 onDoubleClick={() => startJoint(j.id)}
               >
                 <span className="caret" />
-                <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}><Cube size={13} /></span>
+                <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}><Cube size={16} /></span>
                 <span className="name" style={j.suppressed ? { opacity: 0.5, textDecoration: 'line-through' } : undefined}>{j.name}</span>
                 <span className="comp-count">{JOINT_TYPES.find((t) => t.type === j.type)?.label}</span>
-                {err && <Tip label={err}><span className="comp-badge err"><Warning size={12} /></span></Tip>}
+                {err && <Tip label={err}><span className="comp-badge err"><Warning size={15} /></span></Tip>}
               </div>
             </CM.Trigger>
             <CM.Portal>
@@ -216,7 +216,7 @@ export function JointsSection({ depth }: { depth: number }) {
           <CM.Trigger asChild>
             <div className="tree-row" data-testid={'link-' + l.id} style={pad(depth + 1)}>
               <span className="caret" />
-              <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}><PencilSimpleLine size={13} /></span>
+              <span style={{ display: 'inline-flex', color: 'var(--text-dim)' }}><PencilSimpleLine size={16} /></span>
               <span className="name">{l.name}</span>
               <span className="comp-count">{`x${+l.ratio.toFixed(4)}`}</span>
             </div>

@@ -94,7 +94,7 @@ export function Timeline({ onEditFeature }: TimelineProps) {
           onDoubleClick={() => edit(f.id)}
           onKeyDown={(e) => { if (e.key === 'Enter') edit(f.id); if (e.key === 'u') toggleSuppress(f.id) }}
         >
-          <I size={16} />
+          <I size={18} />
         </button>
       </Tip>,
       i + 1 === rollback ? marker : null,
@@ -126,7 +126,7 @@ export function Timeline({ onEditFeature }: TimelineProps) {
               </div>
             )
           })}
-          {features.length === 0 && <span className="empty" style={{ padding: 0 }}>No features yet</span>}
+          {features.length === 0 && <span className="empty-note">No features yet</span>}
         </div>
       </div>
     )
@@ -137,7 +137,7 @@ export function Timeline({ onEditFeature }: TimelineProps) {
       <div className="tl-track" ref={trackRef}>
         {rollback === 0 && marker}
         {features.map((f, i) => chipOf(f, i))}
-        {features.length === 0 && <span className="empty" style={{ padding: 0 }}>No features yet</span>}
+        {features.length === 0 && <span className="empty-note">No features yet</span>}
       </div>
     </div>
   )

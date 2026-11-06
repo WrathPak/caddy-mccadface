@@ -1,46 +1,97 @@
+/* Dockview, restyled so every group is a floating glass sheet. The dock grid is transparent; the gaps between sheets let the 3D view
+   behind show through, and the viewport group is an empty window (no sheet, no clicks). */
 .dockview-theme-caddy {
   --dv-paneview-active-outline-color: var(--accent);
-  --dv-tabs-and-actions-container-font-size: 11px;
-  --dv-tabs-and-actions-container-height: 24px;
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tabs-and-actions-container-height: 40px;
   --dv-drag-over-background-color: var(--accent-dim);
   --dv-drag-over-border-color: var(--accent-line);
   --dv-tabs-container-scrollbar-color: var(--line-strong);
   --dv-icon-hover-background-color: var(--bg-hover);
   --dv-floating-box-shadow: var(--shadow-float);
   --dv-overlay-z-index: 900;
-  --dv-tab-font-size: 11px;
+  --dv-tab-font-size: 12px;
   --dv-border-radius: 0px;
   --dv-tab-margin: 0;
-  --dv-sash-color: var(--line);
-  --dv-active-sash-color: var(--accent);
-  --dv-active-sash-transition-duration: 0.1s;
-  --dv-active-sash-transition-delay: 0.2s;
-  --dv-group-view-background-color: var(--bg-1);
-  --dv-tabs-and-actions-container-background-color: var(--bg-0);
-  --dv-activegroup-visiblepanel-tab-background-color: var(--bg-1);
-  --dv-activegroup-hiddenpanel-tab-background-color: var(--bg-0);
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg-1);
-  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--bg-0);
-  --dv-tab-divider-color: var(--line);
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: transparent;
+  --dv-active-sash-transition-duration: 0.15s;
+  --dv-active-sash-transition-delay: 0.1s;
+  --dv-group-view-background-color: transparent;
+  --dv-tabs-and-actions-container-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-background-color: var(--bg-active);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg-active);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-tab-divider-color: transparent;
   --dv-activegroup-visiblepanel-tab-color: var(--text);
   --dv-activegroup-hiddenpanel-tab-color: var(--text-dim);
-  --dv-inactivegroup-visiblepanel-tab-color: var(--text-dim);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--text);
   --dv-inactivegroup-hiddenpanel-tab-color: var(--text-faint);
-  --dv-separator-border: var(--line);
+  --dv-separator-border: transparent;
   --dv-paneview-header-border-color: var(--line);
+  background: transparent;
+  pointer-events: none;
 }
-.dockview-theme-caddy .dv-tab {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 0 10px;
+.dockview-theme-caddy .dv-dockview, .dockview-theme-caddy .dv-grid-view, .dockview-theme-caddy .dv-branch-node { background: transparent; }
+
+/* each sheet sits 5px in from its cell, so two neighbours are 10px apart and the outer edge is 10px from the window */
+.dockview-theme-caddy .dv-split-view-container > .dv-view-container > .dv-view { padding: 0; background: transparent; overflow: visible; }
+.dockview-theme-caddy .dv-groupview {
+  pointer-events: auto;
+  border: none;
+  border-radius: var(--radius-card);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--shadow-panel), var(--shadow-inner);
+  overflow: hidden;
+  /* a sheet hugs its content (and stops at the height the window leaves it): it floats, 5px in from its cell, and the rest of the cell is see-through */
+  position: absolute;
+  top: 5px; left: 5px; right: 5px;
+  width: auto !important; height: auto !important;
+  max-height: calc(100% - 10px);
+  display: flex; flex-direction: column;
 }
-.dockview-theme-caddy .dv-groupview { border: none; }
-.dockview-theme-caddy .dv-groupview.dv-active-group > .dv-tabs-and-actions-container .dv-tab.dv-active-tab {
-  box-shadow: inset 0 2px 0 var(--accent);
-}
-.dockview-theme-caddy .dv-tabs-and-actions-container { border-bottom: 1px solid var(--line); }
+.dockview-theme-caddy .dv-groupview > .dv-content-container { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.dockview-theme-caddy .dv-groupview .panel, .dockview-theme-caddy .dv-groupview .pf-panel { height: auto; min-height: 0; }
+/* the bottom dock: one slim bar, centred, as wide as it needs to be */
+.dockview-theme-caddy .dv-groupview:has(.bottom-dock) { top: auto; bottom: 5px; left: 50%; right: auto; transform: translateX(-50%); width: max-content !important; max-width: calc(100% - 10px); max-height: none; border-radius: 26px; }
+.dockview-theme-caddy .dv-groupview:has(.bottom-dock) > .dv-content-container { overflow: hidden; min-width: 0; }
+/* nothing to edit: the Inspector is simply not there until there is (it fades in with the other sheets) */
+.dockview-theme-caddy .dv-groupview:has(.inspector-empty) { display: none; }
+/* the viewport's group is only a window */
+.dockview-theme-caddy .dv-groupview:has(.vp-hole) { position: relative; top: auto; left: auto; right: auto; width: 100% !important; height: 100% !important; max-height: none; display: block; pointer-events: none; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; overflow: visible; }
+.dockview-theme-caddy .dv-groupview:has(.vp-hole) .dv-content-container, .dockview-theme-caddy .dv-groupview:has(.vp-hole) .dv-render-overlay { pointer-events: none; background: none; }
+.dockview-theme-caddy .dv-split-view-container > .dv-view-container > .dv-view:has(.vp-hole) { padding: 0; }
+.dockview-theme-caddy .dv-sash { pointer-events: auto; background: transparent; }
+.dockview-theme-caddy .dv-sash:hover, .dockview-theme-caddy .dv-sash:active { background: transparent; }
+.dockview-theme-caddy .dv-sash::after { content: ''; position: absolute; border-radius: 2px; background: transparent; transition: background var(--t-fast) var(--ease); }
+.dockview-theme-caddy .dv-sash.dv-enabled:hover::after, .dockview-theme-caddy .dv-sash.dv-active::after { background: var(--accent-line); }
+.dockview-theme-caddy .dv-vertical > .dv-sash::after, .dockview-theme-caddy .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash::after { left: 20%; right: 20%; top: calc(50% - 1px); height: 3px; }
+.dockview-theme-caddy .dv-horizontal > .dv-sash::after, .dockview-theme-caddy .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash::after { top: 20%; bottom: 20%; left: calc(50% - 1px); width: 3px; }
+
+/* the tab strip of a sheet: a small title row, active tab a soft pill */
+.dockview-theme-caddy .dv-tabs-and-actions-container { height: 40px; padding: 0 8px; align-items: center; border-bottom: 1px solid var(--line); background: transparent; }
+.dockview-theme-caddy .dv-tabs-container { gap: 2px; align-items: center; }
+.dockview-theme-caddy .dv-tab { height: 26px; padding: 0 12px; margin: 0; border-radius: var(--radius-pill); font-size: 12px; font-weight: 600; letter-spacing: 0.005em; transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.dockview-theme-caddy .dv-tab::before, .dockview-theme-caddy .dv-tab::after { display: none !important; }
+.dockview-theme-caddy .dv-tab .dv-default-tab { padding: 0; }
+.dockview-theme-caddy .dv-tab:hover { color: var(--text); }
+.dockview-theme-caddy .dv-tab.dv-inactive-tab:hover { background: var(--bg-hover); }
+.dockview-theme-caddy .dv-tab.dv-inactive-tab { color: var(--text-dim); }
+.dockview-theme-caddy .dv-groupview.dv-active-group > .dv-tabs-and-actions-container .dv-tab.dv-active-tab { color: var(--text); }
+.dockview-theme-caddy .dv-content-container { background: transparent; }
 .dockview-theme-caddy .dv-watermark { display: none; }
 /* panels are fixed furniture: no close buttons on the tabs */
 .dockview-theme-caddy .dv-tab .dv-default-tab .dv-default-tab-action { display: none; }
+.dockview-theme-caddy .dv-floating-group, .dockview-theme-caddy .dv-resize-container { border-radius: var(--radius-card); box-shadow: var(--shadow-float); overflow: hidden; }
+/* a floating panel (the Script editor) is dragged and resized by its own frame: the frame takes clicks like any other sheet */
+.dockview-theme-caddy .dv-resize-container, .dockview-theme-caddy .dv-resize-container * { pointer-events: auto; }
+
+/* one tab: no header at all (the panel carries its own title); several tabs: a quiet strip */
+.dockview-theme-caddy .dv-tabs-and-actions-container.dv-single-tab { display: none; }
+/* panels arrive softly: fade and a hair of scale (the individual `scale` property, so the bottom dock's centring transform is left alone) */
+@keyframes sheet-in { from { opacity: 0; scale: 0.985; } }
+.dockview-theme-caddy .dv-groupview:not(:has(.vp-hole)) { animation: sheet-in 220ms var(--ease) both; }
+.dockview-theme-caddy .dv-groupview:has(.vp-hole) > .dv-content-container { flex: 1 1 auto; height: 100%; }

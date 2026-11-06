@@ -53,7 +53,7 @@ function ComponentOrigins() {
 function JointGlyph({ id, worldA, worldB, frameA, frameB, error, selected, size }: { id: string; worldA: Mat4; worldB: Mat4; frameA: Mat4; frameB: Mat4; error: boolean; selected: boolean; size: number }) {
   const ma = multiply(worldA, frameA), mb = multiply(worldB, frameB)
   const ring = useMemo(() => Array.from({ length: 33 }, (_, i) => [Math.cos((i / 32) * Math.PI * 2) * size * 0.55, Math.sin((i / 32) * Math.PI * 2) * size * 0.55, 0] as Vec3), [size])
-  const color = error ? '#e05a50' : selected ? '#ffd24d' : '#5fb3c4'
+  const color = error ? '#e05a50' : selected ? '#ffd24d' : '#5fd7a2'
   const w = selected ? 2.5 : 1.6
   const apart = Math.hypot(...(add(point(mb, [0, 0, 0]), [-ma[12], -ma[13], -ma[14]]) as Vec3)) > size * 0.05
   return (

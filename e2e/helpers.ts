@@ -138,15 +138,15 @@ export class App {
     }).toPass({ timeout: 10000 })
   }
 
-  /** Draw a w x h rectangle (typed dims) on an origin plane and finish the sketch. */
-  async sketchRect(plane: 'XY' | 'XZ' | 'YZ', w: number, h: number, at = { x: 500, y: 400 }) {
+  /** Draw a w x h rectangle (typed dims) on an origin plane and finish the sketch. `at` is the first corner, in pixels from the top left of the visible viewport (clear of the origin axes, which a corner within a few pixels would snap onto). */
+  async sketchRect(plane: 'XY' | 'XZ' | 'YZ', w: number, h: number, at = { x: 430, y: 400 }) {
     const { page } = this
     await this.ribbon('Sketch').first().click()
     await this.showPlane(plane)
     await page.getByText(plane + ' plane').click()
     await expect(page.locator('.sk-bar')).toBeVisible()
     await this.ribbon('Rectangle').first().click()
-    const b = (await page.locator('.vp canvas').boundingBox())!
+    const b = (await viewBox(page))
     await page.mouse.move(b.x + at.x, b.y + at.y)
     await page.mouse.click(b.x + at.x, b.y + at.y)
     await page.mouse.move(b.x + at.x + 80, b.y + at.y - 60, { steps: 3 })
@@ -223,9 +223,18 @@ export class App {
   }
 }
 
-/** Canvas pixel position of a point given in viewport-relative fractions. */
+/**
+ * The visible part of the 3D view: the window the glass panels leave open. The canvas itself runs edge to edge behind the panels, so
+ * positions "inside the viewport" (a corner, the middle, a fraction of its size) are measured in this box, not in the canvas.
+ */
+export async function viewBox(page: Page) {
+  const hole = page.locator('.vp-hole')
+  return (await hole.count()) ? (await hole.boundingBox())! : (await page.locator('.vp canvas').first().boundingBox())!
+}
+
+/** Client pixel position of a point given in fractions of the visible viewport. */
 export async function canvasPoint(page: Page, fx: number, fy: number) {
-  const b = (await page.locator('.vp canvas').first().boundingBox())!
+  const b = (await viewBox(page))
   return { x: b.x + b.width * fx, y: b.y + b.height * fy }
 }
 

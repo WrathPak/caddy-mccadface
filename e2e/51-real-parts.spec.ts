@@ -1,4 +1,4 @@
-import { test, expect, type App } from './helpers'
+import { test, expect, type App, viewBox } from './helpers'
 import { addBox, frame } from './detail-kit'
 
 /**
@@ -328,7 +328,7 @@ test('a new document starts from the home view', async ({ app, page }) => {
   home.forEach((v, i) => expect(after[i]).toBeCloseTo(v, 1))
   // a box at the origin is in view, not half off the screen
   await addBox(app, 40, 40, 10)
-  const b = (await page.locator('.vp canvas').boundingBox())!
+  const b = (await viewBox(page))
   for (const [x, y, z] of [[-20, -20, 0], [20, 20, 10]]) {
     const p = await app.project(x, y, z)
     expect(p.x).toBeGreaterThan(b.x + 20)

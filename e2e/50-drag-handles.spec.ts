@@ -1,4 +1,4 @@
-import { test, expect, addSketch, XY, XZ, type App } from './helpers'
+import { test, expect, addSketch, XY, XZ, type App, viewBox } from './helpers'
 import { addBox, addCylinder, frame, selectFace } from './detail-kit'
 
 /**
@@ -112,7 +112,7 @@ const home = async (app: App) => { await app.ev((c) => { c.runCommand('view.home
 /** Frame the model, then back off a few notches: the handles of a pattern or a connector can stand well outside the part. */
 const wide = async (app: App, ticks = 4) => {
   await home(app)
-  const b = (await app.page.locator('.vp canvas').first().boundingBox())!
+  const b = (await viewBox(app.page))
   await app.page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
   for (let i = 0; i < ticks; i++) await app.page.mouse.wheel(0, 200)
   await app.cameraStable()

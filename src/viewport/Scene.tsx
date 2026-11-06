@@ -6,6 +6,7 @@ import { useUi } from '@/store/ui'
 import { useDoc } from '@/doc/store'
 import { DebugProbe } from '@/app/debug'
 import { Bodies } from './Bodies'
+import { ContactShadow, SelectionOutline, StudioEnv } from './Studio'
 import { CaptureRegistrar, MoveGizmo } from './MoveGizmo'
 import { InfiniteGrid } from './InfiniteGrid'
 import { ConstructionPlanes, Origin } from './Origin'
@@ -124,13 +125,17 @@ export function Scene() {
       <NavControls />
       <MotionTracker />
       <ViewCubeSync />
-      <hemisphereLight args={['#ffffff', '#4a4f57', 0.9]} />
-      <directionalLight position={[80, -120, 160]} intensity={1.6} />
-      <directionalLight position={[-120, 80, 40]} intensity={0.5} />
+      <StudioEnv />
+      <hemisphereLight args={['#ffffff', '#4a4f57', 0.55]} />
+      <directionalLight position={[80, -120, 160]} intensity={1.5} />
+      <directionalLight position={[-120, 80, 40]} intensity={0.45} />
+      <directionalLight position={[20, 140, 60]} intensity={0.35} />
+      <ContactShadow />
       {showGrid && !sketching && <InfiniteGrid />}
       {showOrigin && !sketching && <Origin />}
       {showOrigin && !sketching && <ConstructionPlanes />}
       <Bodies />
+      <SelectionOutline />
       <AssemblyLayer />
       <MoveGizmo />
       <SketchDisplay />

@@ -4,6 +4,8 @@ import { StatusBar } from '@/ui/StatusBar'
 import { CommandPalette } from '@/ui/CommandPalette'
 import { TooltipProvider } from '@/ui/Tooltip'
 import { Layout } from './Layout'
+import { Viewport } from '@/viewport/Viewport'
+import { ErrorBoundary } from '@/ui/ErrorBoundary'
 import { MobileLayout } from './Mobile'
 import { useDevice } from './device'
 import { installShortcuts } from './shortcuts'
@@ -45,8 +47,10 @@ export function App() {
           <MobileLayout />
         ) : (
           <>
+            {/* the 3D view runs edge to edge behind everything; the panels are glass floating over it */}
+            <div className="stage"><ErrorBoundary name="Viewport"><Viewport /></ErrorBoundary></div>
             <Ribbon />
-            <div style={{ minHeight: 0, position: 'relative' }}>
+            <div className="dock-host">
               <Layout />
               <PreviewBanner />
             </div>

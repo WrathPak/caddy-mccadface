@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { useUi, type DisplayMode } from '@/store/ui'
 import { canPickFolder, useProjects } from '@/projects/store'
 import { useDiskAutosave } from '@/io/diskAutosave'
-import { AUTOSAVE_CHOICES, AUTOSAVE_VERSION_CHOICES, PIXEL_RATIOS, WORKSPACES, useSettings, type PixelRatio, type ThemeMode } from '@/settings/settings'
+import { AUTOSAVE_CHOICES, AUTOSAVE_VERSION_CHOICES, PIXEL_RATIOS, WORKSPACES, useSettings, type GlassMode, type PixelRatio, type ThemeMode } from '@/settings/settings'
 import { useHelp } from '@/help/helpStore'
 import { installApp, installHow, useInstall } from '@/app/install'
 import { NAV_PRESETS, ORBIT_SPEEDS, useNavSettings } from '@/viewport/navSettings'
@@ -179,7 +179,7 @@ const MODES: { value: DisplayMode; label: string }[] = [
   { value: 'xray', label: 'X-ray' },
 ]
 
-const SELECTION_SWATCHES = ['#4fa3b8', '#e8b84a', '#e0684f', '#6cc06c', '#b07cd8', '#ffffff']
+const SELECTION_SWATCHES = ['#5fd7a2', '#e8b84a', '#e0684f', '#6cc06c', '#b07cd8', '#ffffff']
 
 function Display() {
   const showOrigin = useUi((s) => s.showOrigin)
@@ -193,6 +193,8 @@ function Display() {
   const setDensity = useSettings((s) => s.setGridDensity)
   const pixelRatio = useSettings((s) => s.pixelRatio)
   const setPixelRatio = useSettings((s) => s.setPixelRatio)
+  const glass = useSettings((s) => s.glass)
+  const setGlass = useSettings((s) => s.setGlass)
   return (
     <>
       <Row id="grid" label="Ground grid" help="Show the grid on the floor. It also has a button in the viewport toolbar.">
@@ -209,9 +211,9 @@ function Display() {
           <button type="button" role="radio" aria-checked={selColor === ''} aria-label="Default" data-testid="sel-color-default" className="btn" onClick={() => setSelColor('')}>Default</button>
           {SELECTION_SWATCHES.map((c) => (
             <button key={c} type="button" role="radio" aria-checked={selColor === c} aria-label={c} data-testid={'sel-color-' + c.slice(1)} onClick={() => setSelColor(c)}
-              style={{ width: 20, height: 20, borderRadius: 4, background: c, border: selColor === c ? '2px solid var(--text)' : '1px solid var(--border)', cursor: 'pointer', padding: 0 }} />
+              style={{ width: 22, height: 22, borderRadius: '50%', background: c, border: 'none', boxShadow: selColor === c ? '0 0 0 2px var(--bg-3), 0 0 0 4px var(--text)' : 'inset 0 0 0 1px rgba(0,0,0,0.25)', cursor: 'pointer', padding: 0 }} />
           ))}
-          <input type="color" aria-label="Custom selection color" data-testid="sel-color-custom" value={selColor || '#4fa3b8'} onChange={(e) => setSelColor(e.target.value)} style={{ width: 28, height: 22, padding: 0, border: 'none', background: 'none' }} />
+          <input type="color" aria-label="Custom selection color" data-testid="sel-color-custom" value={selColor || '#5fd7a2'} onChange={(e) => setSelColor(e.target.value)} style={{ width: 28, height: 22, padding: 0, border: 'none', background: 'none' }} />
         </div>
       </Row>
       <Row id="display" label="Display style" help="How solids are drawn. Shaded + edges draws dark outlines on the edges.">
@@ -219,6 +221,9 @@ function Display() {
       </Row>
       <Row id="ao" label="Ambient occlusion" help="Soft shadows in creases and corners that make shapes easier to read. Turn it off if the view feels slow.">
         <Checkbox checked={ssao} onChange={(v) => useUi.setState({ ssao: v })} ariaLabel="Ambient occlusion" />
+      </Row>
+      <Row id="glass" label="Frosted glass" help="The panels blur the 3D view behind them. Auto turns the blur off on a computer that draws the picture on its processor instead of a graphics card, where it would make everything slow. Off makes the panels plain sheets.">
+        <Segmented value={glass} onChange={(v) => setGlass(v as GlassMode)} options={[{ value: 'auto', label: 'Auto' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} />
       </Row>
       <Row id="sharpness" label="Sharpness" help="How many pixels the 3D view draws. Auto keeps phones and tablets at 1.5x so orbiting stays smooth; pick a higher one for a crisper picture, or 1x to go faster.">
         <Select value={pixelRatio} onChange={(v) => setPixelRatio(v as PixelRatio)} options={PIXEL_RATIOS} />
@@ -267,7 +272,7 @@ export function SettingsButton() {
   const show = useSettingsDialog((s) => s.show)
   return (
     <Tip label="Settings" desc="Units, theme, mouse navigation, display, autosave and help options." side="top">
-      <button type="button" className="cell gear" aria-label="Settings" data-testid="settings-gear" onClick={() => show()}><GearSix size={13} /></button>
+      <button type="button" className="cell gear" aria-label="Settings" data-testid="settings-gear" onClick={() => show()}><GearSix size={16} /></button>
     </Tip>
   )
 }

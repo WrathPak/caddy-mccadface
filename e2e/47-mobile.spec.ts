@@ -1,4 +1,4 @@
-import { test, expect, type App } from './helpers'
+import { test, expect, type App, viewBox } from './helpers'
 import type { CDPSession, Page } from '@playwright/test'
 import path from 'node:path'
 import os from 'node:os'
@@ -44,7 +44,8 @@ class Fingers {
 
 const nav = (app: App) => app.ev(() => (window as any).__nav.pose() as { target: number[]; dist: number; q: number[] }) // eslint-disable-line
 const turn = (app: App) => app.ev(() => (window as any).__nav.turntable() as { az: number; el: number; roll: number }) // eslint-disable-line
-const canvasBox = async (page: Page) => (await page.locator('.vp canvas').first().boundingBox())!
+/** The visible 3D area: the whole canvas on a phone, the window between the glass panels on a tablet. */
+const canvasBox = (page: Page) => viewBox(page)
 /** A client position inside the canvas, as fractions of it. */
 async function at(page: Page, fx: number, fy: number): Promise<P> {
   const b = await canvasBox(page)
@@ -594,7 +595,8 @@ test.describe('tablet', () => {
     const f = await Fingers.on(page)
     const b = await canvasBox(page)
     const t0 = await turn(app)
-    await f.drag({ x: b.x + 60, y: b.y + b.height - 80 }, { x: b.x + 200, y: b.y + b.height - 120 })
+    // (from the middle of the visible view: its bottom corner holds the display buttons)
+    await f.drag({ x: b.x + 30, y: b.y + b.height / 2 }, { x: b.x + b.width - 30, y: b.y + b.height / 2 - 40 })
     expect(Math.abs((await turn(app)).az - t0.az)).toBeGreaterThan(0.3)
     await app.shot('mobile-tablet')
   })

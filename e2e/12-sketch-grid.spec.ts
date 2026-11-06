@@ -1,9 +1,20 @@
-import { test, expect, type App } from './helpers'
+import { test, expect, type App, viewBox } from './helpers'
 
 interface Line { x: number; peak: number; green: number }
 
 /** Renders the scene once and returns the lines found along one pixel row of the WebGL canvas (canvas pixel x). */
+/** The stretch of the canvas (in its pixels) in the middle of the visible window: the canvas runs behind the panels, the grid fades out towards its far corners. */
+async function middle(app: App): Promise<[number, number]> {
+  return app.page.evaluate(() => {
+    const cv = document.querySelector('.vp canvas') as HTMLCanvasElement
+    const c = cv.getBoundingClientRect(), h = (document.querySelector('.vp-hole') ?? cv).getBoundingClientRect()
+    const k = cv.width / c.width
+    return [(h.left - c.left + h.width * 0.15) * k, (h.left - c.left + h.width * 0.85) * k] as [number, number]
+  })
+}
+
 async function rowLines(app: App, rowFrac: number): Promise<Line[]> {
+  const [mlo, mhi] = await middle(app)
   const row: number[] = await app.page.evaluate(async (frac) => {
     const t = (window as any).__caddy.three // eslint-disable-line
     t.gl.render(t.scene, t.camera) // read the framebuffer in the same task as the render
@@ -13,9 +24,9 @@ async function rowLines(app: App, rowFrac: number): Promise<Line[]> {
     const top = Math.min(Math.floor(H * frac), H - 40)
     const buf = new Uint8Array(W * 40 * 4)
     gl.readPixels(0, H - top - 40, W, 40, gl.RGBA, gl.UNSIGNED_BYTE, buf)
-    const refPx = new Uint8Array(4)
-    gl.readPixels(2, H - 3, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, refPx) // the far corner is outside the faded grid: pure background
-    const ref = refPx
+    // the background is the commonest colour of the band (a corner pixel is not reliable: the plane under the sketch is a shade lighter than the clear colour)
+    const ref = new Uint8Array(4)
+    for (let ch = 0; ch < 3; ch++) { const v: number[] = []; for (let i = ch; i < buf.length; i += 4 * 7) v.push(buf[i]); v.sort((a, b) => a - b); ref[ch] = v[Math.floor(v.length / 2)] }
     // a row that happens to run along a horizontal grid line would light up entirely: take the quietest row of the band
     let best: number[] = [], bestSum = Infinity
     for (let k = 0; k < 40; k++) {
@@ -31,7 +42,7 @@ async function rowLines(app: App, rowFrac: number): Promise<Line[]> {
   row.splice(0, 4)
   const width = row.length / 4
   const diff = (i: number) => Math.abs(row[i * 4] - bg[0]) + Math.abs(row[i * 4 + 1] - bg[1]) + Math.abs(row[i * 4 + 2] - bg[2])
-  const lo = Math.floor(width * 0.15), hi = Math.floor(width * 0.85)
+  const lo = Math.floor(mlo), hi = Math.floor(mhi)
   const lines: Line[] = []
   for (let i = lo; i < hi;) {
     if (diff(i) < 3.5) { i++; continue }
@@ -90,7 +101,7 @@ async function checkGrid(app: App, what: string): Promise<number> {
   const cell = S * g.unit
   expect(cell, `${what}: minor cell in px (step ${g.step}, blend ${g.blend.toFixed(2)})`).toBeGreaterThan(11.5)
   expect(cell, `${what}: minor cell in px`).toBeLessThan(125)
-  const lo = g.width * 0.15, hi = g.width * 0.85
+  const [lo, hi] = await middle(app)
   const jMin = Math.ceil((lo - g.origin) / cell), jMax = Math.floor((hi - g.origin) / cell)
   const e1: number[] = [], e0: number[] = []
   for (let j = jMin; j <= jMax; j++) if (j !== 0) e1.push(g.origin + j * cell)
@@ -120,7 +131,7 @@ test('sketch grid: regular, origin-aligned minor / major lines (major every 10th
   await app.open()
   await startSketch(app)
   await app.shot('sketch-grid')
-  const vp = (await page.locator('.vp canvas').boundingBox())!
+  const vp = (await viewBox(page))
   await page.mouse.move(vp.x + vp.width * 0.5, vp.y + vp.height * 0.5)
 
   const cells: number[] = [await checkGrid(app, 'initial')]

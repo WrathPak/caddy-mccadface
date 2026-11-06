@@ -11,7 +11,7 @@ import { Tip } from './Tooltip'
 /** Middle of the screen, where it gets seen, but not modal: the app stays usable around it. */
 const CENTRED: CSSProperties = {
   position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', zIndex: 1500, width: 340, maxWidth: 'calc(100vw - 24px)',
-  padding: 12, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 3, boxShadow: 'var(--shadow-float)', fontSize: 'var(--fs-md)',
+  padding: 18, background: 'var(--glass-strong)', WebkitBackdropFilter: 'var(--glass-filter)', backdropFilter: 'var(--glass-filter)', borderRadius: 20, boxShadow: 'var(--shadow-float), var(--shadow-inner)', fontSize: 'var(--fs-md)',
 }
 
 /**
