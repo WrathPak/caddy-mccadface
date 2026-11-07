@@ -18,7 +18,7 @@ import { usePreview } from './preview'
 import { useFaceEdges } from './faceEdges'
 import { useLastPick } from './lastPick'
 import { useVpColors } from './colors'
-import { useSketch } from '@/sketch/store'
+import { useProjMode, useSketch } from '@/sketch/store'
 import { sectionPlane } from './section'
 import { SectionCap } from './SectionCap'
 import { useSceneHalfSize } from './Origin'
@@ -259,6 +259,9 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
   // while sketching, body faces / edges are only pickable for the Project tool
   const sketchMode = useUi((s) => s.sketchMode)
   const projecting = useSketch((s) => s.active && s.tool === 'project')
+  // Project and Include 3D Geometry take a single edge as well as a face; Intersect works on faces and bodies
+  const projMode = useProjMode((s) => s.mode)
+  const edgeProject = projecting && projMode !== 'intersect' && projMode !== 'surface'
   const sketching = sketchMode && !projecting
   const painting = useHairPaint((s) => s.mode !== 'off')
   const byComponent = filter === 'component' && !!inst.occ
@@ -267,7 +270,7 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
   const onFaceEdges = useFaceEdges((s) => s.onFace)
   const faceEdges = filter === 'edge' && !!onFaceEdges && !sketching && !painting && !snapping && !dragging
   // an open surface always shows its edges: they are what tells a surface from a solid, and what the stitch and extend tools pick
-  const showEdges = displayMode !== 'shaded' || filter === 'edge' || !!body.surface
+  const showEdges = displayMode !== 'shaded' || filter === 'edge' || edgeProject || !!body.surface
   const bodyMat = flagged ? mats.flag : dimmed ? mats.dim : body.surface ? mats.surf : mats.base
   // the pieces go straight into their group instead of through React state: re-rendering the body for every one of the
   // dozens of pieces (each re-diffing all the earlier ones) cost more main-thread time than building and uploading it
@@ -369,7 +372,7 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
             snapping
               ? (e) => { e.stopPropagation(); const s = snapAt(e); useAssemblyRuntime.getState().setSnapHover(s ? { inst: inst.key, index: s.nearest, near: s.near } : null) }
               : faceEdges && canPick ? (e) => { if (e.intersections.some((h) => h.object.type === 'LineSegments')) return; e.stopPropagation(); const r = refFor(e); if (!sameRef(useUi.getState().hover, r)) setHover(r) }
-              : pickFaces && canPick ? (e) => { e.stopPropagation(); const r = refFor(e); if (!sameRef(useUi.getState().hover, r)) setHover(r) } : undefined
+              : pickFaces && canPick ? (e) => { if (edgeProject && e.intersections.some((h) => h.object.type === 'LineSegments')) return; e.stopPropagation(); const r = refFor(e); if (!sameRef(useUi.getState().hover, r)) setHover(r) } : undefined
           }
           onPointerOut={() => { setHover(null); if (snapping) useAssemblyRuntime.getState().setSnapHover(null) }}
           onClick={
@@ -382,12 +385,12 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
                   setSelection([{ kind: 'snap', id: body.id, index: s.nearest, path, snap: snapSpec(body, sp, inst.occ || undefined) }])
                 }
               : faceEdges && canPick ? (e) => { if (e.intersections.some((h) => h.object.type === 'LineSegments')) return; e.stopPropagation(); onFaceEdges!(refFor(e)) }
-              : pickFaces && canPick ? (e) => { e.stopPropagation(); const r = refFor(e); useLastPick.setState((s) => ({ point: [e.point.x, e.point.y, e.point.z], ref: r, seq: s.seq + 1 })); setSelection([r], e.shiftKey || e.ctrlKey) } : undefined
+              : pickFaces && canPick ? (e) => { if (edgeProject && e.intersections.some((h) => h.object.type === 'LineSegments')) return; e.stopPropagation(); const r = refFor(e); useLastPick.setState((s) => ({ point: [e.point.x, e.point.y, e.point.z], ref: r, seq: s.seq + 1 })); setSelection([r], e.shiftKey || e.ctrlKey) } : undefined
           }
         />
         {wholeBody && <mesh geometry={showLod ? lodGeo! : geo} material={mats.hi} raycast={() => null} renderOrder={2} />}
         {overlayGeo && <mesh geometry={overlayGeo} material={mats.hi} raycast={() => null} renderOrder={2} />}
-        {showEdges && <EdgeLines body={body} inst={inst} color={colors.edge} accent={colors.sel} pickable={filter === 'edge' && !sketching && pickable && !snapping && !dragging} clip={mats.base.clippingPlanes ?? []} />}
+        {showEdges && <EdgeLines body={body} inst={inst} color={colors.edge} accent={colors.sel} pickable={(filter === 'edge' || edgeProject) && !sketching && pickable && !snapping && !dragging} clip={mats.base.clippingPlanes ?? []} />}
       </group>
       {clip && !body.surface && <SectionCap geometry={geo} plane={clip} color={CAP_COLORS[index % CAP_COLORS.length]} order={20 + index * 4} size={capSize} matrix={matrix ?? undefined} />}
     </>

@@ -62,6 +62,7 @@ interface Persisted {
   tooltips: boolean
   beginnerTips: boolean
   tourSeen: boolean
+  autoProjectFaces: boolean
 }
 
 const DEFAULTS: Persisted = {
@@ -87,6 +88,7 @@ const DEFAULTS: Persisted = {
   tooltips: true,
   beginnerTips: true,
   tourSeen: false,
+  autoProjectFaces: true,
 }
 
 /** A selection colour is '#rrggbb', or empty for the theme's accent. */
@@ -121,6 +123,7 @@ function load(): Persisted {
       tooltips: v.tooltips !== false,
       beginnerTips: v.beginnerTips !== false,
       tourSeen: v.tourSeen === true,
+      autoProjectFaces: v.autoProjectFaces !== false,
     }
   } catch {
     return { ...DEFAULTS, ssao: defaultSsao() }
@@ -147,6 +150,8 @@ interface SettingsState {
   tooltips: boolean
   beginnerTips: boolean
   tourSeen: boolean
+  /** A sketch started on a flat face brings that face's edges in as projected curves (Fusion's Auto Project Edges on Reference). */
+  autoProjectFaces: boolean
   setSelectionColor: (c: string) => void
   setPixelRatio: (p: PixelRatio) => void
   setGlass: (g: GlassMode) => void
@@ -164,6 +169,7 @@ interface SettingsState {
   setTooltips: (on: boolean) => void
   setBeginnerTips: (on: boolean) => void
   setTourSeen: (seen: boolean) => void
+  setAutoProjectFaces: (on: boolean) => void
   /** Back to the defaults, for every preference in the dialog (navigation has its own). */
   resetAll: () => void
 }
@@ -191,6 +197,8 @@ export const useSettings = create<SettingsState>((set, get) => {
     tooltips: init.tooltips,
     beginnerTips: init.beginnerTips,
     tourSeen: init.tourSeen,
+    autoProjectFaces: init.autoProjectFaces,
+    setAutoProjectFaces: (autoProjectFaces) => set({ autoProjectFaces }),
     setPixelRatio: (pixelRatio) => set({ pixelRatio }),
     setGlass: (glass) => set({ glass }),
     setSelectionColor: (c) => set({ selectionColor: validSelectionColor(c) }),
@@ -220,7 +228,7 @@ export const useSettings = create<SettingsState>((set, get) => {
       const s = get()
       s.setThemeMode(d.themeMode)
       s.setGridDensity(d.gridDensity)
-      set({ pixelRatio: d.pixelRatio, glass: d.glass, selectionColor: d.selectionColor, defaultWorkspace: d.defaultWorkspace, autosave: d.autosave, autosaveSeconds: d.autosaveSeconds, diskAutosave: d.diskAutosave, autosaveVersions: d.autosaveVersions, tooltips: d.tooltips, beginnerTips: d.beginnerTips })
+      set({ pixelRatio: d.pixelRatio, glass: d.glass, selectionColor: d.selectionColor, defaultWorkspace: d.defaultWorkspace, autosave: d.autosave, autosaveSeconds: d.autosaveSeconds, diskAutosave: d.diskAutosave, autosaveVersions: d.autosaveVersions, tooltips: d.tooltips, beginnerTips: d.beginnerTips, autoProjectFaces: d.autoProjectFaces })
       useUi.setState({ units: d.units, showGrid: d.showGrid, showOrigin: d.showOrigin, ssao: defaultSsao(), displayMode: d.displayMode, projection: d.projection })
     },
   }
@@ -251,6 +259,7 @@ function save() {
     tooltips: s.tooltips,
     beginnerTips: s.beginnerTips,
     tourSeen: s.tourSeen,
+    autoProjectFaces: s.autoProjectFaces,
   }
   try { localStorage.setItem(KEY, JSON.stringify(out)) } catch { /* private mode / blocked storage: the preferences just last for this session */ }
 }

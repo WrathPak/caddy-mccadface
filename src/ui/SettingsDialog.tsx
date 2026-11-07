@@ -15,10 +15,11 @@ import { Select } from './Select'
 import { SplitDialog, type NavItem } from './SplitDialog'
 import { Tip } from './Tooltip'
 
-type Section = 'general' | 'navigation' | 'display' | 'help'
+type Section = 'general' | 'navigation' | 'sketch' | 'display' | 'help'
 const NAV: NavItem[] = [
   { id: 'general', label: 'General' },
   { id: 'navigation', label: 'Navigation' },
+  { id: 'sketch', label: 'Sketch' },
   { id: 'display', label: 'Display' },
   { id: 'help', label: 'Help' },
 ]
@@ -136,6 +137,16 @@ function General() {
       )}
       {s.autosave && <AutosaveFolder />}
     </>
+  )
+}
+
+function SketchSettings() {
+  const on = useSettings((s) => s.autoProjectFaces)
+  const set = useSettings((s) => s.setAutoProjectFaces)
+  return (
+    <Row id="auto-project" label="Auto project face edges" help="A sketch started on a flat face brings that face's outline and the edges of its holes in at once, as purple projected curves you can snap and dimension to. Turn it off to start with an empty sketch.">
+      <Checkbox checked={on} onChange={set} ariaLabel="Auto project face edges" />
+    </Row>
   )
 }
 
@@ -261,6 +272,7 @@ export function SettingsDialog() {
     <SplitDialog open={open} onOpenChange={setOpen} title="Settings" description="Units, theme, mouse navigation, display and help options." nav={NAV} active={section} onSelect={(id) => setSection(id as Section)} testId="settings-dialog">
       {section === 'general' && <General />}
       {section === 'navigation' && <Navigation />}
+      {section === 'sketch' && <SketchSettings />}
       {section === 'display' && <Display />}
       {section === 'help' && <Help />}
     </SplitDialog>

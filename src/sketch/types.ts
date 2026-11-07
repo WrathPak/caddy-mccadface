@@ -95,7 +95,18 @@ export const isDim = (c: Constraint) => DIM_TYPES.includes(c.type)
  * re-projected whenever the sketch regenerates. `ents` lists the curve entities it produced, in the order the kernel
  * returned the curves (null: that curve was already present as ordinary geometry, or its entity was deleted).
  */
-export interface Projection { id: string; ref: string; ents: (string | null)[]; broken?: boolean }
+export interface Projection {
+  id: string
+  ref: string
+  ents: (string | null)[]
+  broken?: boolean
+  /** what the curves are: Project (default), Intersect (where the plane cuts the body) or Include 3D Geometry (project plus a point at every vertex) */
+  mode?: 'project' | 'intersect' | 'include3d' | 'surface'
+  /** Project to Surface: the sketch curves that were looked through onto the face */
+  src?: string[]
+  /** 2: a whole circle comes in as one circle (older projections keep the arcs they were made with) */
+  v?: number
+}
 
 export interface SketchModel {
   entities: Entity[]

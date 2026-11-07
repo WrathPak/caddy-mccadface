@@ -4,12 +4,14 @@
  * refs are re-resolved against the current bodies and re-projected, so the geometry follows its source. A ref that no longer
  * resolves marks its curves `broken` (drawn red, the feature gets a warning); the last known geometry stays in place.
  */
-import { decodeRef, resolveEdge, resolveFace, type RefReport } from '@/doc/refs'
+import { decodeRef, resolveEdge, resolveFace, resolveVertex, vertexSigs, type RefReport } from '@/doc/refs'
 import type { Body } from '@/kernel/types'
-import type { ProjectedCurve } from '@/kernel/sketch-ops'
+import type { ProjectedCurve, ProjectMode } from '@/kernel/sketch-ops'
 import { dist } from './geom'
 import { addArc, addCircle, addLine, addPoint, deps, entityById, pos, removeIds } from './model'
-import type { Entity, PlaneDef, Projection, SketchModel, Vec2 } from './types'
+import { toLocal } from './plane'
+import { surfaceCurves } from './surface'
+import type { Entity, PlaneDef, Projection, SketchModel, Vec2, Vec3 } from './types'
 
 /** worker op call, e.g. `getKernel().call` */
 export type KernelCall = (name: string, args: unknown) => Promise<unknown>
@@ -23,13 +25,14 @@ function existing(m: SketchModel, c: ProjectedCurve): Entity | undefined {
       const a = pos(m, e.p1), b = pos(m, e.p2)
       return (same(a, c.a) && same(b, c.b)) || (same(a, c.b) && same(b, c.a))
     }
+    if (c.k === 'p' && e.type === 'point') return same([e.x, e.y], c.p)
     if (c.k === 'c' && e.type === 'circle') return same(pos(m, e.c), c.c) && Math.abs(e.r - c.r) < 1e-5
     if (c.k === 'a' && e.type === 'arc') return same(pos(m, e.c), c.c) && same(pos(m, e.s), c.s) && same(pos(m, e.e), c.e)
     return false
   })
 }
 
-const kindOf = (e: Entity) => (e.type === 'line' ? 'l' : e.type === 'circle' ? 'c' : e.type === 'arc' ? 'a' : '')
+const kindOf = (e: Entity) => (e.type === 'line' ? 'l' : e.type === 'circle' ? 'c' : e.type === 'arc' ? 'a' : e.type === 'point' ? 'p' : '')
 
 function movePoint(m: SketchModel, id: string, p: Vec2) {
   const e = entityById(m, id)
@@ -38,12 +41,21 @@ function movePoint(m: SketchModel, id: string, p: Vec2) {
 
 /** Rewrite an entity in place so it matches the curve (same kind). */
 function writeCurve(m: SketchModel, e: Entity, c: ProjectedCurve) {
-  if (e.type === 'line' && c.k === 'l') { movePoint(m, e.p1, c.a); movePoint(m, e.p2, c.b) }
+  if (e.type === 'point' && c.k === 'p') movePoint(m, e.id, c.p)
+  else if (e.type === 'line' && c.k === 'l') { movePoint(m, e.p1, c.a); movePoint(m, e.p2, c.b) }
   else if (e.type === 'circle' && c.k === 'c') { movePoint(m, e.c, c.c); e.r = c.r }
   else if (e.type === 'arc' && c.k === 'a') { movePoint(m, e.c, c.c); movePoint(m, e.s, c.s); movePoint(m, e.e, c.e) }
 }
 
-function addCurve(m: SketchModel, c: ProjectedCurve): string {
+function addCurve(m: SketchModel, c: ProjectedCurve, guide = false): string {
+  if (c.k === 'p') {
+    // a point that is already the end of a projected curve is that point
+    const hit = m.entities.find((e) => e.type === 'point' && e.ref && same([e.x, e.y], c.p))
+    if (hit) return hit.id
+    const id = addPoint(m, c.p[0], c.p[1])
+    ;(entityById(m, id) as { ref?: boolean }).ref = true
+    return id
+  }
   const pt = (p: Vec2) => {
     const id = addPoint(m, p[0], p[1])
     ;(entityById(m, id) as { ref?: boolean }).ref = true
@@ -51,6 +63,7 @@ function addCurve(m: SketchModel, c: ProjectedCurve): string {
   }
   const e = c.k === 'l' ? addLine(m, pt(c.a), pt(c.b)) : c.k === 'c' ? addCircle(m, pt(c.c), c.r) : addArc(m, pt(c.c), pt(c.s), pt(c.e))
   e.ref = true
+  if (guide) e.construction = true // Project to Surface: a guide over the face, not part of any profile
   return e.id
 }
 
@@ -89,6 +102,7 @@ function applyCurves(m: SketchModel, p: Projection, curves: ProjectedCurve[]) {
   const drop = p.ents.filter((id): id is string => !!id && !others.has(id))
   if (drop.length) removeIds(m, drop)
   p.ents = curves.map((c) => {
+    if (p.mode === 'surface') return addCurve(m, c, true)
     const dup = existing(m, c)
     if (dup) return dup.ref ? dup.id : null // already there as ordinary geometry: leave it alone
     return addCurve(m, c)
@@ -96,10 +110,11 @@ function applyCurves(m: SketchModel, p: Projection, curves: ProjectedCurve[]) {
 }
 
 /** Add (or refresh) the projection of `ref`. Returns how many new curves were added. */
-export function addProjected(m: SketchModel, curves: ProjectedCurve[], ref: string): number {
+export function addProjected(m: SketchModel, curves: ProjectedCurve[], ref: string, mode: ProjectMode = 'project', src?: string[]): number {
   const list = (m.projections ??= [])
-  let p = list.find((q) => q.ref === ref)
-  if (!p) { p = { id: 'j' + m.next++, ref, ents: [] }; list.push(p) }
+  let p = list.find((q) => q.ref === ref && (q.mode ?? 'project') === mode)
+  if (!p) { p = { id: 'j' + m.next++, ref, ents: [], v: 2, ...(mode !== 'project' ? { mode } : {}) }; list.push(p) }
+  if (src) p.src = src
   const count = () => m.entities.filter((e) => e.type !== 'point').length
   const before = count()
   applyCurves(m, p, curves)
@@ -107,7 +122,7 @@ export function addProjected(m: SketchModel, curves: ProjectedCurve[], ref: stri
   return Math.max(0, count() - before)
 }
 
-interface Target { body: Body; faces: number[]; edges: number[]; all: boolean }
+interface Target { body: Body; faces: number[]; edges: number[]; all: boolean; /** a vertex picked: its place in the world */ point?: Vec3 }
 
 function resolveTarget(refStr: string, bodies: Body[], report?: RefReport): Target | null {
   const ref = decodeRef(refStr)
@@ -116,10 +131,28 @@ function resolveTarget(refStr: string, bodies: Body[], report?: RefReport): Targ
     const body = bodies.find((b) => b.id === ref.bodyId)
     return body ? { body, faces: [], edges: [], all: true } : null
   }
-  if (ref.kind === 'vertex' || ref.kind === 'snap' || ref.kind === 'component') return null // projecting a lone point is not supported yet
+  if (ref.kind === 'snap' || ref.kind === 'component') return null
+  if (ref.kind === 'vertex') {
+    const r = resolveVertex(ref, bodies, report)
+    return r ? { body: r.body, faces: [], edges: [], all: false, point: vertexSigs(r.body)[r.index].pos } : null
+  }
   const r = ref.kind === 'face' ? resolveFace(ref, bodies, report) : resolveEdge(ref, bodies, report)
   if (!r) return null
   return ref.kind === 'face' ? { body: r.body, faces: [r.index], edges: [], all: false } : { body: r.body, faces: [], edges: [r.index], all: false }
+}
+
+/** The curves of one projection against the current bodies (throws when the kernel does). */
+export async function projectTarget(t: Target, plane: PlaneDef, mode: ProjectMode, merge: boolean, call: KernelCall): Promise<ProjectedCurve[]> {
+  if (t.point) return [{ k: 'p', p: toLocal(plane, t.point) }]
+  return (await call('projectEdges', { key: t.body.key, plane, faces: t.faces, edges: t.edges, all: t.all, mode, merge })) as ProjectedCurve[]
+}
+
+/** Project one picked ref (face, edge, vertex or body) now. Returns the curves, or a message when it cannot be done. */
+export async function projectRef(refStr: string, plane: PlaneDef, bodies: Body[], mode: ProjectMode, call: KernelCall): Promise<ProjectedCurve[] | string> {
+  const t = resolveTarget(refStr, bodies)
+  if (!t) return 'That cannot be projected'
+  if (t.body.kind !== 'brep') return 'Only solid (B-rep) bodies can be projected'
+  return projectTarget(t, plane, mode, true, call)
 }
 
 /**
@@ -132,8 +165,16 @@ export async function reprojectModel(m: SketchModel, plane: PlaneDef, bodies: Bo
   for (const p of list) {
     const t = resolveTarget(p.ref, bodies, report)
     if (!t || t.body.kind !== 'brep') { setBroken(m, p, true); broken++; continue }
+    if (p.mode === 'surface') {
+      // looks at the face from the sketch curves as they are now (the curves it came from may have moved or gone)
+      p.src = (p.src ?? []).filter((id) => entityById(m, id))
+      if (t.faces.length !== 1) { setBroken(m, p, true); broken++; continue }
+      applyCurves(m, p, surfaceCurves(m, p.src, plane, t.body, t.faces[0]).curves)
+      setBroken(m, p, false)
+      continue
+    }
     try {
-      const curves = (await call('projectEdges', { key: t.body.key, plane, faces: t.faces, edges: t.edges, all: t.all })) as ProjectedCurve[]
+      const curves = await projectTarget(t, plane, p.mode ?? 'project', (p.v ?? 1) >= 2, call)
       applyCurves(m, p, curves)
       setBroken(m, p, false)
     } catch {

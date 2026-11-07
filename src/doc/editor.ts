@@ -1,5 +1,5 @@
 /** Opens the schema-driven Inspector to create or edit timeline features. */
-import { useUi } from '@/store/ui'
+import { useUi, type InspectorSession } from '@/store/ui'
 import { missingRequired, schemaDefaults, type ParamValues } from '@/ui/schema'
 import { getFeature } from './registry'
 import { useDoc } from './store'
@@ -21,22 +21,28 @@ function openSession(def: FeatureDef, start: ParamValues, tool: string, onOk: (v
     useUi.getState().setActiveTool(null)
     restore?.()
   }
-  const session = (values: ParamValues) => ({
-    schema: def.schema,
-    values,
-    featureId,
-    formId,
-    onChange: (v: ParamValues) => handle?.update(v),
-    onOk: (v: ParamValues) => {
-      // the dialog disables OK while required selections are missing; never create a feature in an error state from an empty dialog
-      if (missingRequired(def.schema, v).length) return
-      finish()
-      onOk(v)
-    },
-    onCancel: finish,
-    onActiveGroup: (id: string) => handle?.activeGroup?.(id),
-  })
-  handle = def.preview?.({ values: start, setValues: (v) => { useUi.getState().openInspector(session(v)); handle?.update(v) } })
+  // the values as the form holds them now, shared by every session object of this dialog (the form keeps calling the one it was handed first)
+  let live = start
+  const session = (values: ParamValues): InspectorSession => {
+    const s: InspectorSession = {
+      schema: def.schema,
+      values,
+      featureId,
+      formId,
+      get latest() { return live },
+      onChange: (v: ParamValues) => { live = v; handle?.update(v) },
+      onOk: (v: ParamValues) => {
+        // the dialog disables OK while required selections are missing; never create a feature in an error state from an empty dialog
+        if (missingRequired(def.schema, v).length) return
+        finish()
+        onOk(v)
+      },
+      onCancel: finish,
+      onActiveGroup: (id: string) => handle?.activeGroup?.(id),
+    }
+    return s
+  }
+  handle = def.preview?.({ values: start, setValues: (v) => { live = v; useUi.getState().openInspector(session(v)); handle?.update(v) } })
   ui.setActiveTool(tool)
   ui.openInspector(session(start))
   handle?.update(start)
@@ -46,7 +52,7 @@ function openSession(def: FeatureDef, start: ParamValues, tool: string, onOk: (v
 export function createFeature(type: string, initial: ParamValues = {}, tool = type) {
   const def = getFeature(type)
   if (!def) return console.warn('[editor] unknown feature', type)
-  openSession(def, { ...schemaDefaults(def.schema), ...initial }, tool, (v) => useDoc.getState().addFeature(type, v))
+  openSession(def, { ...schemaDefaults(def.schema), ...initial }, tool, (v) => useDoc.getState().addFeature(type, def.beforeAccept ? def.beforeAccept(v, true) : v))
 }
 
 /** Edit an existing feature; the timeline is rolled back to just before it while the dialog is open. */
@@ -63,7 +69,7 @@ export function editFeature(id: string) {
     def,
     { ...schemaDefaults(def.schema), ...f.params },
     f.type,
-    (v) => useDoc.getState().updateFeature(id, v),
+    (v) => useDoc.getState().updateFeature(id, def.beforeAccept ? def.beforeAccept(v, false) : v),
     () => useDoc.getState().setRollback(prev),
     id,
   )

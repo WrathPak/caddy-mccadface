@@ -38,6 +38,8 @@ export interface InspectorSession {
   onActiveGroup?: (id: string) => void
   /** sessions of one dialog share this: a preview that pushes new values updates the open form instead of rebuilding it */
   formId?: number
+  /** the values as the form holds them now (`values` is what the dialog opened with, or the last thing a preview pushed in) */
+  latest?: ParamValues
 }
 
 interface UiState {

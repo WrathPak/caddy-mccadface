@@ -106,6 +106,8 @@ test('selection colour: picked in Settings, drawn on faces and edges and sketch 
 
   // sketch entities: a selected sketch line is magenta too
   await closeSettings(page)
+  // (nothing selected, so the sketch goes on the XY plane: with a face selected it would open on that face, whose edges now come in projected)
+  await app.ev((c) => c.ui.getState().setSelection([]))
   await app.sketchRect('XY', 40, 30)
   await app.ev((c) => c.sketch.setState({ sel: c.sketch.getState().model.entities.filter((e: any) => e.type !== 'point').map((e: any) => e.id) })) // eslint-disable-line
   await app.cameraStable()

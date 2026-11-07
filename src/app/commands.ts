@@ -163,7 +163,10 @@ def('sketch.equal', 'Equal', Equals, 'Sketch')
 def('sketch.fix', 'Fix / Lock', Lock, 'Sketch')
 def('sketch.trim', 'Trim', Scissors, 'Sketch', 'T')
 def('sketch.offset', 'Offset', Stack, 'Sketch', 'O')
-def('sketch.project', 'Project / Include', Exclude, 'Sketch')
+def('sketch.project', 'Project / Include', Exclude, 'Sketch', 'P')
+def('sketch.intersect', 'Intersect', Intersect, 'Sketch')
+def('sketch.include3d', 'Include 3D Geometry', Cube, 'Sketch')
+def('sketch.projectSurface', 'Project to Surface', Cylinder, 'Sketch')
 
 // ---- View
 def('view.frame', 'Frame All', FrameCorners, 'View', 'F6', () => viewportBus.emit('frame', undefined))

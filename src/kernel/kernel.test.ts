@@ -7,6 +7,8 @@ import { computeEdgeSigs, computeFaceSigs, type Body } from './types'
 import './model-ops'
 import type { ExtrudeArgs, EdgeModArgs, EdgeFrame } from './model-ops'
 import type { ProjectedCurve } from './sketch-ops'
+import './sketch-ops'
+import './modeling-ops'
 import type { Loop, PlaneDef } from '../sketch/types'
 
 const XY: PlaneDef = { origin: [0, 0, 0], xDir: [1, 0, 0], normal: [0, 0, 1] }
@@ -258,10 +260,13 @@ describe('project edges onto a plane', () => {
 
     const cyl = await run<Body>('extrudeTool', ext({ outer: [{ k: 'c', c: [3, 4], r: 5 }], d1: 8 }))
     const all = await run<ProjectedCurve[]>('projectEdges', { key: cyl.key, plane, faces: [], edges: [], all: true })
-    // the cylinder's top and bottom circles come back as arcs of the true circle (centre (3,4), r 5); the seam lines are
-    // parallel to the plane normal and project to nothing
+    // the cylinder's top and bottom circles come back as arcs of the true circle (centre (3,4), r 5); the seam lines stand square
+    // to the plane, so they come in as points
+    // (the top and bottom circles lie on one another once flattened, so each half arc comes in once)
+    expect(all.filter((c) => c.k === 'a').length).toBe(2)
+    expect(all.filter((c) => c.k === 'p').length).toBe(2) // the wall is two half cylinders, so two seams
     expect(all.length).toBe(4)
-    for (const c of all) {
+    for (const c of all.filter((x) => x.k === 'a')) {
       expect(c.k).toBe('a')
       if (c.k !== 'a') continue
       expect(c.r).toBeCloseTo(5)
@@ -276,5 +281,114 @@ describe('project edges onto a plane', () => {
     const ys = proj.flatMap((c) => (c.k === 'l' ? [c.a[0], c.b[0]] : []))
     expect(Math.max(...ys)).toBeCloseTo(5)
     void (null as unknown as Shape)
+  })
+})
+
+describe('project modes, face circles and extents', () => {
+  const plateWithHole = async () => run<Body>('extrudeTool', ext({ outer: rectLoop(0, 0, 60, 40), holes: [[{ k: 'c', c: [20, 12], r: 5 }]], d1: 10 }))
+  const topFace = (b: Body) => topoOf(shapeOf(b)).faces.findIndex((f) => f.geomType === 'PLANE' && Math.abs(f.center.z - 10) < 1e-6)
+  const zRange = (b: Body) => {
+    const p = b.mesh.positions
+    let lo = Infinity, hi = -Infinity
+    for (let i = 2; i < p.length; i += 3) { lo = Math.min(lo, p[i]); hi = Math.max(hi, p[i]) }
+    return { lo, hi }
+  }
+  const top: PlaneDef = { origin: [0, 0, 10], xDir: [1, 0, 0], normal: [0, 0, 1] }
+
+  it('a face with a hole projects its hole as one circle when asked to merge', async () => {
+    const b = await plateWithHole()
+    const fi = topFace(b)
+    const merged = await run<ProjectedCurve[]>('projectEdges', { key: b.key, plane: top, faces: [fi], edges: [], merge: true })
+    expect(merged.filter((c) => c.k === 'l')).toHaveLength(4)
+    const circ = merged.filter((c) => c.k === 'c')
+    expect(circ).toHaveLength(1)
+    if (circ[0].k === 'c') { expect(circ[0].r).toBeCloseTo(5); expect(circ[0].c[0]).toBeCloseTo(20); expect(circ[0].c[1]).toBeCloseTo(12) }
+  })
+
+  it('a side face seen edge on projects as one line, and an upright edge as a point', async () => {
+    const b = bodyFromShape('b', 'b', box([60, 40, 10], [30, 20, 0]))
+    const front = topoOf(shapeOf(b)).faces.findIndex((f) => f.geomType === 'PLANE' && Math.abs(f.center.y - 0) < 1e-6)
+    const out = await run<ProjectedCurve[]>('projectEdges', { key: b.key, plane: top, faces: [front], edges: [], merge: true })
+    expect(out.filter((c) => c.k === 'l')).toHaveLength(1)
+    const upright = topoOf(shapeOf(b)).edges.findIndex((e) => Math.abs(e.startPoint.z - e.endPoint.z) > 5)
+    const pt = await run<ProjectedCurve[]>('projectEdges', { key: b.key, plane: top, faces: [], edges: [upright] })
+    expect(pt).toHaveLength(1)
+    expect(pt[0].k).toBe('p')
+  })
+
+  it('Intersect gives the curves where the plane cuts the body', async () => {
+    const b = bodyFromShape('b', 'b', box([60, 40, 10], [30, 20, 0]))
+    const mid: PlaneDef = { origin: [0, 0, 4], xDir: [1, 0, 0], normal: [0, 0, 1] }
+    const out = await run<ProjectedCurve[]>('projectEdges', { key: b.key, plane: mid, faces: [], edges: [], all: true, mode: 'intersect' })
+    expect(out.filter((c) => c.k === 'l')).toHaveLength(4)
+    const xs = out.flatMap((c) => (c.k === 'l' ? [c.a[0], c.b[0]] : []))
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(60)
+    const away: PlaneDef = { origin: [0, 0, 40], xDir: [1, 0, 0], normal: [0, 0, 1] }
+    expect(await run<ProjectedCurve[]>('projectEdges', { key: b.key, plane: away, faces: [], edges: [], all: true, mode: 'intersect' })).toHaveLength(0)
+    const h = await plateWithHole()
+    const cut = await run<ProjectedCurve[]>('projectEdges', { key: h.key, plane: mid, faces: [], edges: [], all: true, mode: 'intersect' })
+    expect(cut.filter((c) => c.k === 'c')).toHaveLength(1)
+    expect(cut.filter((c) => c.k === 'l')).toHaveLength(4)
+  })
+
+  it('Include 3D Geometry adds a point at every corner on top of the projected edges', async () => {
+    const b = bodyFromShape('b', 'b', box([60, 40, 10], [30, 20, 0]))
+    const out = await run<ProjectedCurve[]>('projectEdges', { key: b.key, plane: top, faces: [], edges: [], all: true, mode: 'include3d', merge: true })
+    expect(out.filter((c) => c.k === 'l')).toHaveLength(4)
+    expect(out.filter((c) => c.k === 'p')).toHaveLength(4)
+  })
+
+  it('faceCircles finds the round hole of a face as one circle', async () => {
+    const b = await plateWithHole()
+    const out = await run<{ c: [number, number]; r: number }[]>('faceCircles', { key: b.key, face: topFace(b), plane: top })
+    expect(out).toHaveLength(1)
+    expect(out[0].r).toBeCloseTo(5)
+    expect(out[0].c[0]).toBeCloseTo(20)
+    expect(out[0].c[1]).toBeCloseTo(12)
+  })
+
+  it('extrude span: starts a distance off the profile plane and ends where it is told', async () => {
+    const b = await run<Body>('extrudeTool', ext({ outer: rectLoop(0, 0, 20, 10), span: [2, 7] }))
+    near(vol(b), 200 * 5)
+    expect(zRange(b).lo).toBeCloseTo(2)
+    expect(zRange(b).hi).toBeCloseTo(7)
+    const both = await run<Body>('extrudeTool', ext({ outer: rectLoop(0, 0, 20, 10), span: [-3, 4] }))
+    near(vol(both), 200 * 7)
+  })
+
+  it('extrude span on a face runs along the face normal whatever the operation', async () => {
+    const b = bodyFromShape('b', 'b', box([60, 40, 10], [30, 20, 0]))
+    const fi = topFace(b)
+    const up = await run<Body>('extrudeTool', { id: 't', name: 't', groups: [], faces: [{ key: b.key, index: fi }], mode: 'one', d1: 0, d2: 0, faceDir: -1, taper: 0, span: [0, 4] })
+    near(vol(up), 60 * 40 * 4)
+    expect(zRange(up).hi).toBeCloseTo(14)
+    const down = await run<Body>('extrudeTool', { id: 't', name: 't', groups: [], faces: [{ key: b.key, index: fi }], mode: 'one', d1: 0, d2: 0, faceDir: 1, taper: 0, span: [-6, 0] })
+    near(vol(down), 60 * 40 * 6)
+    expect(zRange(down).lo).toBeCloseTo(4)
+  })
+
+  it('a slanted end plane trims the extrude (To Object on a face that is not square to the profile)', async () => {
+    const n = Math.SQRT1_2
+    const b = await run<Body>('extrudeTool', ext({ outer: rectLoop(0, 0, 10, 10), span: [0, 20], trim: { origin: [0, 0, 10], normal: [n, 0, n] } }))
+    near(vol(b), 500, 2e-3)
+  })
+})
+
+describe('extrude to a curved face', () => {
+  it('ends at a cylinder wall, with an offset, and refuses a face that is not in the way', async () => {
+    const cyl = await run<Body>('extrudeTool', ext({ outer: [{ k: 'c', c: [30, 0], r: 10 }], d1: 10 }))
+    const faces = topoOf(shapeOf(cyl)).faces
+    const wall = faces.findIndex((f) => String(f.geomType) === 'CYLINDRE' && f.center.x < 30)
+    expect(wall).toBeGreaterThanOrEqual(0)
+    const P: PlaneDef = { origin: [0, 0, 0], xDir: [0, 1, 0], normal: [1, 0, 0] }
+    const rect = rectLoop(-3, 0, 3, 5)
+    const long = await run<Body>('extrudeTool', { id: 'l', name: 'l', faces: [], mode: 'one', d1: 0, d2: 0, faceDir: 1, groups: [{ plane: P, profiles: [{ outer: rect, holes: [] }] }], span: [0, 80] })
+    const trim = (grow: number) => run<Body>('trimToFace', { id: 't', name: 't', key: long.key, face: { key: cyl.key, index: wall }, grow, keep: [[0.01, 0, 2.5]], fid: 'f' })
+    const g = (y: number) => 0.5 * (y * Math.sqrt(100 - y * y) + 100 * Math.asin(y / 10))
+    near(vol(await trim(0)), 5 * (180 - 2 * g(3)), 5e-3)
+    // growing the surface by 2 (radius 12) makes the end reach further out, towards the profile
+    near(vol(await trim(2)), 5 * (180 - 2 * (0.5 * (3 * Math.sqrt(144 - 9) + 144 * Math.asin(3 / 12)))), 8e-3)
+    // a keep point that is not in the extrusion keeps nothing
+    await expect(run('trimToFace', { id: 't', name: 't', key: long.key, face: { key: cyl.key, index: wall }, grow: 0, keep: [[50, 50, 50]], fid: 'f' })).rejects.toThrow(/does not reach/)
   })
 })

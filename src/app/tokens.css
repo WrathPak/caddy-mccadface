@@ -90,6 +90,8 @@
   --vp-body: #98a19d;
   --vp-surface: #62b79a;
   --vp-edge: #05070a;
+  /* projected (reference) sketch curves */
+  --sk-ref: #b98cf5;
 
   color-scheme: dark;
 }
@@ -143,6 +145,7 @@
   --vp-body: #a4aca8;
   --vp-surface: #4fa585;
   --vp-edge: #151a17;
+  --sk-ref: #7b3fd0;
 
   color-scheme: light;
 }

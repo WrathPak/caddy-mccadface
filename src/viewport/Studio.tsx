@@ -26,7 +26,7 @@ export function StudioEnv() {
     const room = new RoomEnvironment()
     const tex: Texture = pm.fromScene(room, 0.04).texture
     scene.environment = tex
-    scene.environmentIntensity = 0.35
+    scene.environmentIntensity = 0.55
     invalidate()
     return () => { scene.environment = null; tex.dispose(); pm.dispose(); room.dispose() }
   }, [gl, scene, invalidate])
@@ -40,7 +40,7 @@ export const studioUniforms = { uZ0: { value: 0 }, uZ1: { value: 20 }, uC: { val
 
 /**
  * Patches a body material: vertical faces get lighter towards the top, top faces are brightest in the middle and fall off towards the
- * rim. (A plain lit face in an orthographic view is one flat colour.)
+ * rim, and a soft fresnel sheen lifts the faces that look away. (A plain lit face in an orthographic view is one flat colour.)
  */
 export function studioPatch(m: Material) {
   if (!richGraphics()) return
@@ -57,8 +57,9 @@ export function studioPatch(m: Material) {
         float t = clamp((vSW.z - uZ0) / max(uZ1 - uZ0, 1e-3), 0.0, 1.0);
         float top = clamp(vSN.z, 0.0, 1.0);
         float rad = clamp(length(vSW.xy - uC) / max(uR, 1e-3), 0.0, 1.0);
-        float g = (1.0 - top) * mix(0.80, 1.0, t) + top * (1.0 - 0.12 * rad);
-        gl_FragColor.rgb = gl_FragColor.rgb * g;
+        float g = (1.0 - top) * mix(0.78, 1.07, t) + top * (1.10 - 0.20 * rad);
+        float fres = pow(1.0 - clamp(abs(dot(normalize(vNormal), normalize(vViewPosition))), 0.0, 1.0), 2.5);
+        gl_FragColor.rgb = gl_FragColor.rgb * g + fres * 0.09;
       }
       #include <dithering_fragment>`)
   }
@@ -111,14 +112,19 @@ const showFrag = /* glsl */ `
 varying vec2 vUv;
 uniform sampler2D tMap;
 uniform float uOpacity;
+uniform float uLight;
 void main() {
   // the shadow camera looks up from below, so the picture is mirrored left to right
   float a = texture2D(tMap, vec2(1.0 - vUv.x, vUv.y)).r;
   a = smoothstep(0.02, 0.85, a) * uOpacity;
   vec2 e = min(vUv, 1.0 - vUv);
   a *= smoothstep(0.0, 0.08, min(e.x, e.y));
-  if (a < 0.004) discard;
-  gl_FragColor = vec4(vec3(0.0), a);
+  // on a dark floor a shadow needs something to fall on: a soft pool of light under the part, the shadow darker inside it
+  float r = length((vUv - 0.5) * 2.0);
+  float light = (1.0 - smoothstep(0.15, 1.0, r)) * uLight;
+  float alpha = a + light * (1.0 - a);
+  if (alpha < 0.004) discard;
+  gl_FragColor = vec4(vec3(light * (1.0 - a)) / alpha, alpha);
 }`
 
 const RES = 512
@@ -174,7 +180,7 @@ export function ContactShadow() {
     const quad = new Mesh(new PlaneGeometry(2, 2), blur)
     const quadScene = new Scene()
     quadScene.add(quad)
-    const show = new ShaderMaterial({ vertexShader: showVert, fragmentShader: showFrag, transparent: true, depthWrite: false, uniforms: { tMap: { value: a.texture }, uOpacity: { value: 0.55 } } })
+    const show = new ShaderMaterial({ vertexShader: showVert, fragmentShader: showFrag, transparent: true, depthWrite: false, uniforms: { tMap: { value: a.texture }, uOpacity: { value: 0.55 }, uLight: { value: 0.0 } } })
     return { a, b, cam, depth, blur, quad, quadScene, show }
   }, [])
   useEffect(() => () => { gfx.a.dispose(); gfx.b.dispose(); gfx.depth.dispose(); gfx.blur.dispose(); gfx.show.dispose(); gfx.quad.geometry.dispose() }, [gfx])
@@ -221,6 +227,7 @@ export function ContactShadow() {
     mesh.current.position.set(box.cx, box.cy, -0.03)
     mesh.current.scale.set(hw, hh, 1)
     gfx.show.uniforms.uOpacity.value = theme === 'dark' ? 0.8 : 0.34
+    gfx.show.uniforms.uLight.value = theme === 'dark' ? 0.15 : 0.0
     invalidate()
   })
 
@@ -244,17 +251,19 @@ void main() {
   float c = texture2D(tMask, uv).r;
   if (c > 0.5) discard;
   float rim = 0.0;
+  float glow = 0.0;
   for (int i = 0; i < 16; i++) {
     float a = 6.2831853 * float(i) / 16.0;
     vec2 d = vec2(cos(a), sin(a)) * uTexel;
     rim = max(rim, texture2D(tMask, uv + d * 1.5).r);
+    glow += texture2D(tMask, uv + d * 4.0).r + texture2D(tMask, uv + d * 7.0).r * 0.6;
   }
-  float aa = rim * 0.95;
+  float aa = rim * 0.95 + clamp(glow / 20.0, 0.0, 1.0) * 0.4;
   if (aa < 0.01) discard;
   gl_FragColor = vec4(uColor, min(aa, 1.0));
 }`
 
-/** A crisp rim round every body flagged `userData.selected`, found on the mask of those bodies: even on long, thin parts. */
+/** A crisp rim and a faint glow round every body flagged `userData.selected`, found on the mask of those bodies: even on long, thin parts. */
 export function SelectionOutline() {
   const gl = useThree((s) => s.gl)
   const scene = useThree((s) => s.scene)

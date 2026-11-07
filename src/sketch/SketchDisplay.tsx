@@ -15,14 +15,15 @@ import type { SketchData } from './types'
 const DANGER = '#d9625a'
 
 function One({ id, data, color, danger, pick }: { id: string; data: SketchData; color: string; danger: string; pick: boolean }) {
+  const refColor = useMemo(() => getComputedStyle(document.documentElement).getPropertyValue('--sk-ref').trim() || '#b98cf5', [color])
   const hover = useUi((s) => s.hover)
   const selected = useUi((s) => s.selection.some((r) => r.kind === 'sketch' && r.id === id))
   const hot = pick && hover?.kind === 'sketch' && hover.id === id
   const q = useMemo(() => planeQuaternion(data.plane), [data.plane])
-  const { solid, cons, broken } = useMemo(() => {
-    const solid: [number, number][] = [], cons: [number, number][] = [], broken: [number, number][] = []
-    for (const p of entityPolylines({ entities: data.entities, constraints: data.constraints, next: 0 })) (p.broken ? broken : p.construction ? cons : solid).push(...toPairs(p.pts))
-    return { solid, cons, broken }
+  const { solid, cons, broken, refs } = useMemo(() => {
+    const solid: [number, number][] = [], cons: [number, number][] = [], broken: [number, number][] = [], refs: [number, number][] = []
+    for (const p of entityPolylines({ entities: data.entities, constraints: data.constraints, next: 0 })) (p.broken ? broken : p.ref && !p.construction ? refs : p.construction ? cons : solid).push(...toPairs(p.pts))
+    return { solid, cons, broken, refs }
   }, [data])
   // hit geometry for picking the sketch by its curves
   const hit = useMemo(() => {
@@ -50,6 +51,8 @@ function One({ id, data, color, danger, pick }: { id: string; data: SketchData; 
       )}
       <Segments pairs={solid} color={hi ? (hot ? '#e8b84a' : '#ffffff') : color} width={hi ? 2.6 : 1.4} wpp={0.2} order={6} />
       <Segments pairs={cons} color={color} width={1} dashed wpp={0.2} order={6} />
+      {!hi && <Segments pairs={refs} color={refColor} width={1.4} wpp={0.2} order={6} />}
+      {hi && <Segments pairs={refs} color={hot ? '#e8b84a' : '#ffffff'} width={2.6} wpp={0.2} order={6} />}
       <Segments pairs={broken} color={danger} width={1.8} wpp={0.2} order={7} />
     </group>
   )
