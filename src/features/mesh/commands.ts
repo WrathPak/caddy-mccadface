@@ -1,6 +1,6 @@
 /** Commands of the Mesh tab that features/mesh adds (ribbon buttons, palette entries). */
 import { ArrowsOutCardinal, Cardholder, Eraser, Funnel, GridFour, Intersect, PaintBrush, Scissors, SelectionPlus, SelectionSlash, SplitVertical, Stack, Trash, Gauge } from '@phosphor-icons/react'
-import { registerCommand, getCommand, type Command } from '@/app/commands'
+import { registerCommand, type Command } from '@/app/commands'
 import { useSketch } from '@/sketch/store'
 import { startMesh2 } from './tools'
 import { startSectionSketch } from './sectionSketch'
@@ -25,4 +25,3 @@ add({ id: 'mesh.stats', label: 'Mesh Stats', icon: Gauge, run: toggleMeshStats, 
 add({ id: 'mesh.brush', label: 'Brush Select', icon: PaintBrush, run: solid(toggleBrush), tip: 'Paint triangles with a brush to select them.' })
 add({ id: 'mesh.grow', label: 'Grow', icon: SelectionPlus, run: growSelection, tip: 'Add the ring of triangles around the selection.' })
 add({ id: 'mesh.shrink', label: 'Shrink', icon: SelectionSlash, run: shrinkSelection, tip: 'Take the outer ring of triangles off the selection.' })
-void getCommand

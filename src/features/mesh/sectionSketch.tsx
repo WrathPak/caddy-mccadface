@@ -6,7 +6,6 @@ import { useEffect, useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
 import { create } from 'zustand'
-import { Cardholder } from '@phosphor-icons/react'
 import { resolveParams } from '@/doc/params'
 import { RefReport } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
@@ -25,7 +24,7 @@ import { liveRefEnv } from '../modeling-tools/geo'
 import { createRunner } from '../previewKit'
 import { fitLoop, shapePoints } from './sectionFit'
 import { bodiesParam } from './kit'
-import { planeParams, planeEq, resolveCutPlane, showPlaneHandles, AXES } from './plane'
+import { planeParams, planeEq, resolveCutPlane, showPlaneHandles } from './plane'
 
 export const sectionSketchSchema: ParamSchema = {
   id: 'meshSectionSketch',
@@ -152,5 +151,3 @@ export function MeshSectionPreview() {
   )
 }
 
-export const SECTION_ICON = Cardholder
-void AXES

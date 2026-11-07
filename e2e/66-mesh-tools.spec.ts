@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { test, expect, type App } from './helpers'
 import { boxTris, bodyIds, clickWorld, featStates, geom, importStl, meshStats, meshTool, sphereTris, without, writeObj, writeStl } from './mesh-kit'
-import { editChip, px, relNear, selection, seedBox, settle } from './solids-kit'
+import { editChip, px, relNear, settle } from './solids-kit'
 
 /* Mesh tab tools, Fusion style (docs/fusion-parity/mesh.md): every tool has a dialog, a live preview and an editable timeline step.
    Everything under test is mouse and keyboard; app.ev only reads state. */
@@ -246,8 +246,6 @@ test('Erase And Fill removes a painted patch of a sphere and closes the hole', a
   await importStl(app, sphere(48, 24))
   await app.tab('Mesh')
   await app.ribbon('Brush Select').click()
-  const top = await app.page.evaluate(() => 0)
-  void top
   await drag(app, [0, -8, 18], [0, 8, 14])
   expect(await painted(app)).toBeGreaterThan(3)
   const before = await meshStats(app)
@@ -436,6 +434,4 @@ test('The Mesh tab is grouped like Fusion: Create, Prepare, Modify, Assemble, Co
   await app.tab('Mesh')
   const labels = await app.page.locator('.ribbon-body .rgroup-label').allInnerTexts()
   expect(labels).toEqual(['Create', 'Prepare', 'Modify', 'Assemble', 'Construct', 'Inspect', 'Select', 'Export'])
-  void seedBox
-  void selection
 })
