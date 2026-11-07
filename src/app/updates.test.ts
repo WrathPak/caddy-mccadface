@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const events: string[] = []
 vi.mock('@/io/actions', () => ({ flushAutosave: vi.fn(async () => { await new Promise((r) => setTimeout(r, 20)); events.push('saved') }) }))
 
-import { applyUpdate, markUpdateReady, setUpdater, useUpdate, watchForUpdates } from './updates'
+import { applyUpdate, markUpdateReady, setUpdater, UPDATE_CHECK_MS, useUpdate, watchForUpdates } from './updates'
 
 beforeEach(() => {
   events.length = 0
@@ -53,20 +53,21 @@ describe('update checks', () => {
     return { doc, fire: (t: string) => (l[t] ?? []).forEach((f) => f()), count: (t: string) => (l[t] ?? []).length }
   }
 
-  it('checks about every hour, and not before', async () => {
+  it('checks every few minutes, and not before', async () => {
     vi.useFakeTimers()
     const d = fakeDoc()
     vi.stubGlobal('document', d.doc)
     const update = vi.fn(async () => {})
     const stop = watchForUpdates({ update })
-    await vi.advanceTimersByTimeAsync(59 * 60 * 1000)
+    expect(UPDATE_CHECK_MS).toBeLessThanOrEqual(5 * 60 * 1000)
+    await vi.advanceTimersByTimeAsync(UPDATE_CHECK_MS - 1000)
     expect(update).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(61 * 1000)
+    await vi.advanceTimersByTimeAsync(2000)
     expect(update).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(60 * 60 * 1000)
+    await vi.advanceTimersByTimeAsync(UPDATE_CHECK_MS)
     expect(update).toHaveBeenCalledTimes(2)
     stop()
-    await vi.advanceTimersByTimeAsync(2 * 60 * 60 * 1000)
+    await vi.advanceTimersByTimeAsync(10 * UPDATE_CHECK_MS)
     expect(update).toHaveBeenCalledTimes(2)
     expect(d.count('visibilitychange')).toBe(0)
   })
@@ -80,8 +81,8 @@ describe('update checks', () => {
     d.doc.visibilityState = 'hidden'
     d.fire('visibilitychange')
     d.doc.visibilityState = 'visible'
-    t += 60_000
-    d.fire('visibilitychange') // a minute: too soon
+    t += 10_000
+    d.fire('visibilitychange') // ten seconds: too soon
     expect(update).not.toHaveBeenCalled()
     t += 5 * 60_000
     d.fire('visibilitychange')
