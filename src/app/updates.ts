@@ -8,12 +8,11 @@
  */
 import { create } from 'zustand'
 import { flushAutosave } from '@/io/actions'
-import { useDoc } from '@/doc/store'
-import { useUi } from '@/store/ui'
 
-export const UPDATE_CHECK_MS = 60 * 60 * 1000
-/** Coming back to a tab checks too, but not more often than this. */
-export const UPDATE_FOCUS_GAP_MS = 5 * 60 * 1000
+/** How often an open tab looks for a new version. A check is one small request for sw.js, so this can be frequent. */
+export const UPDATE_CHECK_MS = 3 * 60 * 1000
+/** Coming back to a tab (or the window getting focus, or the network coming back) checks too, but not more often than this. */
+export const UPDATE_FOCUS_GAP_MS = 30 * 1000
 
 interface UpdateState {
   /** A new version is installed and waiting. */
@@ -35,23 +34,15 @@ export function setUpdater(fn: Updater | null) { updater = fn }
 /** The service worker said a new version is waiting. */
 export function markUpdateReady() { useUpdate.setState({ ready: true, cardDismissed: false }) }
 
-/** Nothing to lose by reloading: an empty, untouched document and no command open. */
-function untouched(): boolean {
-  const d = useDoc.getState()
-  const u = useUi.getState()
-  return !d.dirty && d.features.length === 0 && !u.inspector && !u.activeTool
-}
-
 /**
- * What the service worker's onNeedRefresh calls. New versions reach people by default, and only someone with work open is asked:
+ * What the service worker's onNeedRefresh calls.
  * - the page did not come from the old worker (first visit, or a hard refresh): it already runs the newest files from the network,
  *   so the waiting worker is switched on quietly and there is nothing to show;
- * - nothing has been done in this tab yet: switch and reload straight away, before any work starts;
- * - otherwise: the centred card and the status bar pill, and nothing happens until one is clicked.
+ * - otherwise the update card and the status bar's "Update ready" button show up, and one click saves and reloads onto the new
+ *   version. Nobody has to refresh by hand, and the page never reloads under someone by itself.
  */
 export function newVersionWaiting(o: { controlled: boolean }) {
   if (!o.controlled) { void Promise.resolve(updater?.(false)).catch(() => {}); return }
-  if (untouched()) { void applyUpdate(); return }
   markUpdateReady()
 }
 
@@ -77,7 +68,7 @@ export async function applyUpdate(): Promise<void> {
 /** The minimal slice of a ServiceWorkerRegistration the checker needs. */
 export interface Checkable { update(): Promise<unknown> }
 
-/** Look for a new version about hourly, and when someone comes back to the tab. Returns a stop function. */
+/** Look for a new version every few minutes, and when someone comes back to the tab or the network returns. Returns a stop function. */
 export function watchForUpdates(reg: Checkable, o: { now?: () => number; everyMs?: number; gapMs?: number } = {}): () => void {
   const now = o.now ?? Date.now
   let lastCheck = now()
@@ -91,10 +82,13 @@ export function watchForUpdates(reg: Checkable, o: { now?: () => number; everyMs
   const onVisible = () => {
     if (document.visibilityState === 'visible' && now() - lastCheck >= (o.gapMs ?? UPDATE_FOCUS_GAP_MS)) check()
   }
+  const onFocus = () => { if (now() - lastCheck >= (o.gapMs ?? UPDATE_FOCUS_GAP_MS)) check() }
   document.addEventListener('visibilitychange', onVisible)
+  if (typeof window !== 'undefined' && window.addEventListener) { window.addEventListener('focus', onFocus); window.addEventListener('online', check) }
   return () => {
     clearInterval(timer)
     document.removeEventListener('visibilitychange', onVisible)
+    if (typeof window !== 'undefined' && window.removeEventListener) { window.removeEventListener('focus', onFocus); window.removeEventListener('online', check) }
   }
 }
 

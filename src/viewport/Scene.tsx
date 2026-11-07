@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { OrthographicCamera, PerspectiveCamera } from '@react-three/drei'
 import { EffectComposer, N8AO } from '@react-three/postprocessing'
@@ -14,7 +14,6 @@ import { MeasureOverlay } from './MeasureOverlay'
 import { NavControls, FOV } from './NavControls'
 import { ViewCubeSync } from './ViewCube'
 import { useVpColors } from './colors'
-import { navClock } from './navClock'
 import { MotionTracker } from './motion'
 import { AngleManipulator } from './AngleManipulator'
 import { ArrowManipulator, CurvePicker, PreviewLayer, ProfilePicker } from './preview'
@@ -44,42 +43,8 @@ function useAoOverlayMask(enabled: boolean) {
   })
 }
 
-const AO_IDLE_MS = 220
 /** Automated browsers (the e2e runs on software GL) get a cheaper AO sample count; the denoise is the same. */
 const AO_LOW = typeof navigator !== 'undefined' && navigator.webdriver
-
-/**
- * AO only runs while the camera is at rest: orbiting, panning and zooming draw the plain scene, and the AO fades back in
- * once the view has been still for a moment. Time comes from the nav clock, so a spec that freezes it never sees AO mid-motion.
- */
-function useAoIdle(track: boolean): boolean {
-  const [idle, setIdle] = useState(true)
-  const invalidate = useThree((s) => s.invalidate)
-  const last = useRef<number[] | null>(null)
-  const lastMove = useRef(-Infinity)
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useFrame((state) => {
-    if (!track) return
-    const m = state.camera.matrixWorld.elements
-    const prev = last.current
-    let moved = !prev
-    if (prev) for (let i = 0; i < 16; i++) if (Math.abs(prev[i] - m[i]) > 1e-9) { moved = true; break }
-    if (!prev) last.current = m.slice()
-    else if (moved) for (let i = 0; i < 16; i++) prev[i] = m[i]
-    const now = navClock.now()
-    if (moved && prev) {
-      lastMove.current = now
-      if (idle) setIdle(false)
-      clearTimeout(timer.current)
-      timer.current = setTimeout(() => invalidate(), AO_IDLE_MS + 30)
-    } else if (!idle && now - lastMove.current >= AO_IDLE_MS) setIdle(true)
-    else if (!idle) {
-      clearTimeout(timer.current)
-      timer.current = setTimeout(() => invalidate(), AO_IDLE_MS + 30)
-    }
-  })
-  return idle
-}
 
 /** Everything AO: lives in its own component so camera-rest changes do not re-render the whole scene. */
 function AoLayer() {
@@ -91,17 +56,15 @@ function AoLayer() {
   // triangles that is what makes the view stutter, so those scenes are drawn plainly
   const heavy = useDoc((s) => s.geometry.some((b) => !!b.mesh.lod || b.mesh.indices.length > 450_000))
   const wanted = ssao && !sectioned && hasBodies && !heavy
-  const idle = useAoIdle(wanted)
-  const active = wanted && idle && !heavy
+  // AO stays on while the camera moves: switching it off for motion and back on at rest made every zoom step flash dark and light
+  const active = wanted
   useEffect(() => { setAoActive(active); return () => setAoActive(false) }, [active, setAoActive])
   useAoOverlayMask(active)
   if (!wanted) return null
-  // the composer stays mounted while AO is wanted and is only switched off during camera motion (a disabled composer hands
-  // rendering back to the plain pipeline), so settling does not rebuild the render targets every time
   return (
     <>
       {active && <HairOverlayPass />}
-      <EffectComposer multisampling={4} enabled={wanted && idle && !heavy}>
+      <EffectComposer multisampling={4}>
         <N8AO halfRes depthAwareUpsampling quality={AO_LOW ? 'performance' : 'medium'} aoRadius={14} screenSpaceRadius={false} distanceFalloff={1} intensity={1.6} aoSamples={16} denoiseSamples={8} denoiseRadius={12} />
       </EffectComposer>
     </>

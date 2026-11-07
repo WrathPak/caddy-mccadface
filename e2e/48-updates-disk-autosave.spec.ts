@@ -202,7 +202,7 @@ test('Update ready: a clean document has nothing to save and still switches; a t
   await expect(page.getByTestId('update-ready')).toHaveText('Reload to update')
 })
 
-test('a new version reaches people by default: switched on quietly after a hard refresh, applied at once on an untouched tab, asked about with work open', async ({ app, page }) => {
+test('a new version: switched on quietly after a hard refresh, otherwise always offered with the Update button, never reloaded by itself', async ({ app, page }) => {
   await memFolder(page, { picker: false })
   await app.open()
   const calls = () => page.evaluate(() => (window as any).__updateCalls) // eslint-disable-line
@@ -218,19 +218,22 @@ test('a new version reaches people by default: switched on quietly after a hard 
   await expect(page.getByTestId('update-card')).toHaveCount(0)
   await expect(page.getByTestId('update-ready')).toHaveCount(0)
 
-  // nothing done in this tab yet: straight onto the new version
+  // nothing done in this tab yet: still offered (the status bar button and the card), and nothing reloads by itself
   await page.evaluate(() => (window as any).__caddy.updates.newVersionWaiting({ controlled: true })) // eslint-disable-line
-  await expect.poll(calls).toEqual([false, true])
-  await page.evaluate(() => (window as any).__caddy.updates.useUpdate.setState({ applying: false })) // eslint-disable-line
+  await expect(page.getByTestId('update-ready')).toBeVisible()
+  await expect(page.getByTestId('update-card')).toBeVisible()
+  await page.waitForTimeout(500)
+  expect(await calls()).toEqual([false])
+  await page.evaluate(() => (window as any).__caddy.updates.useUpdate.setState({ ready: false, cardDismissed: false })) // eslint-disable-line
 
   // work open: asked, and nothing switches until the card is answered
   await addBox(app, 1)
   await page.evaluate(() => (window as any).__caddy.updates.newVersionWaiting({ controlled: true })) // eslint-disable-line
   await expect(page.getByTestId('update-card')).toBeVisible()
   await page.waitForTimeout(500)
-  expect(await calls()).toEqual([false, true])
+  expect(await calls()).toEqual([false])
   await page.getByTestId('update-card-now').click()
-  await expect.poll(calls).toEqual([false, true, true])
+  await expect.poll(calls).toEqual([false, true])
 })
 
 // ---------------------------------------------------------------- autosave to a folder
