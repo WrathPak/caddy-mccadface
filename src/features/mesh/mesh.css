@@ -14,3 +14,4 @@
 .mesh-card dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .mesh-card dd.bad { color: var(--err, #ff6b5e); font-weight: 600; }
 .mc-wait { color: var(--text-dim); }
+.mesh-card dl.wait dd { color: var(--text-dim); }

@@ -56,17 +56,16 @@ export function MeshStatsCard() {
                 ? <em className="ok"><CheckCircle size={13} weight="fill" /> Manifold, watertight</em>
                 : <em className="bad"><Warning size={13} weight="fill" /> Not manifold</em>)}
             </div>
-            {st ? (
-              <dl>
-                <dt>Triangles</dt><dd>{num(st.triangles)}</dd>
-                <dt>Open edges</dt><dd className={st.openEdges ? 'bad' : ''}>{num(st.openEdges)}</dd>
-                <dt>Non-manifold edges</dt><dd className={st.nonManifoldEdges ? 'bad' : ''}>{num(st.nonManifoldEdges)}</dd>
-                <dt>Flipped edges</dt><dd className={st.flippedEdges ? 'bad' : ''}>{num(st.flippedEdges)}</dd>
-                <dt>Shells</dt><dd>{num(st.shells)}</dd>
-                <dt>Volume</dt><dd>{dec(st.volume)} mm³</dd>
-                <dt>Surface area</dt><dd>{dec(st.area)} mm²</dd>
-              </dl>
-            ) : <div className="mc-wait">{s === 'failed' ? 'Could not measure this mesh' : 'Measuring...'}</div>}
+            <dl className={st ? '' : 'wait'}>
+              <dt>Triangles</dt><dd>{st ? num(st.triangles) : '...'}</dd>
+              <dt>Open edges</dt><dd className={st?.openEdges ? 'bad' : ''}>{st ? num(st.openEdges) : '...'}</dd>
+              <dt>Non-manifold edges</dt><dd className={st?.nonManifoldEdges ? 'bad' : ''}>{st ? num(st.nonManifoldEdges) : '...'}</dd>
+              <dt>Flipped edges</dt><dd className={st?.flippedEdges ? 'bad' : ''}>{st ? num(st.flippedEdges) : '...'}</dd>
+              <dt>Shells</dt><dd>{st ? num(st.shells) : '...'}</dd>
+              <dt>Volume</dt><dd>{st ? `${dec(st.volume)} mm³` : '...'}</dd>
+              <dt>Surface area</dt><dd>{st ? `${dec(st.area)} mm²` : '...'}</dd>
+            </dl>
+            {s === 'failed' && <div className="mc-wait">Could not measure this mesh</div>}
           </div>
         )
       })}
