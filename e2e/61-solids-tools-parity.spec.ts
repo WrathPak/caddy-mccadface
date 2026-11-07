@@ -16,7 +16,6 @@ const press = (app: { page: import('@playwright/test').Page }, k: string) => app
 // ================================================================================================ Delete on a face (heals like Fusion's Delete Face)
 
 test('Delete on a selected fillet face heals it: the round goes, the sharp corner comes back, the body stays', async ({ app }) => {
-  test.fail() // GAP: Delete with a face selected deletes the WHOLE BODY (a "delete" feature), Fusion's Delete removes the face and heals
   await app.open()
   await fastPlate(app)
   await filletAt(app, [[60, 0, 5]], '6')
@@ -30,7 +29,6 @@ test('Delete on a selected fillet face heals it: the round goes, the sharp corne
 })
 
 test('Delete on a fillet face adds an editable Delete Face step to the timeline, not a body delete', async ({ app }) => {
-  test.fail() // GAP: the timeline gets "delete" (whole body) instead of a Delete Face step
   await app.open()
   await fastPlate(app)
   await filletAt(app, [[60, 0, 5]], '6')
@@ -45,7 +43,6 @@ test('Delete on a fillet face adds an editable Delete Face step to the timeline,
 })
 
 test('Delete on a fillet face can be undone: Ctrl+Z brings the round back', async ({ app }) => {
-  test.fail() // GAP: Delete removes the body, so undo restores the body but there is no Delete Face step to undo (the round is never healed)
   await app.open()
   await fastPlate(app)
   await filletAt(app, [[60, 0, 5]], '6')
@@ -59,7 +56,6 @@ test('Delete on a fillet face can be undone: Ctrl+Z brings the round back', asyn
 })
 
 test('Delete on a chain of fillet faces (the top edge round, with its corner round) heals all of them', async ({ app }) => {
-  test.fail() // GAP: Delete with faces selected deletes the whole body
   await app.open()
   await roundedPlate(app)
   await app.ribbon('Fillet').first().click()
@@ -79,7 +75,6 @@ test('Delete on a chain of fillet faces (the top edge round, with its corner rou
 })
 
 test('Delete on a chamfer face heals it: the corner comes back', async ({ app }) => {
-  test.fail() // GAP: Delete with a face selected deletes the whole body
   await app.open()
   await fastPlate(app)
   await chamferAt(app, [[60, 0, 5]], '4')
@@ -93,7 +88,6 @@ test('Delete on a chamfer face heals it: the corner comes back', async ({ app })
 })
 
 test('Delete on the wall of a hole fills the hole', async ({ app }) => {
-  test.fail() // GAP: Delete with a face selected deletes the whole body (Fusion fills the hole)
   await app.open()
   await fastHolePlate(app)
   const cam = await app.ev((c) => { const e = c.three.camera.matrixWorld.elements; return [e[12], e[13]] })
@@ -107,7 +101,6 @@ test('Delete on the wall of a hole fills the hole', async ({ app }) => {
 })
 
 test('Delete on a fillet face of a body that was never filleted in the timeline (a rounded sketch corner, as an imported part) heals it', async ({ app }) => {
-  test.fail() // GAP: Delete with a face selected deletes the whole body; Fusion heals any round (Delete Face works on the B-rep, not on a fillet feature)
   await app.open()
   await roundedPlate(app)
   relNear(await totalVol(app), PLATE - (36 - Math.PI * 9) * 10, 0.001)
@@ -142,7 +135,6 @@ test('Fillet: a drag arrow stands in the viewport for the radius', async ({ app 
 })
 
 test('Fillet: clicking one edge of a tangent chain takes the whole chain (Fusion Tangent Chain, on by default)', async ({ app }) => {
-  test.fail() // GAP: each tangent edge has to be clicked on its own
   await app.open()
   await roundedPlate(app)
   await app.ribbon('Fillet').first().click()
@@ -288,7 +280,6 @@ test('Shell: Outside grows the wall outward and keeps the inner size', async ({ 
 })
 
 test('Shell: Outside keeps the outer corners and bottom edges sharp, as Fusion does on a box', async ({ app }) => {
-  test.fail() // PARTIAL: the outward wall is an offset with rounded outer corners and edges (about 2.3% less volume than the sharp box 64 x 44 x 12)
   await app.open()
   await fastPlate(app)
   await app.ribbon('Shell').first().click()
@@ -338,7 +329,6 @@ test('Shell: several faces can be removed (top and a side)', async ({ app }) => 
 })
 
 test('Shell: after a fillet on the top edges the shell is the right wall (the enclosure workflow)', async ({ app }) => {
-  test.fail() // GAP: box 80 x 50 x 30, top edges R3, top face removed, 1.5 mm wall: the body has 52845 mm3 where a 1.5 mm wall is about 17000 (the same shell on the box without the fillet is exact at 16858)
   await app.open()
   await addSketch(app, XY, [{ k: 'rect', x0: 0, y0: 0, x1: 80, y1: 50 }])
   await app.ribbon('Extrude').click()
@@ -356,8 +346,7 @@ test('Shell: after a fillet on the top edges the shell is the right wall (the en
   relNear(await totalVol(app), 80 * 50 * 30 - 77 * 47 * 28.5, 0.1)
 })
 
-test('Shell: a wall thicker than the outside fillet radius reports an error instead of silently doing nothing', async ({ app }) => {
-  test.fail() // GAP: a 3 mm wall on a box whose top edges have an R2 fillet gives a Shell step that is "ok" with the body unchanged (no hollow, no message); Fusion reports that the shell failed
+test('Shell: a wall thicker than the outside fillet radius still shells (sharp inside corner) instead of silently doing nothing', async ({ app }) => {
   await app.open()
   await fastPlate(app)
   await filletAt(app, [[30, 0, 10]], '2')
@@ -460,7 +449,6 @@ test('Deleting the sketch under an extruded, filleted part does not crash, and u
 })
 
 test('Sketch on a face: a rectangle that shares an edge with the projected outline makes the strip a profile', async ({ app }) => {
-  test.fail() // GAP: the strip between the new rectangle and the outline edge is not found as a profile (only the 2160 mm2 remainder is), so a wall drawn against the back edge cannot be extruded
   await app.open()
   await fastPlate(app)
   await sketchOnFace(app, [5, 5, 10])
@@ -473,7 +461,6 @@ test('Sketch on a face: a rectangle that shares an edge with the projected outli
 })
 
 test('Extrude: a click in the middle of two overlapping sketches picks the inner (smaller) profile', async ({ app }) => {
-  test.fail() // PARTIAL: with two sketches on one plane (80 x 50 and a 72 x 42 inside it) a click in the middle picks the bigger, earlier profile; Fusion offers the innermost
   await app.open()
   await addSketch(app, XY, [{ k: 'rect', x0: 0, y0: 0, x1: 80, y1: 50 }])
   await addSketch(app, XY, [{ k: 'rect', x0: 4, y0: 4, x1: 76, y1: 46 }])
@@ -668,7 +655,6 @@ test('Hole: countersink has a diameter and an angle', async ({ app }) => {
 })
 
 test('Hole: a countersink follows the hole diameter when the diameter is changed (it stays wider than the hole)', async ({ app }) => {
-  test.fail() // PARTIAL: the countersink diameter keeps its own default (4); a hole typed wider than that makes the step fail with "The countersink must be wider than the hole" where Fusion widens the cone with the hole
   await app.open()
   await fastPlate(app)
   await holeOnPlate(app)
@@ -681,7 +667,6 @@ test('Hole: a countersink follows the hole diameter when the diameter is changed
 })
 
 test('Hole: Tapped offers a modeled thread, not just a cosmetic one', async ({ app }) => {
-  test.fail() // PARTIAL/GAP: Tapped gives a cosmetic thread mark (tapped hole drilled to the tap size); Fusion's Hole has a Modeled option that cuts the helix
   await app.open()
   await fastPlate(app)
   await holeOnPlate(app)
@@ -792,7 +777,6 @@ test('Draft: a side face tilted about the top face as the neutral plane changes 
 })
 
 test('Draft: a click on the top face picks that face as the neutral plane (not an origin plane drawn over it)', async ({ app }) => {
-  test.fail() // PARTIAL: a click at (5, 5, 10) on the top face picks the XZ origin plane that is drawn across the view, not the face
   await app.open()
   await fastPlate(app)
   await app.page.locator('.ribbon-body').getByRole('button', { name: 'Press/Pull options' }).click()
@@ -905,7 +889,6 @@ async function combine(app: App, op: 'Join' | 'Cut' | 'Intersect', keep = false)
   await app.ok()
 }
 test('Combine: clicking a body in the viewport picks the body (not only its row in the Browser)', async ({ app }) => {
-  test.fail() // PARTIAL: with Combine open a click on a body in the viewport selects nothing; the bodies have to be picked from the Browser tree
   await app.open()
   await twoBoxes(app)
   await app.ribbon('Combine').first().click()
@@ -962,7 +945,6 @@ test('Offset Plane: with the top face selected first, a typed distance, a new pl
 })
 
 test('Offset Plane: a face clicked after the tool has started becomes the base', async ({ app }) => {
-  test.fail() // PARTIAL: the click selects the face but the dialog keeps the XY origin plane as its base (a face only counts when it is selected before the tool starts)
   await app.open()
   await fastPlate(app)
   await app.ribbon('Offset Plane').first().click()
@@ -1005,7 +987,6 @@ test('Section Analysis: plane normal, offset and flip', async ({ app }) => {
 })
 
 test('Section Analysis: the section plane is picked from an origin plane or a face', async ({ app }) => {
-  test.fail() // PARTIAL: only an axis (X, Y, Z) and an offset; Fusion picks the section plane from an origin plane or any planar face
   await app.open()
   await fastPlate(app)
   await app.ribbon('Section Analysis').first().click()

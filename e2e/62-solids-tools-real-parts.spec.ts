@@ -18,17 +18,12 @@ async function plate(app: App, w: number, h: number, d: number) {
   return (await bodiesBox(app))[0]
 }
 const ok = async (app: App) => expect((await app.features()).map((f) => `${f.type}: ${f.error ?? f.state}`).filter((s) => !/: (ok|warning)$/.test(s)), 'every step is ok').toEqual([])
-/** Select the last step in the timeline, start Pattern, and make sure it repeats that feature (a face left selected makes it start in Faces mode). */
+/** Select the last step in the timeline and start Pattern: it must come up repeating that feature (whatever face is still selected from the step before). */
 async function patternLastFeature(app: App) {
-  await app.page.keyboard.press('Escape')
-  await app.page.keyboard.press('Escape')
   await app.page.locator('.tl .chip').last().click()
   await app.ribbon('Pattern').first().click()
-  if ((await dlg(app)).source !== 'features') {
-    await app.inspector().getByText('Features', { exact: true }).first().click()
-    await app.page.locator('.tl .chip').last().click()
-  }
-  expect(((await dlg(app)).features as string[]).length).toBe(1)
+  await expect.poll(async () => (await dlg(app)).source).toBe('features')
+  await expect.poll(async () => ((await dlg(app)).features as string[]).length).toBe(1)
 }
 const mid = (b: { min: number[]; max: number[] }): P3 => [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, b.max[2]]
 
@@ -39,31 +34,35 @@ test('Enclosure: a box filleted on its top edges, shelled open at the top, with 
   await app.open()
   const b = await plate(app, 80, 50, 30)
   const x0 = b.min[0], y0 = b.min[1]
-  // WORKAROUND: Fusion order is fillet the top edges, then shell. Here that gives a wrong body (about three times the wall material, see 61 "Shell: after a fillet on the top edges ...").
-  // So: shell first (the top face goes, 2 mm walls), then fillet the outer rim edges (click an edge each).
+  // the lid plane first: Offset Plane, then a click on the box top (the face is clicked after the tool started), 5 above it
+  await app.ribbon('Offset Plane').first().click()
+  await clickWorld(app, mid(b))
+  await expect.poll(async () => (await dlg(app)).base).toBe('face')
+  await app.field('Distance', '5')
+  await app.ok()
+  await ok(app)
+  const planeName = (await app.features()).at(-1)!.name
+  // the Fusion order: fillet the top edges (one click on the top face takes all four), then shell with the top face removed
+  await app.ribbon('Fillet').first().click()
+  await clickWorld(app, mid(b))
+  await expect.poll(async () => (await selection(app)).length).toBeGreaterThan(0)
+  await app.field('Radius', '3')
+  await app.ok()
+  await ok(app)
+  const vF = await totalVol(app)
+  expect(vF).toBeLessThan(80 * 50 * 30)
   await app.ribbon('Shell').first().click()
   await clickWorld(app, mid(b))
   await app.field('Thickness', '2')
   await app.ok()
   await ok(app)
   const vS = await totalVol(app)
-  relNear(vS, 80 * 50 * 30 - 76 * 46 * 28, 0.01)
-  await app.ribbon('Fillet').first().click()
-  await clickWorld(app, [x0 + 40, y0, b.max[2]])
-  await clickWorld(app, [x0 + 80, y0 + 25, b.max[2]])
-  await expect.poll(async () => (await selection(app)).length).toBeGreaterThan(0)
-  await app.field('Radius', '1')
-  await app.ok()
-  await ok(app)
-  expect(await totalVol(app)).toBeLessThan(vS)
-  // lid: an offset plane 5 above the box top. The lip first (a rectangle 4 mm in from the box edge, 2 mm down from the plane, a new body), then the lid (a full rectangle, 3 up, joined to the lip).
-  // WORKAROUND: the lip is drawn and extruded first. Two sketches on one plane overlap, and a click in the middle picks the bigger, earlier profile (the lid), so the inner one could not be picked afterwards.
-  await app.ribbon('Offset Plane').first().click() // base XY (the default) 35 up: 5 above the box top
-  await app.field('Distance', '35')
-  await app.ok()
-  const planeName = (await app.features()).at(-1)!.name
+  relNear(vS, 80 * 50 * 30 - 76 * 46 * 28, 0.03) // a 2 mm wall all round, not three times that
+  // lid: both rectangles on the plane first (the lid outline, then the lip 4 mm in from the edge), then the lip (2 mm down, a new body) and the lid (3 up, joined to the lip)
   const planeRow = app.page.locator('.tree-row', { hasText: planeName }).first()
   const planeSketch = async () => {
+    await app.page.keyboard.press('Escape') // nothing selected: a selected face would start the sketch on that face
+    await app.page.keyboard.press('Escape')
     await app.ribbon('Sketch').first().click()
     await planeRow.click()
     await expect(app.page.locator('.sk-bar')).toBeVisible()
@@ -74,20 +73,23 @@ test('Enclosure: a box filleted on its top edges, shelled open at the top, with 
   const pl = await planeOf(app)
   expect(pl.origin[2]).toBeGreaterThan(b.max[2] + 4.9)
   const lo = toLocal(pl, [x0, y0, pl.origin[2]])
+  await skRect(app, lo[0], lo[1], lo[0] + 80, lo[1] + 50)
+  await app.finishSketch()
+  await planeSketch()
   await skRect(app, lo[0] + 4, lo[1] + 4, lo[0] + 76, lo[1] + 46)
   await app.finishSketch()
+  await app.page.keyboard.press('Escape') // the face clicked for the shell is still selected: Extrude would start from it
   await app.ribbon('Extrude').click()
-  await clickWorld(app, [x0 + 40, y0 + 25, pl.origin[2]])
+  await clickWorld(app, [x0 + 40, y0 + 25, pl.origin[2]]) // the middle of both rectangles: the inner one is offered
+  expect(((await dlg(app)).profiles as string[]).length).toBe(1)
+  expect(((await dlg(app)).profiles as string[])[0]).toContain(',3024@') // the lip rectangle (72 x 42), not the lid outline (80 x 50)
   await app.field('Distance', '-2')
   await app.inspector().locator('.field', { has: app.page.locator('.field-label', { hasText: 'Operation' }) }).locator('.sel').first().click()
   await app.page.getByRole('option', { name: 'New body', exact: true }).click()
   await app.ok()
   expect((await bodiesBox(app)).length).toBe(2)
-  await planeSketch()
-  await skRect(app, lo[0], lo[1], lo[0] + 80, lo[1] + 50)
-  await app.finishSketch()
   await app.ribbon('Extrude').click()
-  await clickWorld(app, [x0 + 2, y0 + 2, pl.origin[2]])
+  await clickWorld(app, [x0 + 2, y0 + 2, pl.origin[2]]) // the strip between the two outlines is the lid sketch only
   await app.field('Distance', '3')
   await app.ok()
   await ok(app)
@@ -101,7 +103,6 @@ test('Enclosure: a box filleted on its top edges, shelled open at the top, with 
 // ------------------------------------------------------------------------------------------------ 2 knob
 
 test('Knob: a revolved profile with 12 grooves from one cut and a circular pattern', async ({ app }) => {
-  test.fail() // GAP: the single groove cut removes 18 mm3 (a half circle of r 1 over 14 mm, with a "warning" state on the step) but the circular pattern of that cut removes 3834 mm3, about 320 per copy: the copies are much wider than the original
   test.setTimeout(400000)
   await app.open()
   // profile drawn with the Line tool on the XZ plane: a skirt 18 radius 6 tall and a neck 14 radius up to 20
@@ -139,7 +140,11 @@ test('Knob: a revolved profile with 12 grooves from one cut and a circular patte
   await app.ok()
   await ok(app)
   const v12 = await totalVol(app)
-  relNear(v0 - v12, 12 * (v0 - v1), 0.08) // twelve grooves
+  // twelve grooves, each the part of the 2 mm circle (centred on the neck edge) inside the 14 mm neck, 14 deep. The reference is the exact lens area, not twelve times the first
+  // groove measured on the display mesh: a groove of about 20 mm3 on a 14 mm radius moves by 15 % with where the mesh facets happen to fall against it.
+  const R = 14, r = 1, d = 14
+  const lens = r * r * Math.acos((d * d + r * r - R * R) / (2 * d * r)) + R * R * Math.acos((d * d + R * R - r * r) / (2 * d * R)) - 0.5 * Math.sqrt((-d + r + R) * (d + r - R) * (d - r + R) * (d + r + R))
+  relNear(v0 - v12, 12 * lens * 14, 0.08)
 })
 
 // ------------------------------------------------------------------------------------------------ 3 bracket
@@ -153,10 +158,10 @@ test('Bracket: base and wall, two counterbored holes, a chamfer, and a rib (no R
   await sketchOnFace(app, mid(b))
   const pl = await planeOf(app)
   const lo = toLocal(pl, [x0, y0, b.max[2]])
-  await skRect(app, lo[0] + 5, lo[1] + 32, lo[0] + 55, lo[1] + 36)
+  await skRect(app, lo[0] + 5, lo[1] + 36, lo[0] + 55, lo[1] + 40) // against the back edge, sharing it with the projected outline
   await app.finishSketch()
   await app.ribbon('Extrude').click()
-  await clickWorld(app, [x0 + 30, y0 + 34, b.max[2]])
+  await clickWorld(app, [x0 + 30, y0 + 38, b.max[2]])
   await app.field('Distance', '30')
   await app.ok()
   await settle(app)
@@ -187,7 +192,7 @@ test('Bracket: base and wall, two counterbored holes, a chamfer, and a rib (no R
   await app.ev((c) => c.ui.setState({ snap: false }))
   await app.cameraStable()
   const rp = await planeOf(app)
-  const a = toLocal(rp, [30, y0 + 32, b.max[2]]), bb = toLocal(rp, [30, y0 + 32, b.max[2] + 20]), cc = toLocal(rp, [30, y0 + 16, b.max[2]])
+  const a = toLocal(rp, [30, y0 + 36, b.max[2]]), bb = toLocal(rp, [30, y0 + 36, b.max[2] + 20]), cc = toLocal(rp, [30, y0 + 16, b.max[2]])
   await tool(app, 'Line')
   for (const p of [a, bb, cc, a]) await skClick(app, p[0], p[1])
   await app.page.keyboard.press('Escape')
@@ -204,7 +209,7 @@ test('Bracket: base and wall, two counterbored holes, a chamfer, and a rib (no R
   expect(vR).toBeGreaterThan(vH + 100) // the rib added material
   // chamfer the top edge of the wall
   await app.ribbon('Chamfer').first().click()
-  await clickWorld(app, [x0 + 10, y0 + 32, b.max[2] + 30])
+  await clickWorld(app, [x0 + 10, y0 + 36, b.max[2] + 30])
   await expect.poll(async () => (await selection(app)).length).toBeGreaterThan(0)
   await app.field('Distance', '2')
   await app.ok()

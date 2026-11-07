@@ -36,6 +36,8 @@ import '@/features/surface/register'
 import './platformCommands'
 import '@/assembly/commands'
 import { deleteOccurrence } from '@/assembly/actions'
+import { deleteSelectedFaces } from '@/features/modeling-tools/direct'
+import { toast } from '@/ui/Modal'
 
 function override(id: string, run: () => void, patch: Partial<Command> = {}) {
   const c = getCommand(id)
@@ -82,6 +84,11 @@ override('edit.delete', () => {
   if (comps.length) {
     for (const p of comps) deleteOccurrence(p)
     ui.clearSelection()
+    return
+  }
+  // faces selected (and no whole body): heal them like Delete Face; never delete the body
+  if (ui.selection.some((r) => r.kind === 'face') && !ui.selection.some((r) => r.kind === 'body')) {
+    void deleteSelectedFaces().then((why) => { if (why) toast(`Can't delete these faces: ${why}. The body is unchanged.`, 'error') })
     return
   }
   const ids = [...new Set(ui.selection.map((r) => r.id))].filter((id) => useDoc.getState().geometry.some((b) => b.id === id))

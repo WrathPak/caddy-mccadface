@@ -315,6 +315,9 @@ registerFeature({
   },
   preview({ values }) {
     let cur = values
+    // bodies are picked by clicking them in the viewport: switch to whole bodies while the dialog is open
+    const before = useUi.getState().selectionFilter
+    useUi.getState().setSelectionFilter('body')
     const runner = createRunner(async (stale) => {
       let plan: CombinePlan
       try {
@@ -325,7 +328,7 @@ registerFeature({
       setPreview([{ mesh: result.mesh, kind: 'result' }], [plan.target.id, ...(plan.keep ? [] : plan.tools.map((t) => t.id))])
     })
     runner.schedule()
-    return { update(v) { cur = v; runner.schedule() }, dispose() { runner.dispose(); clearPreview() } }
+    return { update(v) { cur = v; runner.schedule() }, dispose() { runner.dispose(); clearPreview(); useUi.getState().setSelectionFilter(before) } }
   },
 })
 

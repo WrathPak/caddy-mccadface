@@ -5,6 +5,7 @@ import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
 import { RefError, RefReport, bodyIdsOf, decodeRef, encodeSelection, faceSigs, resolveEdge, resolveFace } from '@/doc/refs'
 import { registerFeature } from '@/doc/registry'
+import { regenerate } from '@/doc/engine'
 import { useDoc } from '@/doc/store'
 import type { FeatureCtx, FeatureResult, PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel } from '@/kernel/client'
@@ -178,17 +179,44 @@ register({
 // ------------------------------------------------------------------------------------------------ delete / replace
 
 export const deleteFaceSchema: ParamSchema = { id: 'deleteFace', title: 'Delete Face', params: [facePick('The faces to remove. The faces around them are extended until they close the gap (fillets, holes, bosses and pockets heal this way).')] }
-register({
-  type: 'deleteFace', label: 'Delete Face', icon: Eraser, command: 'solid.deleteFace', schema: deleteFaceSchema, filter: 'face',
-  async build(p, env, report) {
-    const bodies: Body[] = []
-    for (const g of byBody(p.faces as string[], env, report)) {
-      if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Delete Face needs a solid body' + (g.body.surface ? ': for a surface use Delete Face in the Surface tab' : ', not a mesh'))
-      bodies.push(await call<Body>(env, 'deleteFaces', { id: g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, fid: env.fid }))
+async function deleteFacesBuild(p: ParamValues, env: BuildEnv, report: RefReport): Promise<Built> {
+  const bodies: Body[] = []
+  for (const g of byBody(p.faces as string[], env, report)) {
+    if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Delete Face needs a solid body' + (g.body.surface ? ': for a surface use Delete Face in the Surface tab' : ', not a mesh'))
+    bodies.push(await call<Body>(env, 'deleteFaces', { id: g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, fid: env.fid }))
+  }
+  return { bodies }
+}
+register({ type: 'deleteFace', label: 'Delete Face', icon: Eraser, command: 'solid.deleteFace', schema: deleteFaceSchema, filter: 'face', build: deleteFacesBuild })
+
+/** Can these faces be deleted with the gap healed (so Pattern can repeat them as a feature)? A dry run in the kernel; the body is not touched. */
+export async function canHealFaces(faces: string[]): Promise<boolean> {
+  try {
+    const r = await deleteFacesBuild({ faces }, { ...liveRefEnv(), fid: 'preview' }, new RefReport())
+    return r.bodies.length > 0
+  } catch { return false }
+}
+
+/** The Delete key with faces selected: adds a Delete Face step that heals them. If a face cannot heal, the step is undone again so the body and the
+ *  timeline stay as they were. Returns a promise of null (healed) or the reason it could not heal. */
+export function deleteSelectedFaces(): Promise<string | null> {
+  const ui = useUi.getState()
+  const doc = useDoc.getState()
+  const faces = encodeSelection(ui.selection.filter((r) => r.kind === 'face'), doc.geometry)
+  if (!faces.length) return Promise.resolve('No faces are selected')
+  const id = doc.addFeature('deleteFace', { faces })
+  ui.clearSelection()
+  return regenerate().then(() => {
+    const s = useDoc.getState()
+    const f = s.features.find((x) => x.id === id)
+    if (f && f.state === 'error') {
+      const why = f.error ?? 'the faces could not be healed'
+      s.undo()
+      return why
     }
-    return { bodies }
-  },
-})
+    return null
+  })
+}
 
 /** A plane or face reference as a surface the kernel can use. */
 async function surfaceOf(s: string, env: RefEnv, report: RefReport): Promise<SurfaceTarget> {
