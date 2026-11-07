@@ -21,6 +21,8 @@ import { clearPreview, resetManip, setPreview, useManip, useProfilePick } from '
 import { combine, ctxEnv, liveEnv, minDim, niceFloor, profileRef, resolveInputs, workBody, type Env } from './modeling'
 import { createRunner } from './previewKit'
 import { showArrows } from './handleKit'
+import { sketchPath } from './solids2/kit'
+import { loftAdvanced, loftExtraParams, loftIsAdvanced, shellAdvArgs, shellExtraParams, shellIsAdvanced, shellSpecial, sweepAdvanced, sweepExtraParams, sweepIsAdvanced } from './solids2/advanced'
 
 // ---------------------------------------------------------------- Cylinder
 
@@ -78,55 +80,7 @@ const opOptions = [
   { value: 'intersect', label: 'Intersect' }, { value: 'new', label: 'New body' },
 ]
 
-/** Plane-local sketch curves -> one connected chain of world-space segments. */
-export function sketchPath(data: SketchData): PathSeg[] {
-  const model = { entities: data.entities, constraints: data.constraints, next: 0 }
-  interface L { a: Vec2; b: Vec2; m?: Vec2; c?: [Vec2, Vec2]; id?: string }
-  const segs: L[] = []
-  for (const e of data.entities) {
-    if (e.construction || e.type === 'point') continue
-    if (e.type === 'line') {
-      const [a, b] = lineEnds(model, e)
-      if (dist(a, b) > 1e-9) segs.push({ a, b, id: e.id })
-    } else if (e.type === 'arc') {
-      const i = arcOf(model, e)
-      segs.push({ a: pos(model, e.s), b: pos(model, e.e), m: polar(pos(model, e.c), i.r, i.a0 + i.span / 2), id: e.id })
-    } else if (e.type === 'circle') {
-      const c = pos(model, e.c)
-      const p0: Vec2 = [c[0] + e.r, c[1]], p1: Vec2 = [c[0] - e.r, c[1]]
-      segs.push({ a: p0, b: p1, m: [c[0], c[1] + e.r], id: e.id }, { a: p1, b: p0, m: [c[0], c[1] - e.r], id: e.id })
-    } else {
-      // splines and ellipses are followed exactly, piece by piece (cubic curves); only text falls back to straight pieces
-      const loops = e.type === 'text' ? [] : derivedSegs(model, e)
-      if (loops.length) {
-        for (const s of loops[0]) if (s.k === 'b') segs.push({ a: s.a, b: s.b, c: [s.c1, s.c2], id: e.id })
-      } else {
-        const pl = entityPolyline(model, e)
-        for (let i = 0; i + 1 < pl.length; i++) if (dist(pl[i], pl[i + 1]) > 1e-9) segs.push({ a: pl[i], b: pl[i + 1], id: e.id })
-      }
-    }
-  }
-  if (!segs.length) throw new Error('The path sketch has no curves')
-  const same = (p: Vec2, q: Vec2) => dist(p, q) < 1e-5
-  const degree = (p: Vec2) => segs.filter((s) => same(s.a, p)).length + segs.filter((s) => same(s.b, p)).length
-  const startIdx = Math.max(0, segs.findIndex((s) => degree(s.a) === 1 || degree(s.b) === 1))
-  const used = new Set<number>([startIdx])
-  let first = segs[startIdx]
-  if (degree(first.b) === 1 && degree(first.a) !== 1) first = { a: first.b, b: first.a, m: first.m, c: first.c && [first.c[1], first.c[0]], id: first.id }
-  const chain: L[] = [first]
-  for (let end = first.b; ;) {
-    const k = segs.findIndex((s, i) => !used.has(i) && (same(s.a, end) || same(s.b, end)))
-    if (k < 0) break
-    used.add(k)
-    const s = segs[k]
-    const oriented: L = same(s.a, end) ? s : { a: s.b, b: s.a, m: s.m, c: s.c && [s.c[1], s.c[0]], id: s.id }
-    chain.push(oriented)
-    end = oriented.b
-  }
-  if (used.size !== segs.length) throw new Error('The path sketch curves must form one connected chain')
-  const w = (p: Vec2): Vec3 => toWorld(data.plane, p)
-  return chain.map((s): PathSeg => (s.c ? { k: 'b', a: w(s.a), c1: w(s.c[0]), c2: w(s.c[1]), b: w(s.b), id: s.id } : s.m ? { k: 'a', a: w(s.a), m: w(s.m), b: w(s.b), id: s.id } : { k: 'l', a: w(s.a), b: w(s.b), id: s.id }))
-}
+export { sketchPath }
 
 function pathOf(refs: string[], env: Env): PathSeg[] {
   const id = refs[0] ? bodyIdsOf([refs[0]])[0] : undefined
@@ -178,6 +132,7 @@ export const sweepSchema: ParamSchema = {
   params: [
     { type: 'selection-ref', key: 'profiles', help: 'The closed sketch shape to drag along the path.', label: 'Profile', accepts: ['sketch'], multiple: true, required: true, default: [] },
     { type: 'selection-ref', key: 'path', help: 'The sketch line or curve the profile follows. Click it in the viewport.', label: 'Path', accepts: ['sketch'], required: true, pick: true, default: [] },
+    ...sweepExtraParams,
     { type: 'enum', key: 'operation', help: 'Join: add to the body. Cut: remove material. Intersect: keep only the overlap. New body: make a separate body.', label: 'Operation', display: 'select', default: 'join', options: opOptions },
     { type: 'selection-ref', key: 'targets', help: 'The bodies to join to, cut or intersect. Leave empty to use every body that the shape touches.', label: 'Target bodies', accepts: ['body'], multiple: true, default: [], visibleWhen: (v) => v.operation !== 'new' },
   ],
@@ -189,6 +144,7 @@ async function buildSweep(p: ParamValues, env: Env, kernel: KernelClient, id: st
   inp.report.upgrades.forEach((v, k) => report.upgrades.set(k, v))
   if (!inp.groups.length) throw new RefError(inp.missing ? 'The profile no longer exists (an edit upstream removed it). Pick it again.' : 'Select a profile to sweep', inp.report.lostRefs)
   const path = pathOf(p.path as string[], env)
+  if (sweepIsAdvanced(p)) return sweepAdvanced(kernel, p, env, inp.groups, path, id, name)
   return (await kernel.call('sweepTool', { id, name, groups: inp.groups, path })) as Body
 }
 
@@ -214,6 +170,7 @@ export const loftSchema: ParamSchema = {
   params: [
     { type: 'selection-ref', key: 'profiles', help: 'The closed sketch shapes to blend between, in order. Pick at least two.', label: 'Profiles', accepts: ['sketch'], multiple: true, required: true, min: 2, default: [] },
     { type: 'bool', key: 'ruled', help: 'On: straight lines between the profiles (angular). Off: a smooth curve through them.', label: 'Ruled (straight sections)', default: false },
+    ...loftExtraParams,
     { type: 'enum', key: 'operation', help: 'Join: add to the body. Cut: remove material. Intersect: keep only the overlap. New body: make a separate body.', label: 'Operation', display: 'select', default: 'join', options: opOptions },
     { type: 'selection-ref', key: 'targets', help: 'The bodies to join to, cut or intersect. Leave empty to use every body that the shape touches.', label: 'Target bodies', accepts: ['body'], multiple: true, default: [], visibleWhen: (v) => v.operation !== 'new' },
   ],
@@ -230,6 +187,7 @@ async function buildLoft(p: ParamValues, env: Env, kernel: KernelClient, id: str
     sections.push({ plane: g.plane, profile: g.profiles[0] })
   }
   if (sections.length < 2) throw new Error('A loft needs at least two profiles')
+  if (loftIsAdvanced(p)) return loftAdvanced(kernel, p, env, sections, id, name)
   return (await kernel.call('loftTool', { id, name, sections, ruled: !!p.ruled })) as Body
 }
 
@@ -348,6 +306,7 @@ export const shellSchema: ParamSchema = {
     { type: 'selection-ref', key: 'bodies', help: 'Or pick whole bodies to hollow them into a closed solid with a sealed void inside (no openings). Click a body, or leave this empty and pick faces instead.', label: 'Bodies (closed hollow)', accepts: ['body'], multiple: true, required: true, requiredUnless: 'faces', pick: true, default: [], visibleWhen: (v) => !((v.faces as string[] | undefined)?.length) },
     { type: 'number', key: 'thickness', help: 'Wall thickness left after hollowing, in mm.', label: 'Thickness', unit: 'mm', min: 0.001, step: 0.5, default: 2 },
     { type: 'enum', key: 'side', help: 'Inside: the wall grows into the body, keeping its outer size. Outside: the wall grows outward, keeping the inner size.', label: 'Direction', display: 'segmented', default: 'inside', options: [{ value: 'inside', label: 'Inside' }, { value: 'outside', label: 'Outside' }] },
+    ...shellExtraParams,
   ],
 }
 
@@ -373,6 +332,13 @@ function shellGroups(refs: string[], bodies: Body[], report = new RefReport(), w
 async function runShell(kernel: KernelClient, p: ParamValues, bodies: Body[], idOf?: (b: Body) => string, fid = 'preview', report = new RefReport()): Promise<Body[]> {
   const out: Body[] = []
   for (const g of shellGroups(p.faces as string[], bodies, report, (p.bodies as string[] | undefined) ?? [])) {
+    if (shellIsAdvanced(p) && g.faces.length) {
+      const special = shellSpecial(p, g.body, bodies, report)
+      if (special.length) {
+        out.push((await kernel.call('shellAdv', shellAdvArgs({ id: idOf ? idOf(g.body) : g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, thickness: p.thickness as number, side: p.side as 'inside' | 'outside', fid }, special))) as Body)
+        continue
+      }
+    }
     out.push((await kernel.call('shellOp', { id: idOf ? idOf(g.body) : g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, thickness: p.thickness as number, side: p.side as string, fid })) as Body)
   }
   return out
@@ -417,7 +383,9 @@ registerFeature({
       // a closed hollow (a whole body, no faces yet) leaves the original faint and pickable, so a face can still be clicked to open the shell instead
       const ids = out.map((b) => b.id.replace('preview-', ''))
       const closed = !((p.faces as string[]) ?? []).length
-      setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), closed ? [] : ids, closed ? ids : [])
+      // (Individual thickness also leaves the original faint and pickable: its faces are clicked while the preview is up)
+      const keep = closed || !!p.individual
+      setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), keep ? [] : ids, keep ? ids : [])
     })
     runner.schedule()
     return {

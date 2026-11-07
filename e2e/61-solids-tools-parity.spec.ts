@@ -144,7 +144,6 @@ test('Fillet: clicking one edge of a tangent chain takes the whole chain (Fusion
 })
 
 test('Fillet: Variable radius (a radius per end of the edge)', async ({ app }) => {
-  test.fail() // GAP: the dialog has one Radius only
   await app.open()
   await fastPlate(app)
   await app.ribbon('Fillet').first().click()
@@ -153,7 +152,6 @@ test('Fillet: Variable radius (a radius per end of the edge)', async ({ app }) =
 })
 
 test('Fillet: Setback corner type and Rule fillet', async ({ app }) => {
-  test.fail() // GAP: no Setback (corner blend) and no Rule Fillet (a rule that rounds a whole feature or face set)
   await app.open()
   await fastPlate(app)
   await app.ribbon('Fillet').first().click()
@@ -224,7 +222,6 @@ test('Chamfer: equal distance on an edge', async ({ app }) => {
 })
 
 test('Chamfer: Two distances and Distance and angle', async ({ app }) => {
-  test.fail() // GAP: the dialog has one Distance only (equal distance)
   await app.open()
   await fastPlate(app)
   await app.ribbon('Chamfer').first().click()
@@ -361,7 +358,6 @@ test('Shell: a wall thicker than the outside fillet radius still shells (sharp i
 })
 
 test('Shell: a different thickness for a chosen face', async ({ app }) => {
-  test.fail() // GAP: Fusion (Shell, Individual Thickness) sets a thickness per removed face; one Thickness only here
   await app.open()
   await fastPlate(app)
   await app.ribbon('Shell').first().click()
@@ -497,7 +493,6 @@ test('Revolve: a typed angle of 90 makes a quarter', async ({ app }) => {
 })
 
 test('Revolve: Symmetric, Two sides and To object extents', async ({ app }) => {
-  test.fail() // GAP: Revolve has Angle only (one direction from the profile); Fusion offers Angle / To / Full with One side, Two sides, Symmetric
   await app.open()
   await rev(app)
   expect(await controls(app)).toMatch(/Symmetric|Two sides|Direction/i)
@@ -532,7 +527,6 @@ test('Sweep: the profile is taken, a click on the path line in the viewport sets
 })
 
 test('Sweep: Orientation, Taper angle, Twist angle and Guide rail', async ({ app }) => {
-  test.fail() // GAP: Sweep has Profile, Path and Operation only; Fusion has Path/Guide rail/Distance, Orientation (perpendicular/parallel), Taper and Twist angles
   await app.open()
   await sweepSetup(app)
   await clickWorld(app, [0, 0, 20])
@@ -553,7 +547,6 @@ test('Loft: two profiles at different heights blend into a frustum, picked in or
 })
 
 test('Loft: guide rails, a centre line and end conditions (tangent, smooth)', async ({ app }) => {
-  test.fail() // GAP: Loft has Profiles and Ruled only; Fusion has Guide Rails, Center Line, per-profile end conditions (Free, Direction, Tangent, Smooth)
   await app.open()
   await addSketch(app, XY, [{ k: 'circle', c: [0, 0], r: 10 }])
   await addSketch(app, { origin: [0, 0, 30], xDir: [1, 0, 0], normal: [0, 0, 1] }, [{ k: 'circle', c: [0, 0], r: 5 }])
@@ -563,7 +556,6 @@ test('Loft: guide rails, a centre line and end conditions (tangent, smooth)', as
 })
 
 test('Rib and Web exist in the Create menu', async ({ app }) => {
-  test.fail() // GAP: no Rib and no Web (a sketched line thickened to a wall up to the faces it meets)
   await app.open()
   await fastPlate(app)
   const e = await ribbonEntries(app)
@@ -595,14 +587,12 @@ test('Cylinder from the Box menu: radius and height', async ({ app }) => {
 
 for (const name of ['Sphere', 'Torus', 'Coil', 'Pipe']) {
   test(`${name} primitive is in the Create menu`, async ({ app }) => {
-    test.fail() // GAP: the Create group has Box and Cylinder only; Fusion also has Sphere, Torus, Coil and Pipe
     await app.open()
     expect(await ribbonEntries(app)).toMatch(new RegExp('\\b' + name + '\\b'))
   })
 }
 
 test('Thread is in the Solid tab Create group, not only in the Detail tab', async ({ app }) => {
-  test.fail() // PARTIAL: Thread exists (Detail tab, and cosmetic threads on tapped holes) but not as a Create > Thread button in the Solid tab
   await app.open()
   expect(await ribbonEntries(app)).toMatch(/\bThread\b/)
 })
@@ -675,7 +665,6 @@ test('Hole: Tapped offers a modeled thread, not just a cosmetic one', async ({ a
 })
 
 test('Hole: an exact position from an edge can be typed after the click', async ({ app }) => {
-  test.fail() // GAP: the hole sits where it was clicked (or on a sketch point); Fusion drops into a sketch to dimension it, here there is no field to type the offsets
   await app.open()
   await fastPlate(app)
   await holeOnPlate(app)
@@ -787,7 +776,6 @@ test('Draft: a click on the top face picks that face as the neutral plane (not a
 })
 
 test('Draft: Parting line and Step draft types', async ({ app }) => {
-  test.fail() // GAP: only a neutral-plane draft; Fusion also drafts from a parting line and as a Step draft
   await app.open()
   await fastPlate(app)
   await app.page.locator('.ribbon-body').getByRole('button', { name: 'Press/Pull options' }).click()
@@ -821,7 +809,6 @@ test('Scale: a uniform scale factor of 2 doubles the part', async ({ app }) => {
 })
 
 test('Scale: a separate Scale command with uniform, non-uniform and a scale point', async ({ app }) => {
-  test.fail() // PARTIAL: scaling is a gizmo mode of Move (one factor); Fusion has Modify > Scale with Uniform / Non-Uniform and a scale point
   await app.open()
   await fastPlate(app)
   expect(await ribbonEntries(app)).toMatch(/\bScale\b/)
@@ -851,7 +838,6 @@ test('Move: rotate 90 degrees about Z turns a 30 x 10 block', async ({ app }) =>
 })
 
 test('Move: a Create copy option leaves the original in place', async ({ app }) => {
-  test.fail() // GAP: the command is named Move / Copy but the dialog has no Create Copy checkbox
   await app.open()
   await seedBox(app, 10, 10, 10)
   await app.ribbon('Move').first().click()
@@ -859,7 +845,6 @@ test('Move: a Create copy option leaves the original in place', async ({ app }) 
 })
 
 test('Move: Point to point and a rotation about a picked axis or pivot', async ({ app }) => {
-  test.fail() // GAP: Fusion Move has Free Move, Translate along an axis, Rotate about an axis, Point to Point, Point to Position; here a typed translate and rotate about the body centre
   await app.open()
   await seedBox(app, 10, 10, 10)
   await app.ribbon('Move').first().click()
@@ -867,7 +852,6 @@ test('Move: Point to point and a rotation about a picked axis or pivot', async (
 })
 
 test('Align: align a body to another by faces or planes', async ({ app }) => {
-  test.fail() // GAP: no Align command (Modify > Align)
   await app.open()
   await seedBox(app, 10, 10, 10)
   expect(await ribbonEntries(app)).toMatch(/\bAlign\b/)
@@ -995,21 +979,18 @@ test('Section Analysis: the section plane is picked from an origin plane or a fa
 })
 
 test('Interference of solid bodies is in the Solid tab Inspect group', async ({ app }) => {
-  test.fail() // PARTIAL: Interference exists as an assembly command, not in the Solid tab Inspect group
   await app.open()
   await fastPlate(app)
   expect(await ribbonEntries(app)).toMatch(/Interference/)
 })
 
 test('Physical Material: a material with a density gives the body a mass', async ({ app }) => {
-  test.fail() // GAP: no Physical Material and no mass / centre of gravity properties
   await app.open()
   await fastPlate(app)
   expect(await allEntries(app)).toMatch(/Physical Material|Material/)
 })
 
 test('Appearance is in the Solid tab Modify group', async ({ app }) => {
-  test.fail() // PARTIAL: Appearance exists (Render tab) but not on the Solid tab where Fusion keeps it
   await app.open()
   await fastPlate(app)
   expect(await ribbonEntries(app)).toMatch(/Appearance/)

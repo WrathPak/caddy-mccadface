@@ -38,15 +38,15 @@ Fusion's dialog: Edges (with Tangent Chain on by default), Type (Rolling ball / 
 - [OK] A zero or negative radius is not accepted (`Fillet: a negative or zero radius`)
 - [OK] Edit the radius from the timeline, then change the extrude below it: the fillet follows and stays `ok` (`Fillet: edit the radius from the timeline`, `Fillet: the extrude shortened under a fillet`)
 - [OK] Tangent Chain: clicking one edge of a tangent chain (line, arc, line) takes the whole chain, on by default, with a Tangent chain checkbox in the dialog (`Fillet: clicking one edge of a tangent chain`)
-- [GAP] Variable radius (a radius per end) (`Fillet: Variable radius`)
-- [GAP] Setback corner type and Rule fillet (`Fillet: Setback corner type and Rule fillet`)
-- [GAP] Chord length and G2 (curvature continuous) fillet types: not offered (same dialog; no separate spec)
+- [OK] Variable radius: a radius at each end, an optional middle radius and a Swap ends box (`Fillet: Variable radius`). Kernel: `edgeModAdv`, spec `src/kernel/solids2-ops.test.ts`
+- [OK] Setback and Rule fillet in the dialog (`Fillet: Setback corner type and Rule fillet`). Setback is the nearest OpenCascade can do: at a corner where rounded edges meet, the radius eases up over the setback length (OpenCascade has no true vertex setback blend). Rule rounds, besides the picked edges, every edge of their faces, or every convex / concave / sharp edge of the body
+- [OK] Chord length (the radius is worked out from the chord and the angle of each edge, exact) and G2 (asks OpenCascade for a C2 round surface; its join to the faces stays tangent, G1, so this is a smoother surface and not a curvature-continuous join)
 
 ## 3. Chamfer
 
 - [OK] Equal distance on an edge (`Chamfer: equal distance on an edge`)
 - [OK] A distance too large is reported, the body is not lost (`Chamfer: a distance too large`)
-- [GAP] Two distances and Distance and angle (`Chamfer: Two distances and Distance and angle`)
+- [OK] Two distances (with Flip side) and Distance and angle (`Chamfer: Two distances and Distance and angle`)
 
 ## 4. Shell
 
@@ -62,7 +62,7 @@ Fusion: Faces to remove, Inside / Outside / Both sides, Thickness, Tangent chain
 - [OK] Edit the extrude under the shell to a size the shell cannot fit, then back: the shell recovers (`Shell: extrude under it cut down ...`)
 - [OK] After a fillet on the top edges the shell gives the real wall: box 80 x 50 x 30 with R3 top edges, top face removed, 1.5 mm: about 17000 mm3, the enclosure order in Fusion (fillet, then shell) (`Shell: after a fillet on the top edges the shell is the right wall`)
 - [OK] A wall thicker than the fillet radius still shells: the inward offset is taken from a copy with the thin rounds healed away, so the inside corner is sharp (`Shell: a wall thicker than the outside fillet radius still shells`)
-- [GAP] Individual (per-face) thickness (`Shell: a different thickness for a chosen face`)
+- [OK] Individual (per-face) thickness: pick flat faces and give them a thickness of their own; every other face keeps the Thickness (`Shell: a different thickness for a chosen face`). A face that is not flat keeps the base thickness (the kernel refuses it with a message)
 
 ## 5. Revolve
 
@@ -71,26 +71,26 @@ Fusion: Profile, Axis (a sketch line or edge or construction axis), Type (Angle 
 - [OK] A profile against its axis, a full turn, live preview, OK (`Revolve: a profile against its axis`)
 - [OK] A typed angle of 90 makes a quarter (`Revolve: a typed angle of 90`)
 - [OK] Join / Cut / Intersect / New body are offered (`Revolve: Cut, Intersect and New body`). The axis it picks by itself, and a selected edge as axis: `48-tool-feel`; the angle arc handle: `48-tool-feel` (Revolve has a rotary handle)
-- [GAP] Symmetric, Two sides and To object (`Revolve: Symmetric, Two sides and To object extents`)
+- [OK] Direction One side / Symmetric / Two sides (a second angle), and Extent To object for a flat face or a plane (`Revolve: Symmetric, Two sides and To object extents`). To object stops where the profile's farthest point reaches the plane; curved faces are not offered
 
 ## 6. Sweep, Loft, Rib, Web
 
 - [OK] Sweep: the profile is taken, a click on the path line sets the path, live preview, right volume (`Sweep: the profile is taken`)
-- [GAP] Sweep: Orientation (perpendicular / parallel), Taper angle, Twist angle, Guide rail (`Sweep: Orientation, Taper angle, Twist angle and Guide rail`)
+- [OK] Sweep: Orientation (perpendicular / parallel), Taper angle (the profile scales about its centre, a circle tapers exactly by the angle), Twist angle (a steering curve that turns along the path) and Guide rail (a second sketch curve that steers the profile) (`Sweep: Orientation, Taper angle, Twist angle and Guide rail`)
 - [OK] Loft: two profiles at different heights blend into a frustum with the right volume, live preview. Both sketches are taken in order at once (`Loft: two profiles at different heights`)
-- [GAP] Loft: guide rails, centre line, end conditions (tangent, smooth) (`Loft: guide rails, a centre line and end conditions`)
-- [GAP] Rib (`Rib and Web exist in the Create menu`)
-- [GAP] Web (same test)
+- [OK] Loft: Guide rails, Center line and start / end conditions (`Loft: guide rails, a centre line and end conditions`). Free, Normal to profile (the loft holds square to the profile for a weighted distance, the nearest to tangent OpenCascade's loft allows) and Smooth (C2 surface). Rails and a center line go through a pipe shell: the profiles must sit at the ends (or corners) of the line, a loft on rails needs a corner at every profile in between
+- [OK] Rib: a sketch line thickened into a wall (thickness, symmetric or one side, in plane or normal, flip, to next or a distance) that grows up to the faces it meets and is joined to the body (`Rib and Web exist in the Create menu`)
+- [OK] Web: the same for every line of a sketch, normal to the sketch plane by default, with Both ways
 
 ## 7. Primitives, Thread
 
 - [OK] Box with typed width, depth and height (`Box: typed width, depth and height`). Drag arrows: `50-drag-handles`
 - [OK] Cylinder from the Box menu with radius and height (`Cylinder from the Box menu`). Drag arrows: `50-drag-handles`
-- [GAP] Sphere (`Sphere primitive is in the Create menu`)
-- [GAP] Torus (`Torus primitive ...`)
-- [GAP] Coil (`Coil primitive ...`)
-- [GAP] Pipe (`Pipe primitive ...`)
-- [PARTIAL] Thread exists (Detail tab, and a cosmetic thread on tapped holes) but is not a Create > Thread button in the Solid tab (`Thread is in the Solid tab Create group`)
+- [OK] Sphere (`Sphere primitive is in the Create menu`)
+- [OK] Torus (`Torus primitive ...`)
+- [OK] Coil: revolutions and height, revolutions and pitch, or height and pitch; round, square or triangular wire; hollow; left handed (`Coil primitive ...`)
+- [OK] Pipe: follows a sketch path; round, square or triangular section, hollow with a wall (`Pipe primitive ...`)
+- [OK] Thread is a button in the Create group of the Solid tab, as well as in the Detail tab (`Thread is in the Solid tab Create group`)
 
 ## 8. Hole
 
@@ -99,7 +99,7 @@ Fusion: Profile, Axis (a sketch line or edge or construction axis), Type (Angle 
 - [OK] Countersink has a diameter and an angle (`Hole: countersink has a diameter and an angle`)
 - [OK] The countersink (and counterbore) diameter follows the hole diameter while it is at its automatic size, and is widened if it would not be wider than the hole (`Hole: a countersink follows the hole diameter`)
 - [OK] Tapped has a Modeled option that cuts the real helix (`Hole: Tapped offers a modeled thread`)
-- [GAP] No field to type the offsets from the edges after a click (Fusion drops into a sketch to dimension the point; here only the click or sketch points place it) (`Hole: an exact position from an edge`)
+- [OK] Position from edges: pick Edge 1 (and Edge 2) of the face after the click and type the offsets; the first hole moves to that spot (`Hole: an exact position from an edge`)
 - [OK] Through all follows an edit of the plate thickness under it (`Hole: through all follows an edit of the plate thickness`)
 - [OK] Drag arrows for depth, diameter and angles: `50-drag-handles`; presets, concentric snap: `21-modeling-tools`, `59`
 
@@ -118,18 +118,18 @@ Fusion: Profile, Axis (a sketch line or edge or construction axis), Type (Angle 
 - [OK] Menu has Offset Face, Delete Face, Replace Face, Split Face, Split Body and Draft (`Direct-edit menu`). Replace Face and Split Face are checked at kernel level only (`src/features/modeling-tools/tools.test.ts`), not driven here
 - [OK] Draft: a side face tilted about the top face as the neutral plane changes the part (`Draft: a side face tilted`). Angle arc: `50-drag-handles`
 - [OK] Draft: a click on the top face picks that face for the neutral plane; a body face under the pointer wins over an origin plane drawn across the view (`Draft: a click on the top face picks that face`)
-- [GAP] Draft types Parting line and Step (`Draft: Parting line and Step draft types`)
+- [OK] Draft types Parting line (the faces are split at the level of a picked edge and each half tilts away from it, as the two halves of a mould) and Step (only the half on the pull side tilts) (`Draft: Parting line and Step draft types`)
 - [OK] Split Body: a plane through the middle makes two bodies (`Split Body: a plane through the middle`)
 - [OK] Scale: a uniform factor of 2 in the Move gizmo doubles the part (`Scale: a uniform scale factor of 2`)
-- [PARTIAL] Scale is a mode of Move, not Modify > Scale with Uniform / Non-Uniform and a scale point (`Scale: a separate Scale command`)
+- [OK] Modify > Scale: Uniform factor or Non-uniform X / Y / Z, with a scale point (`Scale: a separate Scale command`). A non-uniform scale gives a mesh body: this OpenCascade build has no general transform for a solid
 
 ## 11. Move / Copy, Align
 
 - [OK] Translate by a typed amount (`Move: translate X by 25`)
 - [OK] Rotate 90 degrees about Z (`Move: rotate 90 degrees`)
-- [GAP] Create Copy (the command is called Move / Copy, the dialog has no copy option) (`Move: a Create copy option`)
-- [GAP] Point to Point and a pivot or axis for the rotation (rotation is about the body centre) (`Move: Point to point`)
-- [GAP] Align (`Align: align a body to another`)
+- [OK] Create copy checkbox: the original stays, a moved copy is made (`Move: a Create copy option`)
+- [OK] Move type: Free move, Point to point, Point to position, Translate along axis, Rotate about axis (with a pivot point) (`Move: Point to point`)
+- [OK] Align: a face, edge or corner of one body onto the same kind of feature of another, with Flip, Angle and Offset (`Align: align a body to another`)
 
 ## 12. Combine
 
@@ -149,9 +149,9 @@ Fusion picks the target and tools by clicking bodies in the canvas.
 - [OK] Measure: the distance between two faces at different heights (`Measure`)
 - [OK] Section Analysis: plane normal, offset and flip; arrow for the offset: `50-drag-handles` (`Section Analysis: plane normal, offset and flip`)
 - [OK] The section plane can be picked from an origin plane, a construction plane or a flat face, with an offset from it (`Section Analysis: the section plane is picked`)
-- [PARTIAL] Interference is an assembly command, not in the Solid tab Inspect group (`Interference of solid bodies`)
-- [GAP] Physical Material (density, mass, centre of gravity) (`Physical Material`)
-- [PARTIAL] Appearance exists (Render tab) but not in the Solid tab (`Appearance is in the Solid tab`)
+- [OK] Interference is in the Inspect group of the Solid tab (`Interference of solid bodies`)
+- [OK] Physical Material with a material list; the density drives the mass, area and centre of gravity that Measure shows for a body (`Physical Material`)
+- [OK] Appearance is in the Modify group of the Solid tab (`Appearance is in the Solid tab`)
 
 ## 14. Break it
 

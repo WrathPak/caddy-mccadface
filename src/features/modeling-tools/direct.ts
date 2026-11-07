@@ -3,7 +3,7 @@ import { ArrowsOutLineVertical, Eraser, Knife, PushPin, Scissors, SplitVertical,
 import type { Icon } from '@phosphor-icons/react'
 import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
-import { RefError, RefReport, bodyIdsOf, decodeRef, encodeSelection, faceSigs, resolveEdge, resolveFace } from '@/doc/refs'
+import { RefError, RefReport, bodyIdsOf, decodeRef, edgeSigs, encodeSelection, faceSigs, resolveEdge, resolveFace } from '@/doc/refs'
 import { registerFeature } from '@/doc/registry'
 import { regenerate } from '@/doc/engine'
 import { useDoc } from '@/doc/store'
@@ -21,6 +21,7 @@ import { createRunner } from '../previewKit'
 import { arcRadius, showAngle, type AngleSpec } from '../handleKit'
 import { liveRefEnv, resolveDirection, resolvePlane, type RefEnv } from './geo'
 import { facesOf, type FaceArg } from './source'
+import { draftExtraParams } from '../solids2/advanced'
 
 const facePick = (help: string, required = true): SelectionRefParam => ({ type: 'selection-ref', key: 'faces', help, label: 'Faces', accepts: ['face'], multiple: true, pick: true, required, default: [] }) 
 
@@ -312,7 +313,8 @@ export const draftSchema: ParamSchema = {
   id: 'draft',
   title: 'Draft',
   params: [
-    { type: 'selection-ref', key: 'plane', help: 'The neutral plane: the faces tilt about the line where they meet it, so that line stays where it is. Click a plane or a flat face.', label: 'Neutral plane', accepts: ['plane', 'face'], pick: true, required: true, default: [] },
+    ...draftExtraParams,
+    { type: 'selection-ref', key: 'plane', help: 'The neutral plane: the faces tilt about the line where they meet it, so that line stays where it is. Click a plane or a flat face.', label: 'Neutral plane', accepts: ['plane', 'face'], pick: true, required: true, default: [], visibleWhen: (v) => (v.draftType ?? 'plane') === 'plane' },
     facePick('The faces to tilt.'),
     { type: 'selection-ref', key: 'pull', help: 'The pull direction (the way the part comes out of the mould): a plane or flat face (its normal), an edge or an axis. Leave empty to use the neutral plane normal.', label: 'Pull direction', accepts: ['plane', 'face', 'edge', 'axis'], pick: true, default: [] },
     { type: 'number', key: 'angle', help: 'Draft angle in degrees. Positive tilts the faces so the body gets narrower away from the neutral plane along the pull direction.', label: 'Angle', unit: 'deg', min: -45, max: 45, step: 0.5, default: 3 },
@@ -323,6 +325,22 @@ export const draftSchema: ParamSchema = {
 register({
   type: 'draft', label: 'Draft', icon: TrendDown, command: 'solid.draft', schema: draftSchema, filter: 'face',
   async build(p, env, report) {
+    if (p.draftType === 'parting' || p.draftType === 'step') {
+      // the faces are split at the level of the parting line edge, each half is drafted away from it (see draftParting)
+      const pullRef = (p.pull as string[])[0]
+      if (!pullRef) throw new Error('Pick the pull direction: a plane, a flat face, an edge or an axis')
+      let pull = norm3(await resolveDirection(pullRef, env, report))
+      if (p.flip) pull = mul3(pull, -1)
+      const eref = decodeRef(((p.partingLine as string[]) ?? [])[0] ?? '')
+      const hit = eref && eref.kind === 'edge' ? resolveEdge(eref, env.bodies, report) : null
+      if (!hit) throw new Error('Pick the edge that marks the parting line')
+      const line = edgeSigs(hit.body)[hit.index].midpoint
+      const out: Body[] = []
+      for (const g of byBody(p.faces as string[], env, report)) {
+        out.push(await call<Body>(env, 'draftParting', { id: g.body.id, name: g.body.name, key: g.body.key, faces: g.faces.map((f) => f.index), dir: pull, line, angle: p.angle as number, type: p.draftType, flip: false, fid: env.fid }))
+      }
+      return { bodies: out }
+    }
     const plane = await resolvePlane((p.plane as string[])[0], env, report)
     const pullRef = (p.pull as string[])[0]
     let dir: Vec3 = pullRef ? await resolveDirection(pullRef, env, report) : plane.normal

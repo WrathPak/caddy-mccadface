@@ -20,6 +20,8 @@ import { resetAngleManip, useAngleManip } from '@/viewport/AngleManipulator'
 import { edgeSigs } from '@/doc/refs'
 import { combine, ctxEnv, liveEnv, profileRef, resolveInputs, type Env, type Inputs } from '../modeling'
 import { createRunner, watchSelection } from '../previewKit'
+import { revolveAdvanced, revolveExtraParams, revolveIsAdvanced } from '../solids2/advanced'
+import { liveRefEnv } from '../modeling-tools/geo'
 
 export const revolveSchema: ParamSchema = {
   id: 'revolve',
@@ -34,7 +36,8 @@ export const revolveSchema: ParamSchema = {
       ],
     },
     { type: 'selection-ref', key: 'edge', help: 'Click the straight model edge to spin around.', label: 'Axis edge', accepts: ['edge'], required: true, default: [], visibleWhen: (v) => v.axis === 'edge' },
-    { type: 'number', key: 'angle', help: 'How far to spin, in degrees. 360 makes a full turn; less leaves a wedge.', label: 'Angle', unit: 'deg', step: 5, default: 360 },
+    { type: 'number', key: 'angle', help: 'How far to spin, in degrees. 360 makes a full turn; less leaves a wedge.', label: 'Angle', unit: 'deg', step: 5, default: 360, visibleWhen: (v) => v.extent !== 'toObject' },
+    ...revolveExtraParams,
     {
       type: 'enum', key: 'operation', help: 'Join: add to the body. Cut: remove material. Intersect: keep only the overlap. New body: make a separate body.', label: 'Operation', display: 'select', default: 'new',
       options: [
@@ -93,7 +96,10 @@ registerFeature({
     const env = ctxEnv(ctx)
     const inp = resolveInputs(p.profiles, env)
     if (!inp.groups.length || !inp.sketch) throw new Error(inp.missing ? 'The profile no longer exists' : 'Select a profile to revolve')
-    const tool = (await ctx.kernel.call('revolveTool', args(p, inp, env, ctx.newBodyId(), ctx.feature.name))) as Body
+    const ra = args(p, inp, env, ctx.newBodyId(), ctx.feature.name)
+    const tool = revolveIsAdvanced(raw)
+      ? await revolveAdvanced(ctx.kernel, ra, raw, { bodies: ctx.bodies, dataOf: ctx.dataOf, kernel: ctx.kernel as unknown as ReturnType<typeof liveRefEnv>['kernel'] })
+      : ((await ctx.kernel.call('revolveTool', ra)) as Body)
     const res = await combine(ctx, tool, p.operation, p.targets)
     return { ...res, warning: inp.report.warning ?? res.warning, reboundRefs: inp.report.flagged, upgrades: inp.report.upgradeMap }
   },
@@ -131,7 +137,7 @@ function revolvePreview({ values, setValues }: PreviewCtx): PreviewHandle {
     let a
     try { a = args(p, inp, env, 'preview', 'preview') } catch { clearPreview(); resetAngleManip(); return }
     handle(a, inp, p.angle)
-    const tool = (await getKernel().call('revolveTool', a)) as Body
+    const tool = revolveIsAdvanced(p as unknown as ParamValues) ? await revolveAdvanced(getKernel(), a, p as unknown as ParamValues, liveRefEnv()) : ((await getKernel().call('revolveTool', a)) as Body)
     if (stale()) return
     setPreview([{ mesh: tool.mesh, kind: p.operation === 'cut' ? 'cut' : 'add' }])
   })

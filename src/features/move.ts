@@ -8,6 +8,10 @@ import { createFeature } from '@/doc/editor'
 import { bbox, type Body, type Vec3 } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
+import { getKernel } from '@/kernel/client'
+import { clearPreview } from '@/viewport/preview'
+import { liveRefEnv } from './modeling-tools/geo'
+import { copyPreview, ghostOf, moveAdvanced, moveExtraParams, moveTypeParam, moveXf } from './solids2/transform'
 
 export type GizmoMode = 'translate' | 'rotate' | 'scale'
 
@@ -16,13 +20,15 @@ export const moveSchema: ParamSchema = {
   title: 'Move / Transform',
   params: [
     { type: 'selection-ref', key: 'bodyIds', help: 'The bodies to move, rotate or scale together.', label: 'Bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] },
+    moveTypeParam,
     {
       type: 'enum', key: 'gizmo', help: 'Which handle appears in the viewport: Move, Rotate or Scale. The numbers below stay in sync with it.', label: 'Gizmo', display: 'segmented', default: 'translate',
-      options: [{ value: 'translate', label: 'Move' }, { value: 'rotate', label: 'Rotate' }, { value: 'scale', label: 'Scale' }],
+      options: [{ value: 'translate', label: 'Move' }, { value: 'rotate', label: 'Rotate' }, { value: 'scale', label: 'Scale' }], visibleWhen: (v) => (v.moveType ?? 'free') === 'free',
     },
-    { type: 'vector3', key: 'translate', help: 'How far to move along X, Y and Z, in mm.', label: 'Translate', unit: 'mm', step: 1, default: [0, 0, 0] },
-    { type: 'vector3', key: 'rotate', help: 'Turn around the X, Y and Z axes through the middle of the bodies, in degrees.', label: 'Rotate', unit: 'deg', step: 5, default: [0, 0, 0] },
-    { type: 'number', key: 'scale', help: 'Resizes the bodies about their middle. 1 keeps the size, 2 doubles it, 0.5 halves it.', label: 'Scale', unit: '', min: 0.001, step: 0.1, default: 1 },
+    { type: 'vector3', key: 'translate', help: 'How far to move along X, Y and Z, in mm.', label: 'Translate', unit: 'mm', step: 1, default: [0, 0, 0], visibleWhen: (v) => (v.moveType ?? 'free') === 'free' },
+    { type: 'vector3', key: 'rotate', help: 'Turn around the X, Y and Z axes through the middle of the bodies, in degrees.', label: 'Rotate', unit: 'deg', step: 5, default: [0, 0, 0], visibleWhen: (v) => (v.moveType ?? 'free') === 'free' },
+    { type: 'number', key: 'scale', help: 'Resizes the bodies about their middle. 1 keeps the size, 2 doubles it, 0.5 halves it.', label: 'Scale', unit: '', min: 0.001, step: 0.1, default: 1, visibleWhen: (v) => (v.moveType ?? 'free') === 'free' },
+    ...moveExtraParams,
   ],
 }
 
@@ -48,9 +54,13 @@ interface MoveState {
   mode: GizmoMode
   /** set by the gizmo while dragging, consumed by the preview's setValues */
   push: ((v: ParamValues) => void) | null
+  /** a move by points or an axis: the bodies show where they land, with no gizmo */
+  ghostOnly: boolean
+  /** Create copy: the bodies stay put (the copies are drawn as a preview) */
+  keep: boolean
 }
 export const useMove = create<MoveState>(() => ({
-  active: false, bodyIds: [], pivot: [0, 0, 0], translate: [0, 0, 0], rotate: [0, 0, 0], scale: 1, mode: 'translate', push: null,
+  active: false, bodyIds: [], pivot: [0, 0, 0], translate: [0, 0, 0], rotate: [0, 0, 0], scale: 1, mode: 'translate', push: null, ghostOnly: false, keep: false,
 }))
 
 registerFeature({
@@ -62,28 +72,41 @@ registerFeature({
     const ids = bodyIdsOf(p.bodyIds as string[])
     const targets = ids.map((id) => ctx.body(id)).filter((b): b is Body => !!b)
     if (!targets.length) throw new Error('No bodies selected')
+    if ((p.moveType ?? 'free') !== 'free' || p.copy) return moveAdvanced(ctx, p, targets, pivotOf(targets))
     const spec = { pivot: pivotOf(targets), translate: p.translate as Vec3, rotate: p.rotate as Vec3, scale: p.scale as number }
     const out: Body[] = []
     for (const b of targets) out.push(await ctx.kernel.transform({ id: b.id, name: b.name, key: b.key, spec }))
     return { bodies: out }
   },
   preview({ values, setValues }) {
+    let cur = values
+    const copies = copyPreview(() => cur, () => liveRefEnv(), () => getKernel())
     const apply = (v: ParamValues) => {
+      cur = v
       const ids = bodyIdsOf((v.bodyIds as string[]) ?? [])
       const bodies = useDoc.getState().geometry.filter((b) => ids.includes(b.id))
+      const pivot = pivotOf(bodies)
+      const free = (v.moveType ?? 'free') === 'free'
       useMove.setState({
         active: true,
         bodyIds: bodies.map((b) => b.id),
-        pivot: pivotOf(bodies),
-        translate: v.translate as Vec3,
-        rotate: v.rotate as Vec3,
-        scale: v.scale as number,
+        pivot,
+        translate: free ? (v.translate as Vec3) : [0, 0, 0],
+        rotate: free ? (v.rotate as Vec3) : [0, 0, 0],
+        scale: free ? (v.scale as number) : 1,
         mode: v.gizmo as GizmoMode,
         push: (patch) => setValues({ ...v, ...patch }),
+        ghostOnly: !free,
+        keep: !!v.copy,
       })
+      // a move by points or an axis: work out where the bodies land and show them there
+      if (!free) {
+        void moveXf(v, liveRefEnv()).then((xf) => { if (xf && cur === v) useMove.setState(ghostOf(xf, pivot)) }).catch(() => {})
+      }
+      copies.schedule()
     }
     apply(values)
-    return { update: apply, dispose: () => useMove.setState({ active: false, bodyIds: [], push: null }) }
+    return { update: apply, dispose: () => { copies.dispose(); clearPreview(); useMove.setState({ active: false, bodyIds: [], push: null, ghostOnly: false, keep: false }) } }
   },
 })
 

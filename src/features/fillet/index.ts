@@ -15,6 +15,7 @@ import { useFaceEdges } from '@/viewport/faceEdges'
 import { clearPreview, resetManip, setPreview, useManip } from '@/viewport/preview'
 import { liveEnv, minDim, niceFloor, workBody, type Env } from '../modeling'
 import { createRunner, watchSelection } from '../previewKit'
+import { edgeExtraParams, edgeExtras, edgeModCall } from '../solids2/advanced'
 
 type Mode = 'fillet' | 'chamfer'
 
@@ -24,7 +25,8 @@ const schemaFor = (mode: Mode): ParamSchema => ({
   params: [
     { type: 'selection-ref', key: 'edges', help: 'The edges to round or bevel. Click them in the viewport (the selection filter switches to edges).', label: 'Edges', accepts: ['edge'], multiple: true, required: true, default: [] },
     { type: 'bool', key: 'tangent', label: 'Tangent chain', help: 'On: clicking one edge also picks every edge that carries on tangent from it (a rounded corner and the straight edges either side), as in Fusion. Off: only the edges you click.', default: true },
-    { type: 'number', key: 'size', help: 'Fillet: the radius of the rounding, in mm. Chamfer: how far the cut starts from the edge on each face, in mm.', label: mode === 'fillet' ? 'Radius' : 'Distance', unit: 'mm', min: 0.001, step: 0.25, default: 1 },
+    { type: 'number', key: 'size', help: 'Fillet: the radius of the rounding, in mm. Chamfer: how far the cut starts from the edge on each face, in mm.', label: mode === 'fillet' ? 'Radius' : 'Distance', unit: 'mm', min: 0.001, step: 0.25, default: 1, visibleWhen: (v) => v.radiusType !== 'chord' },
+    ...edgeExtraParams(mode),
   ],
 })
 
@@ -57,7 +59,7 @@ function register(mode: Mode, icon: Icon) {
       const groups = resolveEdges(p.edges as string[], { bodies: ctx.bodies, dataOf: ctx.dataOf }, report)
       const bodies: Body[] = []
       for (const g of groups) {
-        bodies.push((await ctx.kernel.call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size: p.size as number, mode, fid: ctx.feature.id })) as Body)
+        bodies.push(await edgeModCall(ctx.kernel, mode, p, { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, fid: ctx.feature.id }, p.size as number))
       }
       return { bodies, warning: report.warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
     },
@@ -73,7 +75,7 @@ export function sizeFor(bodyIds: string[]): number {
 
 type Groups = { body: Body; edges: number[] }[]
 const callEdgeMod = (g: { body: Body; edges: number[] }, size: number, mode: Mode) =>
-  getKernel().call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size, mode, fid: 'preview' }) as Promise<Body>
+  edgeModCall(getKernel(), mode, edgeExtras.current, { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, fid: 'preview' }, size)
 
 /** Does the fillet / chamfer build at `size` on every picked body? */
 async function buildsAt(groups: Groups, size: number, mode: Mode): Promise<boolean> {
@@ -118,6 +120,7 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
   const runner = createRunner(async (stale) => {
     let p: ParamValues
     try { p = resolveParams(schema, cur) } catch { clearPreview(); ui.setState({ inspectorNotice: null }); return }
+    edgeExtras.current = p
     let groups: Groups
     try { groups = resolveEdges(p.edges as string[], liveEnv()) } catch { clearPreview(); resetManip(); ui.setState({ inspectorNotice: null }); return }
     const key = JSON.stringify(p.edges)
@@ -225,6 +228,7 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
   return {
     update(v) { cur = v; runner.schedule() },
     dispose() {
+      edgeExtras.current = null
       useFaceEdges.setState({ onFace: null })
       off()
       runner.dispose()
