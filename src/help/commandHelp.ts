@@ -89,10 +89,13 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
   // ---- mesh
   'mesh.import': h('Bring in a triangle mesh from an STL or 3MF file. Meshes with millions of triangles are fine.'),
   'mesh.remesh': h('Split long triangles so the surface gets smaller, more even triangles. Do this before smoothing or bending a coarse mesh.', 'A mesh body'),
-  'mesh.smooth': h('Soften a rough or noisy mesh by evening out its bumps. More passes means smoother, and also slightly smaller.', 'A mesh body'),
+  'mesh.smooth': h('Soften a rough or noisy mesh by evening out its bumps. The part keeps its size, and sharp edges and open borders stay put unless you switch that off.', 'A mesh body, or some of its faces'),
   'mesh.reduce': h('Make a mesh lighter by merging triangles while keeping its overall shape. Use it on huge files that feel slow.', 'A mesh body'),
   'mesh.planeCut': h('Slice a mesh with a plane and keep one side or both. Handy for cutting a big model into parts that fit your printer.', 'A mesh body, then a plane to cut along'),
-  'mesh.repair': h('Close holes and fix broken triangles so the mesh is watertight, which is what slicers need.', 'A mesh body'),
+  'mesh.repair': h('Fix a broken mesh so it is watertight, which is what slicers need. Pick a type: close holes, stitch cracks, remove loose bits, or wrap and rebuild a badly broken scan into a new clean closed mesh. It tells you what it changed.', 'A mesh body'),
+  'mesh.makeClosed': h('One click Repair: join cracks, wind every triangle the same way, flip an inside-out mesh and close the holes, so the mesh can be cut, combined and printed.', 'A mesh body'),
+  'mesh.reverse': h('Turn a mesh inside out by flipping the direction of every triangle. Use it when a model looks dark or its volume is negative.', 'A mesh body'),
+  'mesh.toBrep': h('Turn a mesh into a real solid. Prismatic builds flat faces from flat areas of the mesh so you can Fillet, Shell, drill Holes and Press/Pull; Faceted makes a face from every triangle.', 'A mesh body'),
   'mesh.convert': h('Turn a solid into a triangle mesh. Do this when you want to use the mesh tools on it. It cannot be turned back into a solid.', 'A solid body'),
 
   // ---- hair

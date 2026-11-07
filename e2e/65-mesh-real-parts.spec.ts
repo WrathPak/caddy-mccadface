@@ -6,7 +6,7 @@ import { test, expect, type App } from './helpers'
 import {
   bodyIds, featStates, figureTris, toggle, geom, importStl, lBracketTris, meshStats, meshTool, nearestTri, slabTris, triVolume, without, writeStl,
 } from './mesh-kit'
-import { clickWorld, esc2, openSketch, planeOf, relNear, ribbonEntries, seedBox, selection, settle, skCircle, sketchOnFace, toLocal, type P3 } from './solids-kit'
+import { clickWorld, dlg, esc2, openSketch, planeOf, relNear, ribbonEntries, seedBox, selection, settle, skCircle, sketchOnFace, toLocal, type P3 } from './solids-kit'
 
 /* Real jobs a 3D-printing Fusion user does with the Mesh tab, each starting from an imported STL (generated here, nothing checked in).
    Workarounds are marked WORKAROUND in the comments and collected in docs/fusion-parity/mesh.md. Everything is mouse and keyboard. */
@@ -86,9 +86,8 @@ test('Big STL: half a million triangles cut in half with Plane Cut, both halves 
 
 // ------------------------------------------------------------------------------------------------ 3 a mini figure, hollow with a drain hole
 
-test('Mini figure: hollowed, with a drain hole in the base', async ({ app }) => {
-  // WORKAROUND: Shell does not work on a mesh ("needs a solid body, not a mesh"). The figure is hollowed with a scaled copy (Move > Create copy, Scale 0.85, then Combine > Cut);
-  // the wall is 15 percent of the local radius, not a constant thickness (0.7 mm on the 4.5 mm stem, 1.8 mm at the base), and the copy has no connection to the original's later edits
+test('Mini figure: hollowed with Shell, with a drain hole cut by sketch and Extrude', async ({ app }) => {
+  // the Fusion route: Shell the mesh to an even wall, sketch a circle on the base plane and Extrude cut it through the base into the cavity
   test.setTimeout(240000)
   await app.open()
   const full = figureTris(40)
@@ -96,49 +95,44 @@ test('Mini figure: hollowed, with a drain hole in the base', async ({ app }) => 
   await importStl(app, writeStl('figure', full))
   await app.page.locator('.tree-row', { hasText: /figure/ }).first().click()
   await app.tab('Solid')
-  await app.ribbon(/^Move$/).first().click()
-  await app.field('Scale', '0.85')
-  await toggle(app, 'Create copy')
-  await app.ok()
-  expect((await bodyIds(app)).length, JSON.stringify(await featStates(app))).toBe(2)
-  // cut the copy out of the figure
-  await app.ribbon('Combine').first().click()
-  await useNth(app, 'Target body', /figure/, 0)
-  await useNth(app, 'Tool bodies', /figure/, 1)
-  await app.inspector().getByRole('radio', { name: 'Cut' }).click()
+  await app.ribbon('Shell').first().click()
+  await app.field('Thickness', '1.2')
   await app.ok()
   await ok(app)
   expect((await bodyIds(app)).length).toBe(1)
   const hollow = await meshStats(app)
-  // the scaled copy is not entirely inside the figure (the profile changes fast at the collar), so a little less than 38.6 percent of the volume is left to cut away
-  expect(hollow.signedVolume).toBeGreaterThan(vFull * (1 - 0.85 ** 3) * 0.98)
-  expect(hollow.signedVolume).toBeLessThan(vFull * 0.5)
   expect(hollow.open).toBe(0)
-  // the drain hole: a 4 mm square post through the base into the cavity
-  await seedBox(app, 4, 4, 8, [-2, -2, -1])
-  await app.tab('Solid')
-  await app.ribbon('Combine').first().click()
-  await useNth(app, 'Target body', /figure/, 0)
-  await useNth(app, 'Tool bodies', /Box/, 0)
-  await app.inspector().getByRole('radio', { name: 'Cut' }).click()
+  // an even 1.2 mm skin: the volume of the wall is about the surface area times 1.2 (a scaled copy leaves a wall that is a fixed share of the local radius instead)
+  let area = 0
+  for (const [p, q, r] of full) area += Math.hypot(...[(q[1] - p[1]) * (r[2] - p[2]) - (q[2] - p[2]) * (r[1] - p[1]), (q[2] - p[2]) * (r[0] - p[0]) - (q[0] - p[0]) * (r[2] - p[2]), (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])]) / 2
+  expect(hollow.signedVolume).toBeGreaterThan(area * 1.2 * 0.8)
+  expect(hollow.signedVolume).toBeLessThan(area * 1.2 * 1.2)
+  expect(hollow.signedVolume).toBeLessThan(vFull * 0.5)
+  // the drain hole: a 4 mm circle sketched on the XY plane (the bottom of the base), Extrude cut up through the base wall into the cavity
+  await openSketch(app, 'XY')
+  await skCircle(app, 0, 0, 4)
+  await app.finishSketch()
+  await app.ribbon('Extrude').click()
+  await app.field('Distance', '6')
+  await app.inspector().locator('.sel').first().click()
+  await app.page.getByRole('option', { name: 'Cut' }).click()
   await app.ok()
   await ok(app)
   expect((await bodyIds(app)).length).toBe(1)
+  expect((await geom(app))[0].kind).toBe('mesh')
   const done = await meshStats(app)
   expect(done.open).toBe(0)
-  expect(done.signedVolume).toBeLessThan(hollow.signedVolume - 20) // the hole took material out of the base
-  expect(done.signedVolume).toBeGreaterThan(hollow.signedVolume * 0.9)
-  // a valid manifold: Repair (which runs the kernel's manifold check) accepts it
-  await meshTool(app, 'Repair')
-  await app.ok()
-  await ok(app)
+  expect(done.signedVolume).toBeLessThan(hollow.signedVolume - 5) // the hole took the base wall out
+  expect(done.signedVolume).toBeGreaterThan(hollow.signedVolume * 0.95)
+  // the cavity is open to the outside now: a ray up the middle from below finds no wall between z = 0 and the top of the base
+  const bb = await app.bbox()
+  expect(bb.min[2]).toBeCloseTo(0, 3)
 })
 
 // ------------------------------------------------------------------------------------------------ 4 an STL bracket
 
-test('STL bracket: a 5 mm hole through the vertical leg, cut with a solid post and Combine', async ({ app }) => {
-  // WORKAROUND: there is no Convert Mesh to B-rep, so the bracket stays a mesh. The Fusion route (sketch a circle on the leg, Extrude cut) fails: the click on the profile also picks the
-  // mesh face behind it as a profile and Extrude stops with "Expected a B-rep body" (see the next test). The hole is a 5 mm square post (Box) cut out with Combine > Cut instead, so it is square, not round
+test('STL bracket: a 5 mm hole through the vertical leg, cut with a post and Combine', async ({ app }) => {
+  // the older route, still valid on a mesh: a solid post (Box) cut out with Combine > Cut, so the hole is square
   test.setTimeout(200000)
   await app.open()
   const bracket = lBracketTris(20)
@@ -159,11 +153,11 @@ test('STL bracket: a 5 mm hole through the vertical leg, cut with a solid post a
 })
 
 test('STL bracket: sketch on the mesh face and Extrude cut through it', async ({ app }) => {
-  // GAP: the sketch opens on the mesh face, but Extrude then fails with "Expected a B-rep body" (the click on the profile also takes the mesh face as a profile): a Fusion user sketches on the face of the part
-  test.fail()
+  // a Fusion user sketches on the face of the part: the profile click must not pick the mesh face as a profile, and the cut goes into the mesh
   test.setTimeout(120000)
   await app.open()
   const bracket = lBracketTris(20)
+  const v0 = triVolume(bracket)
   await importStl(app, writeStl('bracket', bracket))
   await sketchOnFace(app, [5, 20, 20])
   const pl = await planeOf(app)
@@ -177,29 +171,57 @@ test('STL bracket: sketch on the mesh face and Extrude cut through it', async ({
   await app.page.getByRole('option', { name: 'Cut' }).click()
   await app.ok()
   await ok(app)
+  expect((await geom(app))[0].kind).toBe('mesh')
+  relNear(await app.volume(), v0 - Math.PI * 2.5 * 2.5 * 20, 0.02)
 })
 
-test('STL bracket: fillet the inside corner (needs the mesh as a solid)', async ({ app }) => {
-  // GAP: Fillet says "Fillet and Chamfer need a solid body ... not a mesh"; Fusion converts the mesh to a B-rep first (Convert Mesh), which does not exist here
-  test.fail()
-  test.setTimeout(120000)
+test('STL bracket: convert to a solid, fillet the inside corner and drill a 5 mm hole', async ({ app }) => {
+  // Convert Mesh (Prismatic) turns the eight flat face groups into planar faces: Fillet and Hole then work on the bracket like on any solid
+  test.setTimeout(200000)
   await app.open()
-  await importStl(app, writeStl('bracket', lBracketTris(20)))
+  const bracket = lBracketTris(20)
+  const v0 = triVolume(bracket)
+  await importStl(app, writeStl('bracket', bracket))
+  await meshTool(app, 'Convert Mesh')
+  await app.ok()
+  await ok(app)
+  const g = await geom(app)
+  expect(g[0].kind).toBe('brep')
+  expect(g[0].faces).toBe(8)
+  relNear(await app.volume(), v0, 0.001)
+  // fillet the inside corner (an inside fillet adds material)
   await app.tab('Solid')
   await app.ribbon('Fillet').first().click()
-  await clickWorld(app, [10, 10, 10])
+  // the inside corner is hidden behind the long leg from the home view: turn the view with the ViewCube until the edge can be clicked
+  const cube = app.page.getByTestId('viewcube')
+  for (const turn of ['Rotate right 90°', 'Rotate left 90°']) {
+    await cube.getByRole('button', { name: turn }).click()
+    await app.cameraStable()
+    await clickWorld(app, [10, 10, 10])
+    const sel = await selection(app)
+    if (sel.length && sel.every((r) => r.kind === 'edge')) break
+    await app.page.keyboard.press('Escape')
+    await cube.getByRole('button', { name: turn.replace(/right|left/, (m) => (m === 'right' ? 'left' : 'right')) }).click()
+    await app.cameraStable()
+  }
+  expect((await selection(app)).map((r) => r.kind)).toEqual(['edge'])
   await app.field('Radius', '3')
   await app.ok()
-  expect((await featStates(app)).pop()).toMatch(/:ok$/)
-  expect(await app.volume()).toBeLessThan(12000)
-})
-
-test('STL bracket: Convert Mesh to B-rep from the Mesh tab, then fillet', async ({ app }) => {
-  // GAP: not in the Mesh tab (the prismatic conversion of an STL bracket to planes and cylinders is the route a Fusion user takes)
-  test.fail()
-  await app.open()
-  await importStl(app, writeStl('bracket', lBracketTris(20)))
-  expect(await ribbonEntries(app, 'Mesh')).toMatch(/Convert Mesh|Mesh to B-?rep/i)
+  await ok(app)
+  const vf = await app.volume()
+  expect(vf).toBeGreaterThan(v0)
+  relNear(vf, v0 + (1 - Math.PI / 4) * 9 * 20, 0.01)
+  // a round hole through the vertical leg, from its top face
+  await cube.getByRole('button', { name: 'Home view' }).click()
+  await app.cameraStable()
+  await app.ribbon('Hole').first().click()
+  await clickWorld(app, [5, 20, 20])
+  await expect.poll(async () => ((await dlg(app)).places as string[]).length).toBe(1)
+  await app.field('Diameter', '5')
+  await app.ok()
+  await ok(app)
+  relNear(await app.volume(), vf - Math.PI * 2.5 * 2.5 * 20, 0.01)
+  expect((await geom(app))[0].kind).toBe('brep')
 })
 
 // ------------------------------------------------------------------------------------------------ 5 text engraved into an STL, then 3MF

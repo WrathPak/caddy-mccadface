@@ -15,11 +15,24 @@ export function initManifold(): Promise<Toplevel> {
   })())
 }
 
+/** A mesh a Boolean cannot use because it is open, has flipped patches or edges shared by three triangles. */
+export class NotClosedError extends Error {
+  constructor() {
+    super('This mesh is not closed or not manifold (open edges, flipped triangles, or edges shared by three or more triangles). Run Mesh > Repair (Make Closed Mesh) on it first.')
+    this.name = 'NotClosedError'
+  }
+}
+
 /** Welded triangle mesh -> Manifold (caller must `.delete()` it). */
 export async function toManifold(m: TopoMesh): Promise<Manifold> {
   const w = await initManifold()
   const mesh = new w.Mesh({ numProp: 3, vertProperties: m.positions.slice(), triVerts: m.indices.slice() })
-  return w.Manifold.ofMesh(mesh as Mesh)
+  try {
+    return w.Manifold.ofMesh(mesh as Mesh)
+  } catch (e) {
+    if (e instanceof Error && /manifold/i.test(e.message)) throw new NotClosedError()
+    throw e
+  }
 }
 
 export function fromManifold(man: Manifold): TopoMesh {

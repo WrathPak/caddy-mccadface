@@ -9,7 +9,7 @@ import {
   Crosshair, Cube, Cylinder, DownloadSimple, Equals, Exclude, Eye, FilePlus, FloppyDisk, FolderOpen,
   FrameCorners, Funnel, GridFour, Hash, House, Intersect, Knife, LineSegment, Moon, MagicWand, Package,
   Path, PencilSimpleLine, Polygon, Ruler, Scissors, Spiral, Square, Stack, Subtract, Sun, Target, Trash,
-  Unite, UploadSimple, Wall, Waves, Parallelogram, Angle, Check, Lock, Selection, Planet, Shapes, ArrowFatLineUp,
+  Unite, UploadSimple, Wall, Waves, ShieldCheck, ArrowsLeftRight, CubeFocus, Parallelogram, Angle, Check, Lock, Selection, Planet, Shapes, ArrowFatLineUp,
 } from '@phosphor-icons/react'
 import { useUi } from '@/store/ui'
 import { useSettings } from '@/settings/settings'
@@ -138,6 +138,9 @@ def('mesh.planeCut', 'Plane Cut', Scissors, 'Mesh')
 def('mesh.convert', 'Convert to Mesh', Cube, 'Mesh', undefined, undefined, 'Turn a solid (B-rep) body into a triangle mesh body')
 def('mesh.reduce', 'Reduce', Funnel, 'Mesh')
 def('mesh.repair', 'Repair', MagicWand, 'Mesh')
+def('mesh.makeClosed', 'Make Closed Mesh', ShieldCheck, 'Mesh')
+def('mesh.reverse', 'Reverse Normal', ArrowsLeftRight, 'Mesh')
+def('mesh.toBrep', 'Convert Mesh', CubeFocus, 'Mesh')
 // ---- Hair
 def('hair.create', 'Create Hair', Spiral, 'Hair')
 def('hair.faces', 'Select Faces', Selection, 'Hair')

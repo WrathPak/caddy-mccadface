@@ -179,15 +179,13 @@ test('Repair welds cracks: a box with every vertex split apart is closed again',
 })
 
 // Fusion: Repair has Type (Stitch and Fill Holes, Remove Isolated, Wrap, Rebuild), a max hole size, and reports what it found.
-test.fail('Repair offers repair types (Stitch, Remove, Wrap, Rebuild)', async ({ app }) => {
-  // GAP: one weld distance, nothing else. Wrap and Rebuild (the way out for self-intersecting scans) do not exist
+test('Repair offers repair types (Stitch, Remove, Wrap, Rebuild)', async ({ app }) => {
   await app.open()
   await importStl(app, box(1))
   expect(await dialogOf(app, 'Repair')).toMatch(/Type|Wrap|Rebuild|Stitch/)
 })
 
-test.fail('Repair says what it fixed (holes closed, vertices welded)', async ({ app }) => {
-  // GAP: the repair report is computed in the kernel (welded, degenerate, duplicates, holesFilled) and thrown away: no message
+test('Repair says what it fixed (holes closed, vertices welded)', async ({ app }) => {
   await app.open()
   const t = boxTris(40, 30, 20, [0, 0, 0], 4)
   await importStl(app, writeStl('hole2', without(t, Array.from({ length: 32 }, (_, i) => 32 + i))))
@@ -197,18 +195,21 @@ test.fail('Repair says what it fixed (holes closed, vertices welded)', async ({ 
   expect((await toasts(app)) + (await dialogText(app))).toMatch(/hole|closed|welded|repaired/i)
 })
 
-test.fail('Repair turns an inside-out mesh (inverted normals) the right way round', async ({ app }) => {
-  // GAP: the volume of an inverted STL is negative and stays negative through Repair, Plane Cut and every other tool; there is no Reverse Normal either
+test('An inside-out STL (inverted normals) comes in the right way round, Reverse Normal turns it back and Repair fixes it again', async ({ app }) => {
   await app.open()
   await importStl(app, writeStl('inv', flipped(boxTris(40, 30, 20, [0, 0, 0], 2))))
+  // the import winds the triangles so that the volume is positive
+  relNear((await meshStats(app)).signedVolume, BOX, 0.001)
+  await meshTool(app, 'Reverse Normal')
+  await app.ok()
   expect((await meshStats(app)).signedVolume).toBeLessThan(0)
+  expect((await featStates(app)).pop()).toBe('meshReverse:ok')
   await meshTool(app, 'Repair')
   await app.ok()
-  expect((await meshStats(app)).signedVolume).toBeGreaterThan(0)
+  relNear((await meshStats(app)).signedVolume, BOX, 0.001)
 })
 
-test.fail('Repair makes the faces of a mesh agree about which way is out (one patch of flipped triangles)', async ({ app }) => {
-  // GAP: a mesh whose top face is wound the other way (a common STL fault, undetected on import) makes every kernel step fail with "Not manifold" and Repair fails the same way; Fusion Repair unifies the normals
+test('Repair makes the faces of a mesh agree about which way is out (one patch of flipped triangles)', async ({ app }) => {
   await app.open()
   const t = boxTris(40, 30, 20, [0, 0, 0], 2)
   const bad = t.map((tri, i) => (i >= 8 && i < 16 ? [tri[0], tri[2], tri[1]] : tri)) as ReturnType<typeof boxTris>
@@ -369,8 +370,6 @@ test('Combine Cut: a solid box cut out of a mesh', async ({ app }) => {
 })
 
 test('Smooth keeps the size of a part: a 40 x 30 x 20 box does not grow by more than 0.2 mm a side', async ({ app }) => {
-  // WRONG GEOMETRY: the default Smooth (10 passes, strength 0.5) pushes the corners of a box out by about 1.1 mm (the box becomes 42 mm long), so a bracket that fits another part stops fitting
-  test.fail()
   await app.open()
   await importStl(app, box())
   await meshTool(app, 'Smooth')
@@ -393,16 +392,13 @@ test('Smooth runs on a sphere and keeps it closed', async ({ app }) => {
 })
 
 // Fusion: Smooth works on the selected face groups (or the whole body) with a smoothness slider and Preserve boundaries.
-test.fail('Smooth can be limited to selected faces', async ({ app }) => {
-  // GAP: the whole body only; polishing one scar of a scan means smoothing (and shrinking) the rest too
+test('Smooth can be limited to selected faces', async ({ app }) => {
   await app.open()
   await importStl(app, box())
   expect(await dialogOf(app, 'Smooth')).toMatch(/Faces|Selection|boundar/i)
 })
 
 test('Shell of a mesh: remove the top face, a 2 mm wall (a hollow figure, Fusion: Modify > Shell)', async ({ app }) => {
-  // GAP: Shell says "needs a solid body, not a mesh"; a mesh cannot be hollowed except by converting it to a solid, which does not exist either
-  test.fail()
   await app.open()
   await importStl(app, box())
   await clickWorld(app, [20, 15, 20])
@@ -415,15 +411,12 @@ test('Shell of a mesh: remove the top face, a 2 mm wall (a hollow figure, Fusion
 })
 
 // Fusion: Reverse Normal flips the selected faces or the body.
-test.fail('Reverse Normal is a Mesh tab command', async ({ app }) => {
-  // GAP: not there; an STL that came in inside out can only be fixed in another program
+test('Reverse Normal is a Mesh tab command', async ({ app }) => {
   await app.open()
   expect(await meshEntries(app)).toMatch(/Reverse Normal|Flip Normal/i)
 })
 
 test('Delete on a selected mesh face removes the face (Fusion: Delete Faces opens a hole)', async ({ app }) => {
-  // GAP: the face is selected, Delete does nothing at all (no step, no message)
-  test.fail()
   await app.open()
   await importStl(app, box())
   await clickWorld(app, [20, 15, 20])
@@ -453,8 +446,7 @@ test('Direct edit: Press/Pull on a mesh face moves the face group (Fusion: Direc
 })
 
 // Fusion: Convert Mesh (Prismatic: face groups into planes, cylinders and cones; Faceted: one B-rep face per triangle).
-test.fail('Convert Mesh to B-rep (Prismatic and Faceted) is a Mesh tab command', async ({ app }) => {
-  // GAP: the only conversion is solid to mesh; a mesh can never become a solid you can fillet, shell, sketch on or put holes in
+test('Convert Mesh to B-rep (Prismatic and Faceted) is a Mesh tab command', async ({ app }) => {
   await app.open()
   expect(await meshEntries(app)).toMatch(/Convert Mesh|Mesh to B-?rep|Prismatic|Faceted/i)
 })
@@ -680,8 +672,6 @@ test('Timeline: dropping a step under a mesh feature (the Insert) leaves the lat
 // ================================================================================================ Break it
 
 test('Break: a mesh that is not closed (a face missing) gets a message from Plane Cut that says what to do', async ({ app }) => {
-  // GAP: the step fails with "Not manifold" and nothing points at Repair; Fusion Plane Cut works on an open mesh (the cut is simply not capped)
-  test.fail()
   await app.open()
   await importStl(app, writeStl('hole4', without(boxTris(40, 30, 20, [0, 0, 0], 4), [40, 41])))
   await meshTool(app, 'Plane Cut')
@@ -800,4 +790,210 @@ test('Break: Reduce and Refine on half a million triangles finish (or say it is 
   console.log(`MESH PERF 500k: reduce ${tReduce} ms (to ${after} triangles), refine to 0.2 mm ${tRefine} ms -> ${last}`)
   expect(last).toMatch(/^meshRefine:(ok|error \(That edge length)/)
   expect(tReduce + tRefine).toBeLessThan(300000)
+})
+
+// ================================================================================================ Mesh correctness and the core print tools
+
+const pickType = async (app: App, label: RegExp) => {
+  await app.inspector().locator('.field', { hasText: /^Type/ }).locator('.sel').click()
+  await app.page.getByRole('option', { name: label }).click()
+}
+const toastText = async (app: App) => { await app.page.waitForTimeout(500); return toasts(app) }
+
+test('Make Closed Mesh: one click closes holes, winds the triangles and says what it did', async ({ app }) => {
+  await app.open()
+  const t = boxTris(40, 30, 20, [0, 0, 0], 4)
+  // the top face is missing and the bottom face is wound the other way
+  const bad = without(t, Array.from({ length: 32 }, (_, i) => 32 + i)).map((tri, i) => (i < 32 ? [tri[0], tri[2], tri[1]] : tri)) as ReturnType<typeof boxTris>
+  await importStl(app, writeStl('closedmesh', bad))
+  await meshTool(app, 'Make Closed Mesh')
+  await app.ok()
+  const s = await meshStats(app)
+  expect(s.open).toBe(0)
+  expect(s.nonManifold).toBe(0)
+  relNear(s.signedVolume, BOX, 0.001)
+  expect((await featStates(app)).pop()).toBe('meshMakeClosed:ok')
+  expect(await toastText(app)).toMatch(/closed 1 hole/)
+})
+
+test('Repair type Close Holes closes the hole, Stitch joins cracks, Remove drops a speck', async ({ app }) => {
+  await app.open()
+  const t = boxTris(40, 30, 20, [0, 0, 0], 4)
+  await importStl(app, writeStl('rtypes', [...without(t, Array.from({ length: 32 }, (_, i) => 32 + i)), ...boxTris(1, 1, 1, [100, 0, 0], 1)]))
+  await meshTool(app, 'Repair')
+  await pickType(app, /Remove/)
+  await app.ok()
+  expect((await meshStats(app)).tris).toBe(192 - 32)
+  expect(await toastText(app)).toMatch(/removed 1 small shell/)
+  await meshTool(app, 'Repair')
+  await pickType(app, /Close Holes/)
+  await app.ok()
+  const s = await meshStats(app)
+  expect(s.open).toBe(0)
+  relNear(s.signedVolume, BOX, 0.001)
+  expect((await featStates(app)).filter((f) => f.startsWith('meshRepair')).length).toBe(2)
+})
+
+test('Repair type Wrap: a scan with three big holes becomes a closed mesh near the original volume', async ({ app }) => {
+  test.setTimeout(150000)
+  await app.open()
+  const t = boxTris(40, 30, 20, [0, 0, 0], 6)
+  await importStl(app, writeStl('wrap', without(t, [5, 6, 100, 101, 230, 300])))
+  expect((await meshStats(app)).open).toBeGreaterThan(0)
+  await meshTool(app, 'Repair')
+  await pickType(app, /Wrap/)
+  await app.field('Voxel size', '1')
+  await app.field('Gap to close', '10')
+  await app.ok()
+  const s = await meshStats(app)
+  expect(s.open).toBe(0)
+  expect(s.nonManifold).toBe(0)
+  relNear(s.signedVolume, BOX, 0.06)
+  expect(await toastText(app)).toMatch(/wrapped as a closed mesh/)
+})
+
+test('Repair type Rebuild keeps a closed cavity', async ({ app }) => {
+  test.setTimeout(150000)
+  await app.open()
+  const outer = boxTris(40, 40, 40, [0, 0, 0], 1)
+  const inner = flipped(boxTris(16, 16, 16, [12, 12, 12], 1))
+  await importStl(app, writeStl('cavity', [...outer, ...inner]))
+  relNear((await meshStats(app)).signedVolume, 64000 - 4096, 0.001) // the cavity keeps its inward winding on import
+  await meshTool(app, 'Repair')
+  await pickType(app, /Rebuild/)
+  await app.field('Voxel size', '1')
+  await app.ok()
+  relNear((await meshStats(app)).signedVolume, 64000 - 4096, 0.05)
+})
+
+test('Not manifold: a Boolean on a mesh that is not closed says Repair', async ({ app }) => {
+  await app.open()
+  await importStl(app, writeStl('openbool', without(boxTris(40, 30, 20, [0, 0, 0], 4), [40, 41])))
+  await seedBox(app, 10, 10, 30, [15, 10, -5])
+  await app.tab('Solid')
+  await app.ribbon('Combine').first().click()
+  await useRow(app, 'Target body', /openbool/)
+  await useRow(app, 'Tool bodies', /Box/)
+  await app.inspector().getByRole('radio', { name: 'Cut' }).click()
+  await app.ok()
+  const f = (await featStates(app)).pop()!
+  expect(f).toMatch(/error/)
+  expect(f).toMatch(/Repair/)
+})
+
+test('Plane Cut on an open mesh trims it, leaves the cut open and says so', async ({ app }) => {
+  await app.open()
+  await importStl(app, writeStl('opencut', without(boxTris(40, 30, 20, [0, 0, 0], 4), [40, 41])))
+  await meshTool(app, 'Plane Cut')
+  await app.field('Offset', '10')
+  await app.ok()
+  expect((await featStates(app)).pop()).toBe('meshPlaneCut:ok')
+  const s = await meshStats(app)
+  expect(s.open).toBeGreaterThan(0) // not capped
+  expect((await app.bbox()).min[2]).toBeCloseTo(10, 3)
+  expect(await toastText(app)).toMatch(/left open/)
+})
+
+test('Delete with a mesh face selected is an editable step, says what happened and Repair closes it again', async ({ app }) => {
+  await app.open()
+  await importStl(app, box())
+  await clickWorld(app, [20, 15, 20])
+  await press(app, 'Delete')
+  await app.idle()
+  expect((await featStates(app)).pop()).toBe('meshDeleteFaces:ok')
+  expect((await meshStats(app)).tris).toBe(192 - 32)
+  expect(await toastText(app)).toMatch(/Deleted 1 face/)
+  await meshTool(app, 'Repair')
+  await app.ok()
+  const s = await meshStats(app)
+  expect(s.open).toBe(0)
+  relNear(s.signedVolume, BOX, 0.001)
+  // undo takes the Repair and then the Delete Faces step back, the mesh is whole again
+  await press(app, 'Control+z'); await app.idle()
+  await press(app, 'Control+z'); await app.idle()
+  expect((await meshStats(app)).tris).toBe(192)
+})
+
+test('Smooth does not inflate or shrink: a sphere keeps its radius within 2 percent and a box keeps its corners', async ({ app }) => {
+  await app.open()
+  await importStl(app, writeStl('sph2', sphereTris(20, 40, 20)))
+  const before = await meshStats(app)
+  const b0 = await app.bbox()
+  await meshTool(app, 'Smooth')
+  await app.field('Iterations', '30')
+  await app.ok()
+  const b1 = await app.bbox()
+  relNear(b1.max[0] - b1.min[0], b0.max[0] - b0.min[0], 0.02)
+  relNear((await meshStats(app)).signedVolume, before.signedVolume, 0.02)
+})
+
+test('Mesh Shell: a closed hollow with a 2 mm wall, then an outward wall', async ({ app }) => {
+  await app.open()
+  await importStl(app, box(2))
+  await app.page.locator('.tree-row', { hasText: /box/ }).first().click()
+  await app.tab('Solid')
+  await app.ribbon('Shell').first().click()
+  await app.field('Thickness', '2')
+  await app.ok()
+  expect((await featStates(app)).pop()).toBe('shell:ok')
+  const hollow = await meshStats(app)
+  expect(hollow.open).toBe(0)
+  relNear(hollow.signedVolume, BOX - 36 * 26 * 16, 0.002) // a true offset: the wall is 2 mm on every side
+  expect((await app.bbox()).max[0]).toBeCloseTo(40, 3)
+})
+
+test('Mesh Shell: the wall is even on a figure, not a scaled copy', async ({ app }) => {
+  test.setTimeout(150000)
+  await app.open()
+  const full = (await import('./mesh-kit')).figureTris(40)
+  await importStl(app, writeStl('figshell', full))
+  await app.page.locator('.tree-row', { hasText: /figshell/ }).first().click()
+  await app.tab('Solid')
+  await app.ribbon('Shell').first().click()
+  await app.field('Thickness', '1')
+  await app.ok()
+  expect((await featStates(app)).pop()).toBe('shell:ok')
+  // wall volume of a 1 mm skin is about its area: far less than the scaled copy approach (which leaves 0.85 of the radius)
+  const s = await meshStats(app)
+  expect(s.open).toBe(0)
+  const v0 = (await import('./mesh-kit')).triVolume(full)
+  expect(s.signedVolume).toBeGreaterThan(0)
+  expect(s.signedVolume).toBeLessThan(v0 * 0.5)
+})
+
+test('Convert Mesh (Prismatic): a mesh box becomes a solid with 6 planar faces and the same volume', async ({ app }) => {
+  await app.open()
+  await importStl(app, box(2))
+  await meshTool(app, 'Convert Mesh')
+  await app.ok()
+  expect((await featStates(app)).pop()).toBe('meshToBrep:ok')
+  const g = await geom(app)
+  expect(g[0].kind).toBe('brep')
+  expect(g[0].faces).toBe(6)
+  relNear(await app.volume(), BOX, 0.001)
+  expect(await toastText(app)).toMatch(/6 planar faces/)
+})
+
+test('Convert Mesh (Faceted): every triangle becomes a face, and a limit says what to do', async ({ app }) => {
+  await app.open()
+  await importStl(app, box(1))
+  await meshTool(app, 'Convert Mesh')
+  await app.inspector().getByRole('radio', { name: 'Faceted' }).click()
+  await app.ok()
+  const g = await geom(app)
+  expect(g[0].kind).toBe('brep')
+  expect(g[0].faces).toBe(12)
+  relNear(await app.volume(), BOX, 0.001)
+})
+
+test('Convert Mesh (Faceted) over the face limit stops with a message that says what to do', async ({ app }) => {
+  await app.open()
+  await importStl(app, box(3)) // 108 triangles
+  await meshTool(app, 'Convert Mesh')
+  await app.inspector().getByRole('radio', { name: 'Faceted' }).click()
+  await app.field('Face limit', '100')
+  await app.ok()
+  const f = (await featStates(app)).pop()!
+  expect(f).toMatch(/error/)
+  expect(f).toMatch(/Reduce|limited to 100/)
 })

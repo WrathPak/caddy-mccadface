@@ -205,7 +205,9 @@ export function deleteSelectedFaces(): Promise<string | null> {
   const doc = useDoc.getState()
   const faces = encodeSelection(ui.selection.filter((r) => r.kind === 'face'), doc.geometry)
   if (!faces.length) return Promise.resolve('No faces are selected')
-  const id = doc.addFeature('deleteFace', { faces })
+  // faces of a mesh are removed as they are (the mesh is left open), like Delete Faces in Fusion
+  const onMesh = ui.selection.filter((r) => r.kind === 'face').every((r) => doc.geometry.find((b) => b.id === r.id)?.kind === 'mesh')
+  const id = doc.addFeature(onMesh ? 'meshDeleteFaces' : 'deleteFace', { faces })
   ui.clearSelection()
   return regenerate().then(() => {
     const s = useDoc.getState()

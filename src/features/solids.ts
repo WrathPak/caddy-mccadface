@@ -325,13 +325,18 @@ function shellGroups(refs: string[], bodies: Body[], report = new RefReport(), w
     if (!g.faces.includes(r.index)) g.faces.push(r.index)
   }
   if (!by.size) throw new Error('Select the faces to remove, or a body to hollow')
-  for (const g of by.values()) if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Shell needs a solid body' + (g.body.surface ? ': this one is an open surface, thicken it instead' : ', not a mesh'))
+  for (const g of by.values()) if (g.body.surface) throw new Error('Shell needs a solid body: this one is an open surface, thicken it instead')
   return [...by.values()]
 }
 
 async function runShell(kernel: KernelClient, p: ParamValues, bodies: Body[], idOf?: (b: Body) => string, fid = 'preview', report = new RefReport()): Promise<Body[]> {
   const out: Body[] = []
   for (const g of shellGroups(p.faces as string[], bodies, report, (p.bodies as string[] | undefined) ?? [])) {
+    // a mesh is hollowed by a true offset of its surface in the kernel (the faces picked become openings)
+    if (g.body.kind === 'mesh') {
+      out.push((await kernel.call('meshShell', { id: idOf ? idOf(g.body) : g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, thickness: p.thickness as number, outward: p.side === 'outside' })) as Body)
+      continue
+    }
     if (shellIsAdvanced(p) && g.faces.length) {
       const special = shellSpecial(p, g.body, bodies, report)
       if (special.length) {
@@ -423,7 +428,7 @@ export function startShell() {
   const faceSel = sel.filter((r) => r.kind === 'face')
   const bodySel = faceSel.length ? [] : sel.filter((r) => r.kind === 'body')
   // with nothing picked and a single solid in the document, that solid is the one (OK then gives a closed hollow, as the tooltip says)
-  const solids = geometry.filter((b) => b.kind === 'brep' && !b.surface)
+  const solids = geometry.filter((b) => !b.surface)
   const lone = !faceSel.length && !bodySel.length && solids.length === 1 ? [solids[0].id] : []
   createFeature('shell', {
     faces: encodeSelection(faceSel, geometry),

@@ -9,6 +9,7 @@ import { parseStlSoup, type MeshSource } from '@/io/stlStream'
 import { meshBoolean as manifoldBoolean, type BoolOp } from './mesh'
 import { DEFAULT_CREASE_DEG, meshDisplayAuto, weld } from './meshutil'
 import { buildChunks, buildLod, CHUNKED_MIN_TRIS } from './bigmesh'
+import { orientTopo } from './meshfix'
 import { withBvh } from './bvhBuild'
 import type { MeshData, MeshLod, TopoMesh } from './types'
 
@@ -38,8 +39,10 @@ export async function importMesh(a: ImportArgs): Promise<ImportedPart[]> {
   return raws.map((r) => {
     const p = r.positions
     if (a.scale !== 1) for (let k = 0; k < p.length; k++) p[k] *= a.scale
-    const topo = weld(p, r.indices)
-    if (!topo.indices.length) throw new Error('The file has no usable triangles')
+    // triangles that disagree about which way is out are wound alike, and an inside-out mesh (negative volume) is turned right way round
+    const welded = weld(p, r.indices)
+    if (!welded.indices.length) throw new Error('The file has no usable triangles')
+    const topo = orientTopo(welded).mesh
     const display = withBvh(meshDisplayAuto(topo, a.creaseDeg ?? DEFAULT_CREASE_DEG))
     // the pieces the page sends to the GPU one frame at a time are cut here: cutting them there is a main-thread task per piece
     if (display.indices.length / 3 > CHUNKED_MIN_TRIS) display.chunks = buildChunks(display.positions, display.normals, display.indices)

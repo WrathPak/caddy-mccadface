@@ -682,6 +682,10 @@ export const FEATURE_GUIDE: Record<string, { guide: string; section: string }> =
   meshRefine: { guide: 'mesh', section: 'reduce' },
   meshSmooth: { guide: 'mesh', section: 'reduce' },
   meshRepair: { guide: 'mesh', section: 'repair' },
+  meshMakeClosed: { guide: 'mesh', section: 'repair' },
+  meshReverse: { guide: 'mesh', section: 'repair' },
+  meshToBrep: { guide: 'mesh', section: 'flow' },
+  meshDeleteFaces: { guide: 'mesh', section: 'repair' },
   meshConvert: { guide: 'mesh', section: 'flow' },
   // hair
   hair: { guide: 'hair', section: 'flow' },

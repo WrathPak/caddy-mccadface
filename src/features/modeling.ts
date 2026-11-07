@@ -79,6 +79,8 @@ export function resolveInputs(refs: string[], env: Env): Inputs {
     if (ref && ref.kind === 'face') {
       const res = resolveFace(ref, env.bodies, report)
       if (!res) { missing++; continue }
+      // a face of a mesh is something to cut, never a profile: the click on a sketch profile also lands on the mesh face under it
+      if (res.body.kind !== 'brep') continue
       faces.push({ key: res.body.key, index: res.index })
       if (!anchor) { const sg = faceSigs(res.body)[res.index]; anchor = sg.centroid; normal = sg.normal }
     } else missing++

@@ -66,8 +66,8 @@ export const RIBBON_TABS: RibbonTab[] = [
     label: 'Mesh',
     groups: [
       { label: 'Import', items: [{ cmd: 'mesh.import' }] },
-      { label: 'Modify', items: [{ cmd: 'mesh.remesh' }, { cmd: 'mesh.smooth' }, { cmd: 'mesh.reduce' }, { cmd: 'mesh.planeCut' }] },
-      { label: 'Prepare', items: [{ cmd: 'mesh.repair' }, { cmd: 'mesh.convert' }] },
+      { label: 'Modify', items: [{ cmd: 'mesh.remesh' }, { cmd: 'mesh.smooth' }, { cmd: 'mesh.reduce' }, { cmd: 'mesh.planeCut' }, { cmd: 'solid.shell' }, { cmd: 'mesh.reverse' }] },
+      { label: 'Prepare', items: [{ cmd: 'mesh.repair' }, { cmd: 'mesh.makeClosed' }, { cmd: 'mesh.toBrep' }, { cmd: 'mesh.convert' }] },
       { label: 'Inspect', items: [{ cmd: 'inspect.measure' }, { cmd: 'inspect.section' }] },
     ],
   },
