@@ -14,7 +14,7 @@ export function MoveGizmo() {
   const m = useMove()
   const ref = useRef<Group>(null)
   const coarse = useDevice((d) => d.coarse)
-  if (!m.active || !m.bodyIds.length) return null
+  if (!m.active || !m.bodyIds.length || m.ghostOnly) return null
   const pos: [number, number, number] = [m.pivot[0] + m.translate[0], m.pivot[1] + m.translate[1], m.pivot[2] + m.translate[2]]
   const rot = new Euler(m.rotate[0] / R2D, m.rotate[1] / R2D, m.rotate[2] / R2D, 'ZYX')
   const onChange = () => {

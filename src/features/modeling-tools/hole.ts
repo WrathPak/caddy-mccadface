@@ -24,6 +24,7 @@ import { showAngle, showArrows, type AngleSpec, type ArrowSpec } from '../handle
 import { liveRefEnv, resolvePoint, useConstruct, type CosmeticThread, type RefEnv } from './geo'
 import { HOLE_PRESETS, tapDrill } from './holePresets'
 import { clearMarkers, setMarkers } from './markers'
+import { holeExtraParams, placeFromEdges } from '../solids2/advanced'
 
 const tapped = (v: ParamValues) => v.tapType === 'tapped'
 /** holes that are not clicked onto a face (sketch points, construction points, vertices) need a direction */
@@ -52,6 +53,7 @@ export const holeSchema: ParamSchema = {
     { type: 'enum', key: 'depthMode', help: 'Distance: a blind hole of the depth below. Through all: right through the body.', label: 'Extent', display: 'segmented', default: 'through', options: [{ value: 'depth', label: 'Distance' }, { value: 'through', label: 'Through all' }] },
     { type: 'number', key: 'depth', help: 'Depth of the hole from the surface, in mm.', label: 'Depth', unit: 'mm', min: 0.1, step: 0.5, default: 10, visibleWhen: (v) => !through(v) },
     { type: 'number', key: 'tip', help: 'Included angle of the drill point at the bottom of a blind hole, in degrees (118 is a standard drill). 0 leaves a flat bottom.', label: 'Drill point angle', unit: 'deg', min: 0, max: 170, step: 1, default: 0, visibleWhen: (v) => !through(v) },
+    ...holeExtraParams,
     { type: 'info', key: 'summary', help: 'The size the hole will be drilled to.', label: 'Drill', default: '', text: (v) => summary(v) },
   ],
 }
@@ -103,7 +105,11 @@ export async function placeHoles(p: HoleP, env: RefEnv, report: RefReport): Prom
       if (!hit) { report.lost.set(s, 'A face with holes on it no longer exists'); continue }
       const sg = faceSigs(hit.body)[hit.index]
       const pl = planeFromNormal(sg.centroid, sg.normal)
-      out.push({ k: fh.k, origin: toWorld(pl, [fh.u, fh.v]), dir: sg.normal, body: hit.body })
+      let origin = toWorld(pl, [fh.u, fh.v])
+      // the first hole can be dimensioned from one or two edges of its face by typing the offsets
+      const pv = p as unknown as ParamValues
+      if (!out.length && (((pv.edgeA as string[] | undefined)?.length ?? 0) > 0 || ((pv.edgeB as string[] | undefined)?.length ?? 0) > 0)) origin = placeFromEdges(origin, sg.normal, pv, env.bodies, report)
+      out.push({ k: fh.k, origin, dir: sg.normal, body: hit.body })
       continue
     }
     const sk = env.dataOf(s) as SketchData | undefined
