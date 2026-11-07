@@ -71,7 +71,7 @@ export const RIBBON_TABS: RibbonTab[] = [
         items: [
           { cmd: 'mesh.repair' },
           { stack: ['mesh.reduce', 'mesh.remesh'] },
-          { cmd: 'mesh.faceGroups', menu: ['mesh.faceGroups', 'mesh.combineGroups', 'mesh.separateGroups'] },
+          { cmd: 'mesh.faceGroups', menu: ['mesh.generateGroups', 'mesh.combineGroups', 'mesh.separateGroups'] },
         ],
       },
       {

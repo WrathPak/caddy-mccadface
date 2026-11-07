@@ -87,7 +87,7 @@ export function meshDisplay(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG, grou
   const nv = p.length / 3
   const seg = segmentFaces(topo, creaseDeg)
   // face groups made by hand replace the ones the crease angle found
-  const faceIds = groups && groups.length === T ? groups : seg.faceIds
+  const faceIds = groups && groups.length === T ? groups.slice() : seg.faceIds
   let faceCount = seg.faceCount
   if (groups && groups.length === T) { faceCount = 0; for (let t = 0; t < T; t++) if (groups[t] >= faceCount) faceCount = groups[t] + 1 }
   const { adj, normals: un } = seg

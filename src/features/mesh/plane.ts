@@ -86,6 +86,8 @@ export async function showPlaneHandles(p: ParamValues, bodies: Body[], env: RefE
   // the tilt arcs stand in the middle of the plane over the body
   const pos = sub3(mid, mul3(c.normal, dot3(c.normal, sub3(mid, c.origin))))
   const r = arcRadius(list)
-  showAngle({ origin: pos, axis: c.base.u, start: n0, radius: r, key: 'tiltA', min: -180, max: 180, nonZero: false }, p, apply, 0)
-  showAngle({ origin: pos, axis: c.base.v1, start: c.base.n1, radius: r * 0.8, key: 'tiltB', min: -180, max: 180, nonZero: false }, p, apply, 1)
+  // the two arcs stand apart so their knobs and labels do not sit on each other
+  const [u, v] = planeBasis(n0)
+  showAngle({ origin: add3(pos, mul3(v, r * 0.7)), axis: c.base.u, start: n0, radius: r, key: 'tiltA', min: -180, max: 180, nonZero: false }, p, apply, 0)
+  showAngle({ origin: sub3(pos, mul3(u, r * 0.7)), axis: c.base.v1, start: c.base.n1, radius: r, key: 'tiltB', min: -180, max: 180, nonZero: false }, p, apply, 1)
 }
