@@ -42,7 +42,12 @@ function group(tab: string, label: string) {
   const create = group('solid', 'Create')
   const box = create.items.find((i) => i.cmd === 'solid.box')
   if (box) box.menu = ['solid.box', 'solid.cylinder', 'solid.sphere', 'solid.torus', 'solid.coil', 'solid.pipe']
-  create.items.push({ cmd: 'solid.rib', menu: ['solid.rib', 'solid.web'] }, { cmd: 'detail.thread' })
-  group('solid', 'Modify').items.push({ cmd: 'solid.scale' }, { cmd: 'solid.align' }, { cmd: 'solid.material' }, { cmd: 'render.assign' })
+  const hole = create.items.find((i) => i.cmd === 'solid.hole')
+  if (hole) hole.menu = ['solid.hole', 'detail.thread']
+  create.items.push({ cmd: 'solid.rib', menu: ['solid.rib', 'solid.web'] })
+  const modify = group('solid', 'Modify')
+  const move = modify.items.find((i) => i.cmd === 'solid.move')
+  if (move) move.menu = ['solid.move', 'solid.align', 'solid.scale']
+  modify.items.push({ cmd: 'solid.material', menu: ['solid.material', 'render.assign'] })
   group('solid', 'Inspect').items.push({ cmd: 'assembly.interference' })
 }

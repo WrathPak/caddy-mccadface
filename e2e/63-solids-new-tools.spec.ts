@@ -370,7 +370,7 @@ test('Move: translate along an axis and rotate about an axis through the origin 
 test('Scale: uniform about the middle, non-uniform gives a mesh body', async ({ app }) => {
   await app.open()
   await seedBox(app, 10, 20, 30)
-  await app.ribbon('Scale').first().click()
+  await menu(app, 'Move', 'Scale')
   await app.field('Scale factor', '2')
   await app.ok()
   relNear(await totalVol(app), 48000, 0.001)
@@ -393,7 +393,7 @@ test('Align: a box lands face to face on another', async ({ app }) => {
   // faces by their index in the first body: the +X face of box 1 onto the -X face of box 2 is already touching after a move of 30; start from far away
   await app.ev((c, ids) => c.doc.getState().addFeature('move', { bodyIds: [ids[0]], translate: [-20, 5, 3] }), ids)
   await app.idle()
-  await app.ribbon('Align').first().click()
+  await menu(app, 'Move', 'Align')
   // the Bodies field takes box 1, then the From face is clicked on it and the To face on box 2
   await app.page.locator('.tree-row', { hasText: 'Box1' }).first().click()
   await expect.poll(async () => ((await dlg(app)).bodyIds as string[]).length).toBe(1)
