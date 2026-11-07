@@ -47,7 +47,8 @@ function nearestProfile(data: SketchData, key: string, id?: string) {
     const score = Math.hypot(p.centroid[0] - cx, p.centroid[1] - cy) / scale + Math.abs(p.area - area) / Math.max(Math.abs(area), 1e-6)
     if (score < bestScore) { bestScore = score; best = i }
   })
-  return best >= 0 && bestScore < 4 ? { prof: data.profiles[best], byId: false } : null
+  // several profiles can share one id (a circle cut by another outline gives two regions made of the same two edges): the id still found them, position picks between them
+  return best >= 0 && bestScore < 4 ? { prof: data.profiles[best], byId: among.length > 0 } : null
 }
 
 /** Resolve profile refs ("prof:<sketch>:<key>") and face refs (JSON) against the current environment. */

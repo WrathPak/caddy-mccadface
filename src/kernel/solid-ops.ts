@@ -1,10 +1,12 @@
 /** Worker ops for the primitive and advanced solid tools: cylinder, sweep, loft and shell. */
-import { assembleWire, cast, getOC, isShape3D, makeCylinder, makeLine, makeThreePointArc, measureVolume, type AnyShape, type Wire, makeBezierCurve } from 'replicad'
+import { assembleWire, basicFaceExtrusion, cast, getOC, isShape3D, makeCylinder, makeLine, makeThreePointArc, measureArea, measureVolume, type AnyShape, type Wire, makeBezierCurve } from 'replicad'
 import { registerOp } from './store'
 import { boolNamed, eachInList, finalize, fuseNamed, indexer, shellNamed, type NShape } from './naming'
 import { topoOf, type Shape } from './occ'
+import { convexRoundsUpTo, healFaces } from './modeling-ops'
 import { labelEdges, planeOf, profileWires, type ProfileGroup, type ProfileIn } from './model-ops'
 import { profileIdOf, type PlaneDef, type Vec3 } from '../sketch/types'
+import { Vector } from 'replicad'
 
 type Sh = Shape
 
@@ -151,6 +153,92 @@ registerOp<LoftArgs>('loftTool', (a, h) => {
   return h.sendBody(h.bodyFromShape(a.id, a.name, solid.shape, solid.faces))
 })
 
+/** Is the B-rep sound (every face and edge consistent)? A thick solid OCC cannot build comes back looking like a solid but fails this. */
+const sound = (s: Sh) => {
+  const an = new (getOC() as unknown as { BRepCheck_Analyzer: new (s: unknown, geom: boolean, ...r: unknown[]) => { IsValid(): boolean; delete(): void } }).BRepCheck_Analyzer((s as unknown as { wrapped: unknown }).wrapped, true, false)
+  try { return an.IsValid() } finally { an.delete() }
+}
+const volOf = (s: Sh) => Math.abs(measureVolume(s as never))
+const empty = (s: Sh): NShape => ({ shape: s, faces: topoOf(s as unknown as AnyShape).faces.map(() => [] as string[]) })
+
+/** OCC's thick solid with nothing opened hands back the offset surface as a shell: close it into a solid (pointing outwards) so it can be a boolean tool. */
+function asSolid(n: NShape): NShape {
+  const sh = n.shape as unknown as { wrapped: { ShapeType(): unknown }; constructor: { name: string } }
+  if (sh.constructor.name !== 'Shell') return n
+  const o = getOC() as unknown as { BRepBuilderAPI_MakeSolid: new (s: unknown) => { Solid(): unknown; delete(): void } }
+  const mk = new o.BRepBuilderAPI_MakeSolid(sh.wrapped)
+  try {
+    const solid = cast(mk.Solid() as never) as unknown as Sh
+    if (measureVolume(solid as never) < 0) (solid as unknown as { wrapped: { Reverse(): void } }).wrapped.Reverse()
+    return { shape: solid, faces: n.faces }
+  } finally { mk.delete() }
+}
+
+/**
+ * Shell with faces removed. OCC's thick solid does it when the walls are simple; with rounds on the edges around the opening (an enclosure with
+ * filleted top edges) it can hand back an unsound solid, or the body unchanged when the wall is thicker than a round's radius. Then the wall is built
+ * as Fusion does: the body minus its inward offset (taken from a copy whose thin rounds are healed away, so those corners come out sharp) joined to
+ * the offset opening pushed out through each removed face.
+ */
+function shellOpen(src: NShape, faces: number[], side: 'inside' | 'outside', t: number, fid: string): { shape: Sh; faces: string[][] } {
+  const signed = side === 'inside' ? -t : t
+  // an outward wall keeps the sharp outer corners and edges (an intersection join, as Fusion); an inward one has no outer corners to round
+  for (const join of side === 'outside' ? (['intersection', 'arc'] as const) : (['arc'] as const)) {
+    try {
+      const first = shellNamed(src, faces, signed, 0.001, fid, join)
+      const v0 = volOf(src.shape), v1 = volOf(first.shape)
+      if (sound(first.shape) && Math.abs(v1 - v0) > v0 * 1e-6) return first
+    } catch { /* try the next join, then the cavity route */ }
+  }
+  if (side !== 'inside') throw new Error('the wall cannot be offset around the opening')
+  const topo = topoOf(src.shape as unknown as AnyShape)
+  const dirs = faces.map((i) => {
+    const f = topo.faces[i]
+    if (String(f.geomType) !== 'PLANE') throw new Error('only flat faces can be opened when the edges around them are rounded')
+    const n = f.normalAt() as unknown as { x: number; y: number; z: number }
+    const c = f.center
+    return { n: [n.x, n.y, n.z] as Vec3, c: [c.x, c.y, c.z] as Vec3 }
+  })
+  // the inward offset solid; a wall thicker than a convex round's radius has no valid offset, so those rounds are healed to sharp corners first
+  let core = src
+  let inner: NShape | null = null
+  try { const o = shellNamed(core, [], -t, 0.001, fid); if (sound(o.shape) && volOf(o.shape) > 1e-9) inner = o } catch { inner = null }
+  if (!inner) {
+    const thin = convexRoundsUpTo(src, t)
+    if (!thin.length) throw new Error('the wall is too thick for the shape')
+    core = healFaces(src, thin, fid)
+    const o = shellNamed(core, [], -t, 0.001, fid)
+    if (!sound(o.shape) || volOf(o.shape) <= 1e-9) throw new Error('the wall is too thick for the shape')
+    inner = o
+  }
+  const innerFaces = topoOf(inner.shape as unknown as AnyShape).faces
+  const scale = Math.max(...((src.shape as unknown as { boundingBox: { bounds: [Vec3, Vec3] } }).boundingBox.bounds[1].map((v, k) => v - (src.shape as unknown as { boundingBox: { bounds: [Vec3, Vec3] } }).boundingBox.bounds[0][k])), 1)
+  const innerSolid = asSolid(inner)
+  let out = boolNamed('cut', src, innerSolid, fid)
+  for (const d of dirs) {
+    // the face of the inner solid that is the offset of the removed one: flat, same way round, t below its plane
+    let best: { f: (typeof innerFaces)[number]; area: number } | null = null
+    for (const g of innerFaces) {
+      if (String(g.geomType) !== 'PLANE') continue
+      const gn = g.normalAt() as unknown as { x: number; y: number; z: number }
+      if (gn.x * d.n[0] + gn.y * d.n[1] + gn.z * d.n[2] < 0.9999) continue
+      const gc = g.center
+      const off = (gc.x - d.c[0]) * d.n[0] + (gc.y - d.c[1]) * d.n[1] + (gc.z - d.c[2]) * d.n[2]
+      if (Math.abs(off + t) > 1e-4 * Math.max(1, t)) continue
+      const area = Math.abs(measureArea(g as never))
+      if (!best || area > best.area) best = { f: g, area }
+    }
+    if (!best) throw new Error('the opening has no inner face to push through')
+    // started a little inside the inner solid, so it overlaps it instead of sharing a face with it
+    const base = (best.f.clone() as unknown as { translate(x: number, y: number, z: number): unknown }).translate(-d.n[0] * t * 0.5, -d.n[1] * t * 0.5, -d.n[2] * t * 0.5)
+    const len = t * 1.5 + scale
+    const sunk = basicFaceExtrusion(base as never, new Vector([d.n[0] * len, d.n[1] * len, d.n[2] * len])) as unknown as Sh
+    out = boolNamed('cut', out, empty(sunk), fid)
+  }
+  if (!sound(out.shape)) throw new Error('the wall cannot be built around the rounded edges')
+  return out
+}
+
 export interface ShellArgs {
   id: string
   name: string
@@ -181,14 +269,15 @@ registerOp<ShellArgs>('shellOp', (a, h) => {
     // OCC offsets towards the outside for a positive value; 'inside' therefore passes -thickness
     const src = h.getNamed(a.key)
     const fid = a.fid ?? a.id
-    if (!a.faces.length) {
+    if (a.faces.length) out = shellOpen(src, a.faces, a.side, a.thickness, fid)
+    else {
       // nothing to open: OCC's thick solid then gives only the offset solid, so the wall is the body minus its inner offset (or the outer offset minus the body)
       if (a.side === 'inside') out = boolNamed('cut', src, shellNamed(src, [], -a.thickness, 0.001, fid), fid)
       else out = boolNamed('cut', shellNamed(src, [], a.thickness, 0.001, fid), src, fid)
-    } else out = shellNamed(src, a.faces, a.side === 'inside' ? -a.thickness : a.thickness, 0.001, fid)
+    }
   } catch (e) {
     throw new Error(`A shell of ${a.thickness} mm is not possible here (${e instanceof Error ? e.message : e})`)
   }
-  if (!valid(out.shape)) throw new Error(`A shell of ${a.thickness} mm is not possible here`)
+  if (!valid(out.shape) || !sound(out.shape)) throw new Error(`A shell of ${a.thickness} mm is not possible here`)
   return h.sendBody(h.bodyFromShape(a.id, a.name, out.shape, out.faces))
 })

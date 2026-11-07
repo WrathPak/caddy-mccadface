@@ -5,11 +5,12 @@ import { useDoc } from '@/doc/store'
 import { bbox, type Body, type Vec3 } from '@/kernel/types'
 import { useUi, type SelectionRef } from '@/store/ui'
 import type { ParamSchema } from '@/ui/schema'
+import { massOf, materialOf, physicalOf } from './solids2/material'
 
 type Ent = { sel: SelectionRef } & (
   | { kind: 'face'; label: string; normal: Vec3; point: Vec3; area: number }
   | { kind: 'edge'; label: string; dir: Vec3; point: Vec3; length: number }
-  | { kind: 'body'; label: string; point: Vec3; size: Vec3; volume: number }
+  | { kind: 'body'; label: string; point: Vec3; size: Vec3; volume: number; area: number; cog: Vec3; material: string | null; density: number | null; mass: number | null }
 )
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -47,13 +48,24 @@ export function entityOf(ref: string, bodies: Body[]): Ent | null {
   const b = bodies.find((x) => x.id === r.bodyId)
   if (!b) return null
   const bb = bbox(b.mesh.positions)
-  return { sel: { kind: 'body', id: b.id }, kind: 'body', label: b.name, point: [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, (bb.min[2] + bb.max[2]) / 2], size: sub(bb.max, bb.min), volume: volumeOf(b) }
+  const volume = volumeOf(b)
+  const ph = physicalOf(b)
+  const mat = materialOf(b.id)
+  return {
+    sel: { kind: 'body', id: b.id }, kind: 'body', label: b.name, point: [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, (bb.min[2] + bb.max[2]) / 2], size: sub(bb.max, bb.min), volume,
+    area: ph.area, cog: ph.centroid, material: mat?.label ?? null, density: mat?.density ?? null, mass: mat ? massOf(volume, mat.density) : null,
+  }
 }
 
 function describe(e: Ent): string[] {
   if (e.kind === 'face') return [`${e.label}`, `  Area      ${f(e.area)} mm²`, `  Normal    ${e.normal.map((n) => f(n, 3)).join(', ')}`]
   if (e.kind === 'edge') return [`${e.label}`, `  Length    ${f(e.length)} mm`, `  Direction ${e.dir.map((n) => f(n, 3)).join(', ')}`]
-  return [`${e.label}`, `  Volume    ${f(e.volume)} mm³`, `  Size      ${e.size.map((n) => f(n)).join(' x ')} mm`]
+  return [
+    `${e.label}`, `  Volume    ${f(e.volume)} mm³`, `  Size      ${e.size.map((n) => f(n)).join(' x ')} mm`, `  Area      ${f(e.area)} mm²`,
+    e.mass !== null ? `  Material  ${e.material} (${f(e.density!, 3)} g/cm³)` : '  Material  none (use Physical Material to set one)',
+    ...(e.mass !== null ? [`  Mass      ${f(e.mass)} g`] : []),
+    `  Center of gravity  ${e.cog.map((n) => f(n)).join(', ')} mm`,
+  ]
 }
 
 const axisOf = (e: Ent): Vec3 | null => (e.kind === 'face' ? e.normal : e.kind === 'edge' ? e.dir : null)

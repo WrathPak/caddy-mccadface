@@ -101,7 +101,7 @@ describe('shell', () => {
   it('outside: the wall grows outwards', async () => {
     const base = bodyFromShape('b', 'b', box([20, 20, 20], [0, 0, 0]))
     const out = await run('shellOp', { id: 's', name: 's', key: base.key, faces: [topFace(base)], thickness: 2, side: 'outside' } satisfies ShellArgs)
-    near(vol(out), 4519.41, 1e-3) // outward offsets round the edges and corners
+    near(vol(out), 24 * 24 * 22 - 20 * 20 * 20, 1e-3) // outward offsets keep the outer corners and edges sharp (an intersection join, as Fusion), not rounded (was 4519.41)
     const bb = bbox(out.mesh.positions)
     expect(bb.max[0] - bb.min[0]).toBeCloseTo(24, 3)
   })

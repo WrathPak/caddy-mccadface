@@ -15,6 +15,7 @@ import { useFaceEdges } from '@/viewport/faceEdges'
 import { clearPreview, resetManip, setPreview, useManip } from '@/viewport/preview'
 import { liveEnv, minDim, niceFloor, workBody, type Env } from '../modeling'
 import { createRunner, watchSelection } from '../previewKit'
+import { edgeExtraParams, edgeExtras, edgeModCall } from '../solids2/advanced'
 
 type Mode = 'fillet' | 'chamfer'
 
@@ -23,7 +24,9 @@ const schemaFor = (mode: Mode): ParamSchema => ({
   title: mode === 'fillet' ? 'Fillet' : 'Chamfer',
   params: [
     { type: 'selection-ref', key: 'edges', help: 'The edges to round or bevel. Click them in the viewport (the selection filter switches to edges).', label: 'Edges', accepts: ['edge'], multiple: true, required: true, default: [] },
-    { type: 'number', key: 'size', help: 'Fillet: the radius of the rounding, in mm. Chamfer: how far the cut starts from the edge on each face, in mm.', label: mode === 'fillet' ? 'Radius' : 'Distance', unit: 'mm', min: 0.001, step: 0.25, default: 1 },
+    { type: 'bool', key: 'tangent', label: 'Tangent chain', help: 'On: clicking one edge also picks every edge that carries on tangent from it (a rounded corner and the straight edges either side), as in Fusion. Off: only the edges you click.', default: true },
+    { type: 'number', key: 'size', help: 'Fillet: the radius of the rounding, in mm. Chamfer: how far the cut starts from the edge on each face, in mm.', label: mode === 'fillet' ? 'Radius' : 'Distance', unit: 'mm', min: 0.001, step: 0.25, default: 1, visibleWhen: (v) => v.radiusType !== 'chord' },
+    ...edgeExtraParams(mode),
   ],
 })
 
@@ -56,7 +59,7 @@ function register(mode: Mode, icon: Icon) {
       const groups = resolveEdges(p.edges as string[], { bodies: ctx.bodies, dataOf: ctx.dataOf }, report)
       const bodies: Body[] = []
       for (const g of groups) {
-        bodies.push((await ctx.kernel.call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size: p.size as number, mode, fid: ctx.feature.id })) as Body)
+        bodies.push(await edgeModCall(ctx.kernel, mode, p, { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, fid: ctx.feature.id }, p.size as number))
       }
       return { bodies, warning: report.warning, reboundRefs: report.flagged, upgrades: report.upgradeMap }
     },
@@ -72,7 +75,7 @@ export function sizeFor(bodyIds: string[]): number {
 
 type Groups = { body: Body; edges: number[] }[]
 const callEdgeMod = (g: { body: Body; edges: number[] }, size: number, mode: Mode) =>
-  getKernel().call('edgeMod', { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, size, mode, fid: 'preview' }) as Promise<Body>
+  edgeModCall(getKernel(), mode, edgeExtras.current, { id: g.body.id, name: g.body.name, key: g.body.key, edges: g.edges, fid: 'preview' }, size)
 
 /** Does the fillet / chamfer build at `size` on every picked body? */
 async function buildsAt(groups: Groups, size: number, mode: Mode): Promise<boolean> {
@@ -117,6 +120,7 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
   const runner = createRunner(async (stale) => {
     let p: ParamValues
     try { p = resolveParams(schema, cur) } catch { clearPreview(); ui.setState({ inspectorNotice: null }); return }
+    edgeExtras.current = p
     let groups: Groups
     try { groups = resolveEdges(p.edges as string[], liveEnv()) } catch { clearPreview(); resetManip(); ui.setState({ inspectorNotice: null }); return }
     const key = JSON.stringify(p.edges)
@@ -161,11 +165,49 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
     // the original stays faint and pickable, so more edges (or faces) can still be clicked while the dialog is open
     setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), [], out.map((b) => b.id))
   })
-  const off = watchSelection(['edge'], () => {
+  // the edges the selection held last time, to tell which were just added or taken away
+  let known = new Set<string>(ui.getState().selection.filter((r) => r.kind === 'edge').map((r) => `${r.id}:${r.index}`))
+  const apply = () => {
     const picked = ui.getState().selection.filter((r) => r.kind === 'edge')
     cur = { ...cur, edges: encodeSelection(picked, useDoc.getState().geometry) }
     if (cur.size === auto) { auto = sizeFor(picked.map((r) => r.id)); cur = { ...cur, size: auto } }
     setValues(cur)
+  }
+  const off = watchSelection(['edge'], async () => {
+    const now = ui.getState().selection.filter((r) => r.kind === 'edge')
+    const keyOf = (r: SelectionRef) => `${r.id}:${r.index}`
+    const nowKeys = new Set(now.map(keyOf))
+    const changed = now.filter((r) => !known.has(keyOf(r)))
+    const dropped = [...known].filter((k) => !nowKeys.has(k))
+    known = nowKeys
+    if (cur.tangent !== false && (changed.length || dropped.length)) {
+      // a click on one edge of a tangent chain takes the whole chain (and lets the whole chain go again)
+      const seeds = new Map<string, number[]>()
+      for (const r of changed) if (r.index !== undefined) seeds.set(r.id, [...(seeds.get(r.id) ?? []), r.index])
+      for (const k of dropped) { const [id, i] = k.split(':'); seeds.set(id, [...(seeds.get(id) ?? []), Number(i)]) }
+      const grow: SelectionRef[] = []
+      const drop = new Set<string>()
+      for (const [id, edges] of seeds) {
+        const b = useDoc.getState().geometry.find((x) => x.id === id)
+        if (!b || b.kind !== 'brep' || b.surface) continue
+        try {
+          const chain = (await getKernel().call('tangentChain', { key: b.key, edges })) as number[]
+          const removing = dropped.some((k) => k.startsWith(id + ':'))
+          for (const index of chain) {
+            if (removing) drop.add(`${id}:${index}`)
+            else if (!nowKeys.has(`${id}:${index}`)) grow.push({ kind: 'edge', id, index, path: now.find((r) => r.id === id)?.path })
+          }
+        } catch { /* no chain: the clicked edges stay as they are */ }
+      }
+      const cur2 = ui.getState().selection
+      const kept = cur2.filter((r) => !(r.kind === 'edge' && drop.has(`${r.id}:${r.index}`)))
+      if (grow.length || kept.length !== cur2.length) {
+        const next = [...kept, ...grow]
+        known = new Set(next.filter((r) => r.kind === 'edge').map(keyOf))
+        ui.getState().setSelection(next)
+      }
+    }
+    apply()
   })
   // a click on a face takes all of its edges (or lets them all go when they are all picked already)
   useFaceEdges.setState({
@@ -186,6 +228,7 @@ function edgePreview(mode: Mode, schema: ParamSchema, { values, setValues }: Pre
   return {
     update(v) { cur = v; runner.schedule() },
     dispose() {
+      edgeExtras.current = null
       useFaceEdges.setState({ onFace: null })
       off()
       runner.dispose()

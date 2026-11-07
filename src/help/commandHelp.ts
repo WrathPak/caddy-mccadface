@@ -38,6 +38,15 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
   'solid.cylinder': h('Drop in a round post with a radius and a height.'),
   'solid.pattern': h('Repeat a feature, a face or a whole body many times: in a grid, around an axis or along a path. Click a copy to skip it.', 'What to repeat (features, faces or bodies), then the direction or axis'),
   'solid.mirror': h('Make a mirrored copy across a plane, so you only have to model half of a symmetrical part.', 'What to mirror (features, faces or bodies), then the mirror plane or a flat face'),
+  'solid.rib': h('Thicken a sketched line into a wall that grows from the line up to the faces it meets. Good for ribs that stiffen a hollow part.', 'A sketch with a line or curve inside or against a body'),
+  'solid.web': h('Build thin walls on every line of a sketch and grow them up to the faces they meet, like the cross walls inside a tray.', 'A sketch with lines, drawn inside or on a body'),
+  'solid.sphere': h('Drop in a ball with a centre point and a radius.'),
+  'solid.torus': h('Drop in a ring (a doughnut) with a ring radius and a tube radius.'),
+  'solid.coil': h('Wind a spring or a thread-like helix. Set two of revolutions, height and pitch, and choose a round, square or triangular wire.'),
+  'solid.pipe': h('Make a pipe that follows a sketched path, with a round, square or triangular section. Turn on Hollow for a tube.', 'A sketch with the path the pipe follows'),
+  'solid.align': h('Move a body so a face, an edge or a corner of it lands on a face, edge or corner of another body. Faces meet face to face.', 'The body to move, then a feature on it (From) and the feature it lands on (To)'),
+  'solid.scale': h('Make bodies bigger or smaller about a point. Use one factor for an even change, or a factor for each of X, Y and Z.', 'The bodies to scale, and optionally the point that stays put'),
+  'solid.material': h('Give bodies a material with a density. Measure then shows their mass and centre of gravity.', 'The bodies made of the material'),
   'solid.hole': h('Add a proper hole: plain, counterbore (a step for a screw head), countersink (a cone) or tapped (for threads). Common screw sizes are built in.', 'A flat face to put the hole in, then click where it goes (or pick sketch points)'),
 
   // ---- solid: modify

@@ -50,6 +50,29 @@ function offCurve(cv: ClassicCurve, p: Vec2): number {
   return Math.hypot(p[0] - cv.c[0], p[1] - cv.c[1]) - cv.r
 }
 
+/**
+ * Where two curves lie along each other (collinear lines, arcs or circles on one circle): their end points. Splitting each at the other's ends
+ * is what lets a rectangle drawn against an outline edge make a region of its own. Points that fall outside a curve are ignored by the caller.
+ */
+export function overlapPoints(a: Curve, b: Curve): Vec2[] {
+  const ends = (cv: Curve): Vec2[] => (cv.k === 'l' ? [cv.a, cv.b] : cv.k === 'a' ? [polar(cv.c, cv.r, cv.a0), polar(cv.c, cv.r, cv.a0 + cv.span)] : [])
+  if (a.k === 'l' && b.k === 'l') {
+    const dx = a.b[0] - a.a[0], dy = a.b[1] - a.a[1]
+    const la = Math.hypot(dx, dy), lb = Math.hypot(b.b[0] - b.a[0], b.b[1] - b.a[1])
+    if (la < EPS || lb < EPS) return []
+    const cross = (dx * (b.b[1] - b.a[1]) - dy * (b.b[0] - b.a[0])) / (la * lb)
+    if (Math.abs(cross) > 1e-9) return []
+    const off = (p: Vec2) => Math.abs((p[0] - a.a[0]) * dy - (p[1] - a.a[1]) * dx) / la
+    if (off(b.a) > 1e-6 || off(b.b) > 1e-6) return []
+    return [...ends(a), ...ends(b)]
+  }
+  if ((a.k === 'a' || a.k === 'c') && (b.k === 'a' || b.k === 'c')) {
+    if (dist(a.c, b.c) > 1e-6 || Math.abs(a.r - b.r) > 1e-6) return []
+    return [...ends(a), ...ends(b)]
+  }
+  return []
+}
+
 export function intersections(a0: Curve, b0: Curve): Vec2[] {
   if ((a0.k === 'b') !== (b0.k === 'b')) {
     // a Bezier piece against a line / arc / circle: found on the cubic stand-in, then polished onto the exact curve so that the
@@ -106,6 +129,13 @@ export function intersections(a0: Curve, b0: Curve): Vec2[] {
   return out
 }
 
+/** Same line, or same arc of the same circle (between the same two vertices). */
+function sameCurve(a: Curve, b: Curve): boolean {
+  if (a.k === 'l' && b.k === 'l') return true
+  if (a.k === 'a' && b.k === 'a') return dist(a.c, b.c) < 1e-6 && Math.abs(a.r - b.r) < 1e-6 && dist(polar(a.c, a.r, a.a0 + a.span / 2), polar(b.c, b.r, b.a0 + b.span / 2)) < 1e-5
+  return false
+}
+
 interface Edge { id: number; v0: number; v1: number; seg: Curve; poly: Vec2[] }
 interface HalfEdge { id: number; edge: Edge; fwd: boolean; from: number; to: number; ang: number; curv: number; twin: number }
 
@@ -142,6 +172,10 @@ export function detectProfiles(m: SketchModel): Profile[] {
         splits[i].push(paramOn(curves[i], p))
         splits[j].push(paramOn(curves[j], p))
       }
+      for (const p of overlapPoints(curves[i], curves[j])) {
+        splits[i].push(paramOn(curves[i], p))
+        splits[j].push(paramOn(curves[j], p))
+      }
     }
   }
 
@@ -159,6 +193,8 @@ export function detectProfiles(m: SketchModel): Profile[] {
   const pushEdge = (a: Vec2, b: Vec2, seg: Curve) => {
     const v0 = vid(a), v1 = vid(b)
     if (v0 === v1 && seg.k === 'l') return
+    // two curves drawn along each other (a rectangle against an outline edge) give the same edge twice: one is enough
+    if (v0 !== v1 && (seg.k === 'l' || seg.k === 'a') && edges.some((e) => e.seg.k === seg.k && ((e.v0 === v0 && e.v1 === v1) || (e.v0 === v1 && e.v1 === v0)) && sameCurve(e.seg, seg))) return
     edges.push({ id: edges.length, v0, v1, seg, poly: [] })
   }
   curves.forEach((cv, i) => {

@@ -85,7 +85,8 @@ export interface PatternArgs {
 function deltaOf(before: NShape, after: NShape, fid: string): { add: NShape | null; remove: NShape | null } {
   const tool = (a: NShape, b: NShape) => {
     try {
-      const r = boolNamed('cut', a, b, fid)
+      // the two bodies share nearly all of their surfaces, up to rounding: a small fuzzy value makes the difference a clean sliver instead of an invalid one
+      const r = boolNamed('cut', a, b, fid, 1e-5)
       return vol(r) > 1e-6 ? r : null
     } catch { return null }
   }
@@ -141,6 +142,8 @@ interface Geo {
   /** plane: outward face normal; cylinder: axis direction */
   dir: Vec3
   radius: number
+  /** cylinder: the reference direction of its parametrisation (where the seam lies), so a copy of the surface seams in the same place */
+  xdir?: Vec3
   /** outward normal of the face at its centre */
   normal: Vec3
 }
@@ -160,8 +163,11 @@ function geoOf(face: Face): Geo {
       const ax = ad.Cylinder().Axis()
       const l = ax.Location(), d = ax.Direction()
       const o: Vec3 = [l.X(), l.Y(), l.Z()]
-      const res: Geo = { type: 'cylinder', origin: o, dir: norm3([d.X(), d.Y(), d.Z()]), radius: ad.Cylinder().Radius(), normal }
-      l.delete(); d.delete(); ax.delete()
+      const cyl = ad.Cylinder()
+      const pos = cyl.Position()
+      const xd = pos.XDirection()
+      const res: Geo = { type: 'cylinder', origin: o, dir: norm3([d.X(), d.Y(), d.Z()]), radius: cyl.Radius(), xdir: [xd.X(), xd.Y(), xd.Z()], normal }
+      l.delete(); d.delete(); ax.delete(); xd.delete(); pos.delete(); cyl.delete()
       return res
     }
     if (t === 'SPHERE') {
@@ -208,6 +214,18 @@ function planeTool(origin: Vec3, n: Vec3, w: Work): SurfTool {
   }
 }
 
+/** A cylinder solid on the axis of `g` whose seam (where the parametrisation starts) lies where the face's own seam does. A tool whose seam is
+ *  somewhere else leaves faces with inconsistent pcurves when it is joined to the body: invalid faces that mesh with missing patches. */
+function cylinderSeamLike(g: Geo, r: number, h: number, base: Vec3): Sh {
+  const solid = makeCylinder(r, h, base, g.dir) as unknown as Sh
+  const lat = (solid as unknown as { faces: Face[] }).faces.find((f) => String(f.geomType) === 'CYLINDRE')
+  const seam = lat ? geoOf(lat).xdir : undefined
+  if (!seam || !g.xdir) return solid
+  const ang = Math.atan2(dot3(cross3(seam, g.xdir), g.dir), dot3(seam, g.xdir)) * 180 / Math.PI
+  if (Math.abs(ang) < 1e-6) return solid
+  return (solid as unknown as { rotate(a: number, p: Vec3, d: Vec3): Sh }).rotate(ang, g.origin, g.dir)
+}
+
 /** The surface a face lies on, grown by `grow` along its outward normal, as an oversized tool. */
 function surfaceTool(face: Face, w: Work, grow = 0): SurfTool {
   const g = geoOf(face)
@@ -221,10 +239,11 @@ function surfaceTool(face: Face, w: Work, grow = 0): SurfTool {
     // for a convex face (normal pointing away from the axis) growing makes it wider
     const r = g.radius + (dot3(g.normal, radial) > 0 ? grow : -grow)
     if (r < 1e-6) throw new Error('The offset is larger than the radius of the face')
-    const solid = makeCylinder(r, 2 * L, sub3(g.origin, mul3(g.dir, L)), g.dir) as unknown as Sh
-    const lateral = (solid as unknown as { faces: Face[] }).faces.find((f) => String(f.geomType) === 'CYLINDRE')!
+    // a cylinder on the face's axis and seam, grown or shrunk by `grow`
+    const solid = cylinderSeamLike(g, r, 2 * L, sub3(g.origin, mul3(g.dir, L)))
+    const lateral = (solid as unknown as { faces: Face[] }).faces.find((f) => String(f.geomType) === 'CYLINDRE')! as unknown as Sh
     return {
-      split: solid, surf: lateral as unknown as Sh,
+      split: solid, surf: lateral,
       on: (f) => {
         const q = geoOf(f)
         if (q.type !== 'cylinder' || Math.abs(q.radius - r) > tol || Math.abs(dot3(q.dir, g.dir)) < 1 - 1e-6) return false
@@ -309,13 +328,16 @@ const touches = (a: Sh, b: Sh, tol = 1e-4) => {
   try { return measureDistanceBetween(a as never, b as never) < tol } catch { return false }
 }
 
-/** Fold cells into the body: cells that lie inside the body are cut away, the others are added. */
+/** Fold cells into the body: cells that lie inside the body are cut away, the others are added. The added cells are joined to each other first, so
+ *  the body takes them in one go (one at a time the second joins against faces the first just made, which OCC does not always manage). */
 function applyCells(cur: NShape, cells: Cell[], fid: string): NShape {
+  const part = (c: Cell): NShape => ({ shape: c.shape, faces: topoOf(c.shape as unknown as AnyShape).faces.map(() => []) })
+  const join = (parts: NShape[]) => parts.slice(1).reduce((acc, p) => boolNamed('fuse', acc, p, fid), parts[0])
   let r = cur
-  for (const c of cells) {
-    const part: NShape = { shape: c.shape, faces: topoOf(c.shape as unknown as AnyShape).faces.map(() => []) }
-    r = boolNamed(c.inside ? 'cut' : 'fuse', r, part, fid)
-  }
+  const adds = cells.filter((c) => !c.inside).map(part)
+  const cuts = cells.filter((c) => c.inside).map(part)
+  if (adds.length) r = boolNamed('fuse', r, join(adds), fid)
+  if (cuts.length) r = boolNamed('cut', r, join(cuts), fid)
   return r
 }
 
@@ -327,6 +349,39 @@ export function findFace(s: NShape, names: string[], c?: Vec3): number {
   let best = -1, bd = Infinity
   f.forEach((x, i) => { const d = Math.hypot(...sub3(centerOf(x), c)); if (d < bd) { bd = d; best = i } })
   return best
+}
+
+/** Faces that are convex rounds (cylinder, torus or sphere bulging outwards) with a radius no bigger than `r`: fillets an inward offset by `r` would eat. */
+export function convexRoundsUpTo(body: NShape, r: number): number[] {
+  const faces = topoOf(any(body)).faces
+  const out: number[] = []
+  faces.forEach((f, i) => {
+    const t = String(f.geomType)
+    if (t !== 'CYLINDRE' && t !== 'TORUS' && t !== 'SPHERE') return
+    const ad = new (oc().BRepAdaptor_Surface)(f.wrapped, true)
+    try {
+      const c = centerOf(f)
+      const n = f.normalAt(f.pointOnSurface(0.5, 0.5)) as unknown as { x: number; y: number; z: number }
+      let radius = Infinity, convex = false
+      if (t === 'CYLINDRE') {
+        const cy = ad.Cylinder(), ax = cy.Axis(), l = ax.Location(), d = ax.Direction()
+        radius = cy.Radius()
+        const rel = sub3(c, [l.X(), l.Y(), l.Z()]), dir: Vec3 = [d.X(), d.Y(), d.Z()]
+        const radial = sub3(rel, mul3(dir, dot3(rel, dir)))
+        convex = dot3([n.x, n.y, n.z], radial) > 0
+      } else if (t === 'SPHERE') {
+        const sp = ad.Sphere(), l = sp.Location()
+        radius = sp.Radius()
+        convex = dot3([n.x, n.y, n.z], sub3(c, [l.X(), l.Y(), l.Z()])) > 0
+      } else {
+        const to = ad.Torus()
+        radius = to.MinorRadius()
+        convex = true
+      }
+      if (convex && radius <= r * 1.0001) out.push(i)
+    } catch { /* not a round we can read */ } finally { ad.delete() }
+  })
+  return out
 }
 
 /** Delete faces and heal: the neighbouring faces are extended until they close the gap (fillets, holes, bosses, pockets). */

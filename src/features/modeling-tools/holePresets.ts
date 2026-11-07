@@ -46,7 +46,7 @@ export const HOLE_PRESETS: HolePreset[] = [
     { id: `${s.name}-cbore`, label: `${s.name} counterbore`, help: `Clearance hole with a ${s.cbDia} mm counterbore, ${s.cbDepth} mm deep, for a socket head cap screw.`, values: { ...base, holeType: 'cbore', dia: s.clearance, cbDia: s.cbDia, cbDepth: s.cbDepth, depthMode: 'through' } },
     { id: `${s.name}-csink`, label: `${s.name} countersink`, help: `Clearance hole with a 90 degree countersink ${s.cskDia} mm wide.`, values: { ...base, holeType: 'csink', dia: s.clearance, cskDia: s.cskDia, cskAngle: 90, depthMode: 'through' } },
     {
-      id: `${s.name}-tapped`, label: `${s.name} x ${s.pitch} tapped`, help: `Tap drill ${tapDrill(s.major, s.pitch)} mm with a ${s.name} x ${s.pitch} thread. The thread is a cosmetic mark unless you switch on Model the thread.`,
+      id: `${s.name}-tapped`, label: `${s.name} x ${s.pitch} tapped`, help: `Tap drill ${tapDrill(s.major, s.pitch)} mm with a ${s.name} x ${s.pitch} thread. The thread is a cosmetic mark unless you switch on Modeled.`,
       values: { ...base, tapType: 'tapped', major: s.major, pitch: s.pitch, dia: tapDrill(s.major, s.pitch), depth: Math.round(s.major * 2.5), threadLength: Math.round(s.major * 2), tip: 118 },
     },
     { id: `${s.name}-insert`, label: `${s.name} heat-set insert`, help: `Blind hole for a ${s.name} brass heat-set insert in a 3D print: ${s.insertDia} mm wide, ${s.insertDepth} mm deep. Check the figures against your inserts.`, values: { ...base, dia: s.insertDia, depth: s.insertDepth, depthMode: 'depth', tip: 0 } },

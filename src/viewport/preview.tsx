@@ -62,6 +62,19 @@ export function PreviewLayer() {
 interface PickState { active: boolean; selected: string[]; toggle: ((ref: string) => void) | null }
 export const useProfilePick = create<PickState>(() => ({ active: false, selected: [], toggle: null }))
 
+/** Of the profiles under the pointer (overlapping sketches on one plane), the innermost is the smallest: only its handler acts, as Fusion offers the innermost region. */
+function innermost(e: { intersections: { object: { userData?: Record<string, unknown> } }[] }, ref: string): boolean {
+  let best: { ref: string; area: number } | null = null
+  for (const h of e.intersections) {
+    const r = h.object.userData?.profileRef as string | undefined
+    const a = h.object.userData?.profileArea as number | undefined
+    if (r === undefined || a === undefined) continue
+    // clearly smaller wins; the same size (a rectangle drawn over the same outline again) goes to the nearest
+    if (!best || a < best.area * 0.999) best = { ref: r, area: a }
+  }
+  return !best || best.ref === ref
+}
+
 export function ProfilePicker() {
   const pick = useProfilePick()
   const features = useDoc((s) => s.features)
@@ -72,12 +85,12 @@ export function ProfilePicker() {
   const colors = useVpColors()
   const [hover, setHover] = useState<string | null>(null)
   const items = useMemo(() => {
-    const out: { ref: string; geo: BufferGeometry; q: Quaternion; origin: [number, number, number]; normal: [number, number, number] }[] = []
+    const out: { ref: string; area: number; geo: BufferGeometry; q: Quaternion; origin: [number, number, number]; normal: [number, number, number] }[] = []
     features.forEach((f, i) => {
       const d = data[f.id]
       if (f.type !== 'sketch' || !d || i >= rollback || f.suppressed || hidden[f.id]) return
       const q = planeQuaternion(d.plane)
-      for (const p of d.profiles) out.push({ ref: `prof:${f.id}:${p.key}${p.id ? '@' + p.id : ''}`, geo: profileGeometry(p), q, origin: d.plane.origin, normal: d.plane.normal })
+      for (const p of d.profiles) out.push({ ref: `prof:${f.id}:${p.key}${p.id ? '@' + p.id : ''}`, area: Math.abs(p.area), geo: profileGeometry(p), q, origin: d.plane.origin, normal: d.plane.normal })
     })
     return out
   }, [features, rollback, hidden, data])
@@ -95,9 +108,10 @@ export function ProfilePicker() {
             quaternion={it.q}
             position={[it.origin[0] + it.normal[0] * 0.02, it.origin[1] + it.normal[1] * 0.02, it.origin[2] + it.normal[2] * 0.02]}
             renderOrder={3}
-            onPointerMove={(e) => { e.stopPropagation(); if (hover !== it.ref) setHover(it.ref) }}
+            userData={{ profileRef: it.ref, profileArea: it.area }}
+            onPointerMove={(e) => { if (!innermost(e, it.ref)) return; e.stopPropagation(); if (hover !== it.ref) setHover(it.ref) }}
             onPointerOut={() => setHover(null)}
-            onClick={(e) => { e.stopPropagation(); pick.toggle?.(it.ref) }}
+            onClick={(e) => { if (!innermost(e, it.ref)) return; e.stopPropagation(); pick.toggle?.(it.ref) }}
           >
             <meshBasicMaterial color={sel || hot ? colors.sel : colors.accent} transparent opacity={sel ? 0.5 : hot ? 0.36 : 0.14} side={DoubleSide} depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
           </mesh>

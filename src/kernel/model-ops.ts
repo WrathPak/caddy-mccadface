@@ -506,6 +506,41 @@ registerOp<{ key: string; edges: number[] }>('edgeFrames', (a, h) => {
   return out
 })
 
+/** Tangent chain: the edge indices reachable from the given edges through vertices where the next edge carries on tangent (and bounds a face
+ *  of the current one), as Fusion's Tangent Chain. The given edges come back too. */
+registerOp<{ key: string; edges: number[] }>('tangentChain', (a, h) => {
+  const topo = topoOf(h.getBrep(a.key) as unknown as AnyShape)
+  const n = topo.edges.length
+  const faceSets = topo.faces.map((f) => new Set(f.edges.map((e) => e.hashCode)))
+  const ends = topo.edges.map((e) => {
+    const p0 = vec(e.pointAt(0)), p1 = vec(e.pointAt(1))
+    const t0 = norm3(vec(e.tangentAt(0))), t1 = norm3(vec(e.tangentAt(1)))
+    // the direction leaving the edge at each end
+    return [{ p: p0, d: [-t0[0], -t0[1], -t0[2]] as Vec3 }, { p: p1, d: t1 }]
+  })
+  const sharesFace = (i: number, j: number) => faceSets.some((fs) => fs.has(topo.edgeHashes[i]) && fs.has(topo.edgeHashes[j]))
+  const near = (p: Vec3, q: Vec3) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) < 1e-4
+  const seen = new Set<number>(a.edges.filter((i) => i >= 0 && i < n))
+  const stack = [...seen]
+  while (stack.length) {
+    const i = stack.pop()!
+    for (const ei of ends[i]) {
+      for (let j = 0; j < n; j++) {
+        if (seen.has(j) || j === i) continue
+        for (const ej of ends[j]) {
+          if (!near(ei.p, ej.p)) continue
+          // the next edge leaves the vertex the opposite way to where this one arrived: both directions point away from the vertex and are anti-parallel
+          if (ei.d[0] * ej.d[0] + ei.d[1] * ej.d[1] + ei.d[2] * ej.d[2] > -0.9994) continue
+          if (!sharesFace(i, j)) continue
+          seen.add(j)
+          stack.push(j)
+        }
+      }
+    }
+  }
+  return [...seen].sort((x, y) => x - y)
+})
+
 /** B-rep edge indices bounding the given faces (so Fillet / Chamfer can start from a selected face, like Fusion). */
 registerOp<{ key: string; faces: number[] }>('faceEdges', (a, h) => {
   const topo = topoOf(h.getBrep(a.key) as unknown as AnyShape)

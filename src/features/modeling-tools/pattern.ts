@@ -20,6 +20,7 @@ import { chainPolylines, edgePolyline, liveRefEnv, resolveAxis, resolveDirection
 import { clearMarkers, setMarkers } from './markers'
 import { entityPolyline } from '@/sketch/curves'
 import { repeat, type RepeatEnv, type Source } from './source'
+import { canHealFaces } from './direct'
 import { circXforms, pathXforms, pointAlong, rectXforms, type LinearDir } from './transforms'
 import { clearHandles, showAngle, showArrows, type AngleSpec, type ArrowSpec } from '../handleKit'
 
@@ -282,9 +283,23 @@ function patternPreview({ values, setValues }: PreviewCtx): PreviewHandle {
     setValues(cur)
   })
   runner.schedule()
+  // started on faces that are only selected (not a round, hole or boss that can be taken away): there is nothing to repeat, so go to the selected
+  // timeline feature, or to an empty list, instead of sitting in Faces mode with an error
+  let closed = false
+  if (cur.source === 'faces' && (cur.faces as string[])?.length) {
+    const faces = cur.faces as string[]
+    void canHealFaces(faces).then((ok) => {
+      if (ok || closed || cur.source !== 'faces' || cur.faces !== faces) return
+      const d = useDoc.getState()
+      const f = d.selectedFeatureId && d.features.some((x) => x.id === d.selectedFeatureId && x.type !== 'sketch') ? [d.selectedFeatureId] : []
+      cur = { ...cur, source: 'features', faces: [], features: f }
+      setValues(cur)
+    })
+  }
   return {
     update(v) { cur = v; runner.schedule() },
     dispose() {
+      closed = true
       offFeature()
       runner.dispose()
       clearPreview()
