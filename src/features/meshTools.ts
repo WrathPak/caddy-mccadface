@@ -147,7 +147,7 @@ const TOOLS: BodyTool[] = [
     params: [
       {
         type: 'enum', key: 'mode', label: 'Type', display: 'segmented', default: 'prismatic',
-        help: 'Prismatic: flat face groups become real planar faces, so Fillet, Shell, Hole and Press/Pull work on them (curved parts stay as small flat faces). Faceted: every triangle becomes a face.',
+        help: 'Prismatic: flat face groups become real planar faces, so Fillet, Shell, Hole and Press/Pull work on them (round holes and bosses become cylinders, other curved parts stay as small flat faces). Faceted: every triangle becomes a face.',
         options: [{ value: 'prismatic', label: 'Prismatic' }, { value: 'faceted', label: 'Faceted' }],
       },
       { type: 'number', key: 'angle', help: 'Prismatic: neighbouring triangles that meet at a sharper angle than this belong to different faces, in degrees.', label: 'Face split angle', unit: 'deg', min: 1, max: 89, step: 1, default: 20, visibleWhen: (v) => v.mode !== 'faceted' },
@@ -158,7 +158,7 @@ const TOOLS: BodyTool[] = [
       const r = (await k.call('meshToBrep', { id: ids.id, name: b.name, key: b.key, mode: p.mode === 'faceted' ? 'faceted' : 'prismatic', crease: (p.angle as number | undefined) ?? 20, tolerance: (p.tolerance as number | undefined) ?? 0.05, maxTris: (p.maxTris as number | undefined) ?? 5000 })) as MeshToBrepResult
       return [withNote(r.body, r.report.mode === 'faceted'
         ? `Converted to a solid: ${r.report.faces} triangle faces.`
-        : `Converted to a solid: ${r.report.planes} planar face${r.report.planes === 1 ? '' : 's'}${r.report.triangleFaces ? ` and ${r.report.triangleFaces} triangle faces where the surface is curved` : ''}.`)]
+        : `Converted to a solid: ${r.report.planes} planar face${r.report.planes === 1 ? '' : 's'}${r.report.cylinders ? ` and ${r.report.cylinders} cylinder${r.report.cylinders === 1 ? '' : 's'}` : ''}${r.report.triangleFaces ? ` and ${r.report.triangleFaces} triangle faces where the surface is curved` : ''}.`)]
     },
   },
   {

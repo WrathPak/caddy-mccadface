@@ -1,7 +1,8 @@
 /** Mesh winding, repair types, smoothing, open Plane Cut, Delete Faces, Shell and Convert Mesh to B-rep (manifold + OpenCascade, run in Node). */
 import { beforeAll, describe, expect, it } from 'vitest'
 import { initOcc } from './occ'
-import { initManifold } from './mesh'
+import { fromManifold, initManifold } from './mesh'
+import Module from 'manifold-3d'
 import { bodyFromTopo, getOp, getTopo, helpers } from './store'
 import { segmentFaces, topoVolume } from './meshutil'
 import { weld } from './bigmesh'
@@ -239,5 +240,31 @@ describe('Convert Mesh to B-rep', () => {
   it('refuses an open mesh and says Repair', async () => {
     const b = bodyFromTopo('b', 'b', soup(boxTris(10, 10, 10, 1).slice(2)))
     await expect(run('meshToBrep', { id: 'o', name: 'o', key: b.key, mode: 'prismatic', crease: 20, tolerance: 0.05, maxTris: 5000 })).rejects.toThrow(/Repair/)
+  })
+})
+
+describe('Convert Mesh: cylinders', () => {
+  it('a round hole through a plate becomes one cylindrical face of the right radius and its rim fillets', async () => {
+    const w = await initManifold()
+    const plate = w.Manifold.cube([40, 30, 10], false)
+    const hole = w.Manifold.cylinder(30, 5, 5, 48, true).translate([20, 15, 5])
+    const topo = fromManifold(plate.subtract(hole))
+    const b = bodyFromTopo('p', 'p', topo)
+    const r = await run<{ body: Body; report: { cylinders: number; planes: number; triangleFaces: number; volumeError: number } }>('meshToBrep', { id: 'o', name: 'o', key: b.key, mode: 'prismatic', crease: 20, tolerance: 0.05, maxTris: 5000 })
+    expect(r.report.cylinders).toBe(1)
+    expect(r.report.triangleFaces).toBe(0)
+    expect(r.report.planes).toBe(6)
+    const { getBrep } = await import('./store')
+    const { topoOf } = await import('./occ')
+    const { measureArea, measureVolume } = await import('replicad')
+    const shape = getBrep(r.body.key)
+    const cyl = topoOf(shape).faces.filter((f) => (f as unknown as { geomType: string }).geomType === 'CYLINDRE')
+    expect(cyl.length).toBe(1)
+    near(measureArea(cyl[0] as never) / (2 * Math.PI * 10), 5, 1e-3)
+    near(measureVolume(shape as never), 40 * 30 * 10 - Math.PI * 25 * 10, 5e-3)
+    const edges = topoOf(shape).edges.filter((e) => { const x = e as unknown as { geomType: string; startPoint: { z: number } }; return x.geomType === 'CIRCLE' && Math.abs(x.startPoint.z - 10) < 1e-6 })
+    expect(edges.length).toBeGreaterThanOrEqual(1) // the rim may be split into arcs where the two circles start at different points
+    const f = (shape as unknown as { fillet(r: number, s: (e: { inList(l: unknown[]): boolean }) => boolean): unknown }).fillet(0.8, (e) => e.inList(edges))
+    expect(measureVolume(f as never)).toBeLessThan(measureVolume(shape as never))
   })
 })
