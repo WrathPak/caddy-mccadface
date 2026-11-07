@@ -9,7 +9,8 @@ import { bbox, type Body, type Vec3 } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
 import { getKernel } from '@/kernel/client'
-import { clearPreview } from '@/viewport/preview'
+import { clearPreview, setPreview, usePreview } from '@/viewport/preview'
+import { createRunner } from './previewKit'
 import { liveRefEnv } from './modeling-tools/geo'
 import { copyPreview, ghostOf, moveAdvanced, moveExtraParams, moveTypeParam, moveXf } from './solids2/transform'
 
@@ -27,7 +28,13 @@ export const moveSchema: ParamSchema = {
     },
     { type: 'vector3', key: 'translate', help: 'How far to move along X, Y and Z, in mm.', label: 'Translate', unit: 'mm', step: 1, default: [0, 0, 0], visibleWhen: (v) => (v.moveType ?? 'free') === 'free' },
     { type: 'vector3', key: 'rotate', help: 'Turn around the X, Y and Z axes through the middle of the bodies, in degrees.', label: 'Rotate', unit: 'deg', step: 5, default: [0, 0, 0], visibleWhen: (v) => (v.moveType ?? 'free') === 'free' },
-    { type: 'number', key: 'scale', help: 'Resizes the bodies about their middle. 1 keeps the size, 2 doubles it, 0.5 halves it.', label: 'Scale', unit: '', min: 0.001, step: 0.1, default: 1, visibleWhen: (v) => (v.moveType ?? 'free') === 'free' },
+    {
+      type: 'enum', key: 'scaleType', label: 'Scale type', display: 'segmented', default: 'uniform', visibleWhen: (v) => (v.moveType ?? 'free') === 'free',
+      help: 'Uniform resizes the same amount in every direction. Non-uniform takes a separate factor for X, Y and Z, which works on mesh bodies.',
+      options: [{ value: 'uniform', label: 'Uniform' }, { value: 'nonuniform', label: 'Non-uniform' }],
+    },
+    { type: 'number', key: 'scale', help: 'Resizes the bodies about their middle. 1 keeps the size, 2 doubles it, 0.5 halves it.', label: 'Scale', unit: '', min: 0.001, step: 0.1, default: 1, visibleWhen: (v) => (v.moveType ?? 'free') === 'free' && v.scaleType !== 'nonuniform' },
+    { type: 'vector3', key: 'scaleXYZ', help: 'The factor along X, Y and Z, about the middle of the bodies. 1 keeps the size, 2 doubles it, 0.5 halves it. A negative factor mirrors the mesh.', label: 'Scale X, Y, Z', unit: '', step: 0.1, default: [1, 1, 1], visibleWhen: (v) => (v.moveType ?? 'free') === 'free' && v.scaleType === 'nonuniform' },
     ...moveExtraParams,
   ],
 }
@@ -72,6 +79,19 @@ registerFeature({
     const ids = bodyIdsOf(p.bodyIds as string[])
     const targets = ids.map((id) => ctx.body(id)).filter((b): b is Body => !!b)
     if (!targets.length) throw new Error('No bodies selected')
+    if ((p.moveType ?? 'free') === 'free' && p.scaleType === 'nonuniform') {
+      if (p.copy) throw new Error('Create copy is not available with a non-uniform scale')
+      if (targets.some((b) => b.kind !== 'mesh')) throw new Error('Non-uniform scale works on mesh bodies; use Uniform for solids')
+      const pivot = pivotOf(targets)
+      const f = p.scaleXYZ as Vec3
+      const moved = (p.translate as Vec3).some((x) => x) || (p.rotate as Vec3).some((x) => x)
+      const out: Body[] = []
+      for (const b of targets) {
+        const scaled = (await ctx.kernel.call('meshScale', { id: b.id, name: b.name, key: b.key, pivot, factors: f })) as Body
+        out.push(moved ? await ctx.kernel.transform({ id: b.id, name: b.name, key: scaled.key, spec: { pivot, translate: p.translate as Vec3, rotate: p.rotate as Vec3, scale: 1 } }) : scaled)
+      }
+      return { bodies: out }
+    }
     if ((p.moveType ?? 'free') !== 'free' || p.copy) return moveAdvanced(ctx, p, targets, pivotOf(targets))
     const spec = { pivot: pivotOf(targets), translate: p.translate as Vec3, rotate: p.rotate as Vec3, scale: p.scale as number }
     const out: Body[] = []
@@ -81,6 +101,21 @@ registerFeature({
   preview({ values, setValues }) {
     let cur = values
     const copies = copyPreview(() => cur, () => liveRefEnv(), () => getKernel())
+    // a non-uniform scale has no gizmo ghost: the scaled meshes themselves are drawn
+    const stretch = createRunner(async (stale) => {
+      const v = cur
+      if ((v.moveType ?? 'free') !== 'free' || v.scaleType !== 'nonuniform' || v.copy) return
+      const ids = bodyIdsOf((v.bodyIds as string[]) ?? [])
+      const bodies = useDoc.getState().geometry.filter((b) => ids.includes(b.id) && b.kind === 'mesh')
+      if (!bodies.length) return
+      const pivot = pivotOf(bodies)
+      try {
+        const out: Body[] = []
+        for (const b of bodies) out.push((await getKernel().call('meshScale', { id: 'preview-' + b.id, name: b.name, key: b.key, pivot, factors: v.scaleXYZ as Vec3 })) as Body)
+        if (stale()) return
+        setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), bodies.map((b) => b.id))
+      } catch { clearPreview() }
+    }, 200)
     const apply = (v: ParamValues) => {
       cur = v
       const ids = bodyIdsOf((v.bodyIds as string[]) ?? [])
@@ -93,7 +128,7 @@ registerFeature({
         pivot,
         translate: free ? (v.translate as Vec3) : [0, 0, 0],
         rotate: free ? (v.rotate as Vec3) : [0, 0, 0],
-        scale: free ? (v.scale as number) : 1,
+        scale: free && v.scaleType !== 'nonuniform' ? (v.scale as number) : 1,
         mode: v.gizmo as GizmoMode,
         push: (patch) => setValues({ ...v, ...patch }),
         ghostOnly: !free,
@@ -104,9 +139,10 @@ registerFeature({
         void moveXf(v, liveRefEnv()).then((xf) => { if (xf && cur === v) useMove.setState(ghostOf(xf, pivot)) }).catch(() => {})
       }
       copies.schedule()
+      if (v.scaleType === 'nonuniform') stretch.schedule(); else if (usePreview.getState().items.length && !v.copy && (v.moveType ?? 'free') === 'free') clearPreview()
     }
     apply(values)
-    return { update: apply, dispose: () => { copies.dispose(); clearPreview(); useMove.setState({ active: false, bodyIds: [], push: null, ghostOnly: false, keep: false }) } }
+    return { update: apply, dispose: () => { copies.dispose(); stretch.dispose(); clearPreview(); useMove.setState({ active: false, bodyIds: [], push: null, ghostOnly: false, keep: false }) } }
   },
 })
 

@@ -23,6 +23,7 @@ import { SketchOverlay } from '@/sketch/SketchOverlay'
 import { SketchDisplay } from '@/sketch/SketchDisplay'
 import { PlanePicker } from '@/sketch/PlanePicker'
 import { HairPaintTool, HairRegionOverlay } from '@/features/hair/PaintTool'
+import { MeshSectionPreview } from '@/features/mesh/sectionSketch'
 import { HairDirectionOverlay, HairOverlayPass, HairPreviewLayer } from '@/features/hair/layer'
 import { DetailOverlay } from '@/features/detail/overlay'
 import { PrintCanvas } from '@/features/print/PrintCanvas'
@@ -152,6 +153,7 @@ export function Scene() {
       <HairPreviewLayer />
       <HairDirectionOverlay />
       <HairPaintTool />
+      <MeshSectionPreview />
       <DetailOverlay />
       <PrintCanvas />
       <RenderScene />

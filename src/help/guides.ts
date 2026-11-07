@@ -316,17 +316,18 @@ export const GUIDES: Guide[] = [
   {
     id: 'mesh',
     title: 'Mesh',
-    summary: 'Clean up, shrink, cut and repair triangle meshes from STL and 3MF files.',
+    summary: 'Clean up, shrink, cut, repair and edit triangle meshes from STL, 3MF and OBJ files.',
     sections: [
       {
         id: 'flow',
         title: 'The usual flow',
         steps: [
-          'Click Import Mesh and pick an STL or 3MF file. Very large files load in the background.',
+          'Click Import Mesh and pick an STL, 3MF or OBJ file. Say what unit it is in and where it should land. Very large files load in the background.',
           'Click Repair first if the mesh has holes. Slicers need a closed (watertight) mesh.',
           'Use Reduce to make a heavy mesh lighter, and Smooth to soften a noisy one.',
           'Use Plane Cut to slice a model into parts that fit your printer.',
-          'Export as STL or 3MF.',
+          'Check the result with Mesh Stats: it says whether the mesh is closed.',
+          'Export as STL, 3MF or OBJ.',
         ],
         note: 'Meshes are made of triangles, so they cannot be edited with solid tools like Fillet. Convert to Mesh turns a solid into a mesh, but it cannot go back.',
       },
@@ -334,8 +335,8 @@ export const GUIDES: Guide[] = [
         id: 'reduce',
         title: 'Reduce, Refine and Smooth',
         steps: [
-          'Reduce merges triangles to cut the file size while keeping the shape.',
-          'Refine splits long triangles so a coarse mesh has more to work with.',
+          'Reduce merges triangles to cut the file size while keeping the shape: by tolerance, by the share of triangles to keep, or by a face count.',
+          'Refine (Remesh) rebuilds the surface with even triangles, or just splits the long ones so a coarse mesh has more to work with.',
           'Smooth evens out bumps. Refine first if the result looks blocky.',
         ],
       },
@@ -343,8 +344,28 @@ export const GUIDES: Guide[] = [
         id: 'cut',
         title: 'Plane Cut',
         steps: [
-          'Click Plane Cut and pick the mesh and a plane.',
-          'Choose to keep one side or both.',
+          'Click Plane Cut and pick the mesh, then click a flat face or a plane, or choose an axis.',
+          'Move the plane with the arrow, and tilt it with the two arcs.',
+          'Choose to keep one side or both, and whether the cut is left open or capped (Fill type).',
+        ],
+      },
+      {
+        id: 'faces',
+        title: 'Face groups and selecting',
+        steps: [
+          'Generate Face Groups cuts the mesh into faces you can click. Fast follows sharp edges; Accurate also cuts smooth curved surfaces into patches.',
+          'Combine Face Groups joins faces; Separate Face Groups cuts a picked or painted patch out of its face.',
+          'Brush Select paints triangles. Grow and Shrink widen or narrow the painted area. Hold Shift to erase.',
+          'Delete Faces removes the selected faces. Erase And Fill removes them and closes the hole with a smooth patch.',
+          'Move Face Group pushes or pulls a face; the triangles around it stretch to follow.',
+        ],
+      },
+      {
+        id: 'sketch',
+        title: 'Section Sketch',
+        steps: [
+          'Click Section Sketch, pick the plane the way you would for Plane Cut, and check the curves in the preview.',
+          'OK adds a sketch of lines, arcs and circles that you can extrude to build a part that fits the mesh.',
         ],
       },
       {
@@ -687,6 +708,13 @@ export const FEATURE_GUIDE: Record<string, { guide: string; section: string }> =
   meshToBrep: { guide: 'mesh', section: 'flow' },
   meshDeleteFaces: { guide: 'mesh', section: 'repair' },
   meshConvert: { guide: 'mesh', section: 'flow' },
+  meshFaceGroups: { guide: 'mesh', section: 'faces' },
+  meshCombineGroups: { guide: 'mesh', section: 'faces' },
+  meshSeparateGroups: { guide: 'mesh', section: 'faces' },
+  meshDeleteFaces2: { guide: 'mesh', section: 'faces' },
+  meshEraseFill: { guide: 'mesh', section: 'faces' },
+  meshMoveFaces: { guide: 'mesh', section: 'faces' },
+  meshSectionSketch: { guide: 'mesh', section: 'sketch' },
   // hair
   hair: { guide: 'hair', section: 'flow' },
   // detail

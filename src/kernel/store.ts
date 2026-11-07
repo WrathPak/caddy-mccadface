@@ -1,11 +1,11 @@
 /** Worker-side geometry store: B-reps and welded meshes keyed by handle. Worker-only. */
 import * as Comlink from 'comlink'
-import { DEFAULT_CREASE_DEG, meshDisplayAuto, weld } from './meshutil'
+import { DEFAULT_CREASE_DEG, meshDisplayAuto, segmentFaces, weld } from './meshutil'
 import { tessellate, type Shape } from './occ'
 import { finalize, namesOf, openEdges, rootNames, type NShape, type Names } from './naming'
 import type { Body, MeshData, TopoMesh } from './types'
 
-export type Stored = { kind: 'brep'; shape: Shape; names: Names } | { kind: 'mesh'; topo: TopoMesh; /** dihedral angle (deg) that separates faces */ crease: number }
+export type Stored = { kind: 'brep'; shape: Shape; names: Names } | { kind: 'mesh'; topo: TopoMesh; /** dihedral angle (deg) that separates faces */ crease: number; /** face group per triangle when they were made by hand (Generate / Combine / Separate Face Groups); absent: cut by the crease angle */ groups?: Uint32Array }
 
 const store = new Map<string, Stored>()
 let counter = 0
@@ -50,6 +50,19 @@ export function getTopo(key: string): TopoMesh {
   const m = tessellate(s.shape, 0.02, 0.1)
   return weld(m.positions, m.indices)
 }
+/** A B-rep as a welded mesh at the given deviation (mm) and angle (radians); meshes come back as they are. */
+export function getTopoAt(key: string, tol: number, ang: number): TopoMesh {
+  const s = getStored(key)
+  if (s.kind === 'mesh') return s.topo
+  const m = tessellate(s.shape, tol, ang)
+  return weld(m.positions, m.indices)
+}
+/** Face group of every triangle of a mesh body (the hand made ones, else cut by the crease angle). */
+export function groupsOf(key: string): Uint32Array {
+  const s = getStored(key)
+  if (s.kind !== 'mesh') throw new Error('Face groups belong to mesh bodies')
+  return s.groups ?? segmentFaces(s.topo, s.crease).faceIds
+}
 export function putStored(s: Stored): string {
   const key = 'k' + ++counter
   store.set(key, s)
@@ -81,9 +94,9 @@ export function bodyFromShape(id: string, name: string, shape: Shape, faces?: st
   const surface = shape.solids.length === 0
   return { id, name, kind: 'brep', ...(surface ? { surface: true, freeEdges: openEdges(shape).length } : {}), key, mesh: tessellate(shape, 0.05, 0.2, names) }
 }
-export function bodyFromTopo(id: string, name: string, topo: TopoMesh, crease: number = DEFAULT_CREASE_DEG): Body {
-  const key = putStored({ kind: 'mesh', topo, crease })
-  return { id, name, kind: 'mesh', key, mesh: meshDisplayAuto(topo, crease) }
+export function bodyFromTopo(id: string, name: string, topo: TopoMesh, crease: number = DEFAULT_CREASE_DEG, groups?: Uint32Array): Body {
+  const key = putStored({ kind: 'mesh', topo, crease, ...(groups ? { groups } : {}) })
+  return { id, name, kind: 'mesh', key, mesh: meshDisplayAuto(topo, crease, groups) }
 }
 
 export type OpFn = (args: never, ctx: OpHelpers) => Promise<unknown> | unknown
@@ -92,12 +105,14 @@ export interface OpHelpers {
   getNamed: typeof getNamed
   getNames: typeof getNames
   getTopo: typeof getTopo
+  getTopoAt: typeof getTopoAt
+  groupsOf: typeof groupsOf
   bodyFromShape: typeof bodyFromShape
   bodyFromTopo: typeof bodyFromTopo
   sendBody: typeof sendBody
   sendBodies: typeof sendBodies
 }
-export const helpers: OpHelpers = { getBrep, getNamed, getNames, getTopo, bodyFromShape, bodyFromTopo, sendBody, sendBodies }
+export const helpers: OpHelpers = { getBrep, getNamed, getNames, getTopo, getTopoAt, groupsOf, bodyFromShape, bodyFromTopo, sendBody, sendBodies }
 
 const ops = new Map<string, OpFn>()
 /** Register a custom worker operation, callable from features as `ctx.kernel.call(name, args)`. */

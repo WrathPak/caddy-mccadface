@@ -218,4 +218,5 @@ registerOp<MeshShellArgs, Body>('meshShell', async (a, h) => {
   return h.sendBody(h.bodyFromTopo(a.id, a.name, out))
 })
 
-registerOp<Base, Body>('meshConvert', (a, h) => h.sendBody(h.bodyFromTopo(a.id, a.name, h.getTopo(a.key))))
+/** B-rep to mesh; `tol` (mm) and `ang` (radians) are the chord deviation and angle of the tessellation (the display's own when absent). */
+registerOp<Base & { tol?: number; ang?: number }, Body>('meshConvert', (a, h) => h.sendBody(h.bodyFromTopo(a.id, a.name, a.tol ? h.getTopoAt(a.key, a.tol, a.ang ?? 0.1) : h.getTopo(a.key))))

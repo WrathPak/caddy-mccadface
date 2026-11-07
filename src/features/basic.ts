@@ -6,6 +6,8 @@ import type { FeatureCtx } from '@/doc/types'
 import { bodyIdsOf } from '@/doc/refs'
 import { parseStl } from '@/io/stl'
 import { parse3mf } from '@/io/threemf'
+import { parseObj } from '@/io/obj'
+import { placementShift, shiftAll, UNIT_FACTOR, type Placement } from '@/io/place'
 import { resolveParams } from '@/doc/params'
 import { getKernel } from '@/kernel/client'
 import { importMeshPooled, POOL_IMPORT_BYTES, sourceOf } from '@/io/meshImport'
@@ -76,11 +78,13 @@ registerFeature({
 })
 
 /** Wrap parsed triangle soups into mesh bodies in the kernel. */
-async function toBodies(ctx: FeatureCtx, parts: { name: string; positions: Float32Array }[], scale: number, baseName: string, creaseDeg: number) {
+async function toBodies(ctx: FeatureCtx, parts: { name: string; positions: Float32Array }[], scale: number, baseName: string, creaseDeg: number, place: Placement = 'keep') {
   const bodies = []
+  if (scale !== 1) for (const q of parts) for (let k = 0; k < q.positions.length; k++) q.positions[k] *= scale
+  const shift = placementShift(parts.map((q) => q.positions), place)
+  for (const q of parts) shiftAll(q.positions, shift)
   for (let i = 0; i < parts.length; i++) {
     const positions = parts[i].positions
-    if (scale !== 1) for (let k = 0; k < positions.length; k++) positions[k] *= scale
     bodies.push(
       await ctx.kernel.createMesh(
         Comlink.transfer({ id: ctx.newBodyId(i || undefined), name: parts.length > 1 ? `${baseName} ${parts[i].name}` : baseName, positions, creaseDeg }, [positions.buffer]),
@@ -94,8 +98,18 @@ registerFeature({
   type: 'importMesh',
   label: 'Import Mesh',
   icon: GridFour,
-  schema: { id: 'importMesh', title: 'Import mesh', params: [
-      { type: 'number', key: 'scale', help: 'Multiplies the size of the imported model. Use 25.4 to bring a model made in inches into mm, 1 to keep it as is.', label: 'Scale', unit: '', min: 0.0001, step: 0.1, default: 1 },
+  schema: { id: 'importMesh', title: 'Insert Mesh', params: [
+      {
+        type: 'enum', key: 'units', label: 'Units', display: 'segmented', default: 'mm',
+        help: 'The unit the file was made in. The model is brought into millimetres: a file in inches is made 25.4 times bigger. STL has no unit of its own, so check this against the size you expect.',
+        options: [{ value: 'mm', label: 'mm' }, { value: 'cm', label: 'cm' }, { value: 'm', label: 'm' }, { value: 'in', label: 'in' }, { value: 'ft', label: 'ft' }],
+      },
+      {
+        type: 'enum', key: 'placement', label: 'Placement', display: 'select', default: 'keep',
+        help: 'Where the model lands. Keep position leaves it where the file put it, Center on origin puts the middle of the model on the origin, Drop to ground puts its underside on the ground plane and its middle over the origin.',
+        options: [{ value: 'keep', label: 'Keep position' }, { value: 'center', label: 'Center on origin' }, { value: 'ground', label: 'Drop to ground plane' }],
+      },
+      { type: 'number', key: 'scale', help: 'Multiplies the size of the imported model after the units are applied. 1 keeps it as is.', label: 'Scale', unit: '', min: 0.0001, step: 0.1, default: 1 },
       { type: 'number', key: 'creaseAngle', help: 'Neighbouring triangles that meet at a sharper angle than this become separate faces you can pick. Lower values give more, smaller faces. Meshes over 400 thousand triangles stay one face so they remain fast.', label: 'Face split angle', unit: 'deg', min: 1, max: 89, step: 1, default: 20 },
     ],
   },
@@ -104,13 +118,16 @@ registerFeature({
     if (!bytes) throw new Error('Source file missing from document')
     const baseName = (p.fileName as string).replace(/\.[^.]+$/, '')
     const crease = (p.creaseAngle as number | undefined) ?? 20
+    const scale = (p.scale as number) * (UNIT_FACTOR[(p.units as string) ?? 'mm'] ?? 1)
+    const place = ((p.placement as string) ?? 'keep') as Placement
+    const format = p.format === '3mf' ? '3mf' : p.format === 'obj' ? 'obj' : 'stl'
     // big files are parsed, welded and decimated in the compute pool, never on the main thread
     if (bytes.length >= POOL_IMPORT_BYTES) {
-      const bodies = await importMeshPooled(sourceOf(bytes), { format: p.format === '3mf' ? '3mf' : 'stl', scale: p.scale as number, creaseDeg: crease, baseName, bodyId: (n) => ctx.newBodyId(n || undefined) })
+      const bodies = await importMeshPooled(sourceOf(bytes), { format, scale, place, creaseDeg: crease, baseName, bodyId: (n) => ctx.newBodyId(n || undefined) })
       return { bodies }
     }
-    const parts = p.format === '3mf' ? parse3mf(bytes) : parseStl(bytes)
-    return toBodies(ctx, parts, p.scale as number, baseName, crease)
+    const parts = format === '3mf' ? parse3mf(bytes) : format === 'obj' ? parseObj(bytes) : parseStl(bytes)
+    return toBodies(ctx, parts, scale, baseName, crease, place)
   },
 })
 

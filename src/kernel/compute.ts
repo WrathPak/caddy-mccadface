@@ -6,6 +6,8 @@
 import * as Comlink from 'comlink'
 import { parse3mfFast, type RawMesh } from '@/io/threemfFast'
 import { parseStlSoup, type MeshSource } from '@/io/stlStream'
+import { parseObj } from '@/io/obj'
+import { placementShift, shiftAll, type Placement } from '@/io/place'
 import { meshBoolean as manifoldBoolean, type BoolOp } from './mesh'
 import { DEFAULT_CREASE_DEG, meshDisplayAuto, weld } from './meshutil'
 import { buildChunks, buildLod, CHUNKED_MIN_TRIS } from './bigmesh'
@@ -21,7 +23,7 @@ export interface ImportedPart {
   display: MeshData
 }
 
-export interface ImportArgs { source: MeshSource; format: 'stl' | '3mf'; scale: number; creaseDeg?: number }
+export interface ImportArgs { source: MeshSource; format: 'stl' | '3mf' | 'obj'; scale: number; creaseDeg?: number; /** where the model lands: where it is, centred on the origin, or on the ground plane */ place?: Placement }
 
 const buffersOf = (m: MeshData): ArrayBuffer[] =>
   [...[m.positions, m.normals, m.indices, m.faceIds, m.edges, m.edgeIds, m.faceHashes, m.edgeHashes, m.lod?.positions, m.lod?.normals, m.lod?.indices, m.bvh?.indirect]
@@ -32,13 +34,16 @@ const buffersOf = (m: MeshData): ArrayBuffer[] =>
 export async function importMesh(a: ImportArgs): Promise<ImportedPart[]> {
   let raws: RawMesh[]
   if (a.format === 'stl') raws = [{ name: 'Mesh', positions: await parseStlSoup(a.source) }]
+  else if (a.format === 'obj') raws = parseObj(a.source instanceof Uint8Array ? a.source : new Uint8Array(await a.source.arrayBuffer()))
   else {
     const bytes = a.source instanceof Uint8Array ? a.source : new Uint8Array(await a.source.arrayBuffer())
     raws = parse3mfFast(bytes)
   }
+  if (a.scale !== 1) for (const r of raws) for (let k = 0; k < r.positions.length; k++) r.positions[k] *= a.scale
+  const shift = placementShift(raws.map((r) => r.positions), a.place ?? 'keep')
+  for (const r of raws) shiftAll(r.positions, shift)
   return raws.map((r) => {
     const p = r.positions
-    if (a.scale !== 1) for (let k = 0; k < p.length; k++) p[k] *= a.scale
     // triangles that disagree about which way is out are wound alike, and an inside-out mesh (negative volume) is turned right way round
     const welded = weld(p, r.indices)
     if (!welded.indices.length) throw new Error('The file has no usable triangles')
