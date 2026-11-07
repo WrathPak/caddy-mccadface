@@ -3,8 +3,9 @@ import { ArrowsOutLineVertical, Eraser, Knife, PushPin, Scissors, SplitVertical,
 import type { Icon } from '@phosphor-icons/react'
 import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
-import { RefError, RefReport, bodyIdsOf, decodeRef, encodeSelection, faceSigs, resolveEdge, resolveFace } from '@/doc/refs'
+import { RefError, RefReport, bodyIdsOf, decodeRef, edgeSigs, encodeSelection, faceSigs, resolveEdge, resolveFace } from '@/doc/refs'
 import { registerFeature } from '@/doc/registry'
+import { regenerate } from '@/doc/engine'
 import { useDoc } from '@/doc/store'
 import type { FeatureCtx, FeatureResult, PreviewCtx, PreviewHandle } from '@/doc/types'
 import { getKernel } from '@/kernel/client'
@@ -20,6 +21,7 @@ import { createRunner } from '../previewKit'
 import { arcRadius, showAngle, type AngleSpec } from '../handleKit'
 import { liveRefEnv, resolveDirection, resolvePlane, type RefEnv } from './geo'
 import { facesOf, type FaceArg } from './source'
+import { draftExtraParams } from '../solids2/advanced'
 
 const facePick = (help: string, required = true): SelectionRefParam => ({ type: 'selection-ref', key: 'faces', help, label: 'Faces', accepts: ['face'], multiple: true, pick: true, required, default: [] }) 
 
@@ -178,17 +180,44 @@ register({
 // ------------------------------------------------------------------------------------------------ delete / replace
 
 export const deleteFaceSchema: ParamSchema = { id: 'deleteFace', title: 'Delete Face', params: [facePick('The faces to remove. The faces around them are extended until they close the gap (fillets, holes, bosses and pockets heal this way).')] }
-register({
-  type: 'deleteFace', label: 'Delete Face', icon: Eraser, command: 'solid.deleteFace', schema: deleteFaceSchema, filter: 'face',
-  async build(p, env, report) {
-    const bodies: Body[] = []
-    for (const g of byBody(p.faces as string[], env, report)) {
-      if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Delete Face needs a solid body' + (g.body.surface ? ': for a surface use Delete Face in the Surface tab' : ', not a mesh'))
-      bodies.push(await call<Body>(env, 'deleteFaces', { id: g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, fid: env.fid }))
+async function deleteFacesBuild(p: ParamValues, env: BuildEnv, report: RefReport): Promise<Built> {
+  const bodies: Body[] = []
+  for (const g of byBody(p.faces as string[], env, report)) {
+    if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Delete Face needs a solid body' + (g.body.surface ? ': for a surface use Delete Face in the Surface tab' : ', not a mesh'))
+    bodies.push(await call<Body>(env, 'deleteFaces', { id: g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, fid: env.fid }))
+  }
+  return { bodies }
+}
+register({ type: 'deleteFace', label: 'Delete Face', icon: Eraser, command: 'solid.deleteFace', schema: deleteFaceSchema, filter: 'face', build: deleteFacesBuild })
+
+/** Can these faces be deleted with the gap healed (so Pattern can repeat them as a feature)? A dry run in the kernel; the body is not touched. */
+export async function canHealFaces(faces: string[]): Promise<boolean> {
+  try {
+    const r = await deleteFacesBuild({ faces }, { ...liveRefEnv(), fid: 'preview' }, new RefReport())
+    return r.bodies.length > 0
+  } catch { return false }
+}
+
+/** The Delete key with faces selected: adds a Delete Face step that heals them. If a face cannot heal, the step is undone again so the body and the
+ *  timeline stay as they were. Returns a promise of null (healed) or the reason it could not heal. */
+export function deleteSelectedFaces(): Promise<string | null> {
+  const ui = useUi.getState()
+  const doc = useDoc.getState()
+  const faces = encodeSelection(ui.selection.filter((r) => r.kind === 'face'), doc.geometry)
+  if (!faces.length) return Promise.resolve('No faces are selected')
+  const id = doc.addFeature('deleteFace', { faces })
+  ui.clearSelection()
+  return regenerate().then(() => {
+    const s = useDoc.getState()
+    const f = s.features.find((x) => x.id === id)
+    if (f && f.state === 'error') {
+      const why = f.error ?? 'the faces could not be healed'
+      s.undo()
+      return why
     }
-    return { bodies }
-  },
-})
+    return null
+  })
+}
 
 /** A plane or face reference as a surface the kernel can use. */
 async function surfaceOf(s: string, env: RefEnv, report: RefReport): Promise<SurfaceTarget> {
@@ -284,7 +313,8 @@ export const draftSchema: ParamSchema = {
   id: 'draft',
   title: 'Draft',
   params: [
-    { type: 'selection-ref', key: 'plane', help: 'The neutral plane: the faces tilt about the line where they meet it, so that line stays where it is. Click a plane or a flat face.', label: 'Neutral plane', accepts: ['plane', 'face'], pick: true, required: true, default: [] },
+    ...draftExtraParams,
+    { type: 'selection-ref', key: 'plane', help: 'The neutral plane: the faces tilt about the line where they meet it, so that line stays where it is. Click a plane or a flat face.', label: 'Neutral plane', accepts: ['plane', 'face'], pick: true, required: true, default: [], visibleWhen: (v) => (v.draftType ?? 'plane') === 'plane' },
     facePick('The faces to tilt.'),
     { type: 'selection-ref', key: 'pull', help: 'The pull direction (the way the part comes out of the mould): a plane or flat face (its normal), an edge or an axis. Leave empty to use the neutral plane normal.', label: 'Pull direction', accepts: ['plane', 'face', 'edge', 'axis'], pick: true, default: [] },
     { type: 'number', key: 'angle', help: 'Draft angle in degrees. Positive tilts the faces so the body gets narrower away from the neutral plane along the pull direction.', label: 'Angle', unit: 'deg', min: -45, max: 45, step: 0.5, default: 3 },
@@ -295,6 +325,22 @@ export const draftSchema: ParamSchema = {
 register({
   type: 'draft', label: 'Draft', icon: TrendDown, command: 'solid.draft', schema: draftSchema, filter: 'face',
   async build(p, env, report) {
+    if (p.draftType === 'parting' || p.draftType === 'step') {
+      // the faces are split at the level of the parting line edge, each half is drafted away from it (see draftParting)
+      const pullRef = (p.pull as string[])[0]
+      if (!pullRef) throw new Error('Pick the pull direction: a plane, a flat face, an edge or an axis')
+      let pull = norm3(await resolveDirection(pullRef, env, report))
+      if (p.flip) pull = mul3(pull, -1)
+      const eref = decodeRef(((p.partingLine as string[]) ?? [])[0] ?? '')
+      const hit = eref && eref.kind === 'edge' ? resolveEdge(eref, env.bodies, report) : null
+      if (!hit) throw new Error('Pick the edge that marks the parting line')
+      const line = edgeSigs(hit.body)[hit.index].midpoint
+      const out: Body[] = []
+      for (const g of byBody(p.faces as string[], env, report)) {
+        out.push(await call<Body>(env, 'draftParting', { id: g.body.id, name: g.body.name, key: g.body.key, faces: g.faces.map((f) => f.index), dir: pull, line, angle: p.angle as number, type: p.draftType, flip: false, fid: env.fid }))
+      }
+      return { bodies: out }
+    }
     const plane = await resolvePlane((p.plane as string[])[0], env, report)
     const pullRef = (p.pull as string[])[0]
     let dir: Vec3 = pullRef ? await resolveDirection(pullRef, env, report) : plane.normal

@@ -67,7 +67,7 @@ export const api = {
     await initOcc()
     const { pivot, rotate, scale, translate } = a.spec
     const before = s.shape, names = s.names.faces
-    let sh: Shape = s.shape
+    let sh: Shape = s.shape.clone() as Shape  // a copy: the moves below consume their receiver, and the source body must survive (Move with Create copy)
     if (scale !== 1) sh = sh.scale(scale, pivot) as Shape
     if (rotate[0]) sh = sh.rotate(rotate[0], pivot, [1, 0, 0]) as Shape
     if (rotate[1]) sh = sh.rotate(rotate[1], pivot, [0, 1, 0]) as Shape

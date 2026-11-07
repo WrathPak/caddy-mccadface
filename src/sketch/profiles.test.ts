@@ -13,6 +13,20 @@ const areas = (m: SketchModel) => detectProfiles(m).map((p) => p.area).sort((a, 
 const near = (a: number, b: number, rel = 2e-3) => expect(Math.abs(a - b)).toBeLessThanOrEqual(Math.max(1e-6, Math.abs(b) * rel))
 
 describe('profile detection', () => {
+  it('a rectangle drawn against an outline edge makes the strip a profile, and the rest stays one', () => {
+    const m = emptyModel()
+    rect(m, 0, 0, 60, 40)
+    rect(m, 0, 36, 60, 40)
+    expect(areas(m).map(Math.round)).toEqual([2160, 240])
+  })
+
+  it('a rectangle that only shares part of an outline edge splits the region the same way', () => {
+    const m = emptyModel()
+    rect(m, 0, 0, 60, 40)
+    rect(m, 10, 30, 50, 40)
+    expect(areas(m).map(Math.round)).toEqual([2000, 400])
+  })
+
   it('nested holes: concentric outlines give ring, ring and island, each with the right holes', () => {
     const m = emptyModel()
     rect(m, 0, 0, 100, 100)

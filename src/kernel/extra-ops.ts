@@ -18,5 +18,6 @@ import './plugin-ops'
 import './drawing-ops'
 import './assembly-ops'
 import './surface-ops'
+import './solids2-ops'
 
 export {}

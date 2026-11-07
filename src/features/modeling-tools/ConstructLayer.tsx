@@ -78,6 +78,8 @@ export function ConstructLayer() {
   const isSel = (kind: string, id: string, index?: number) => selection.some((s) => s.kind === kind && s.id === id && s.index === index)
   const select = (kind: 'axis' | 'point' | 'plane' | 'vertex', id: string, index?: number) => useUi.getState().setSelection([{ kind, id, index }], false)
   const pickKind = (k: string) => (pick as string[]).includes(k)
+  // a body face under the pointer wins over a plane drawn across the view: the click goes through to the face (a body only takes it when faces can be picked)
+  const faceUnder = (e: { intersections: { object: { userData?: Record<string, unknown> } }[] }) => e.intersections.some((h) => h.object.userData?.casts === true)
   const L = half * 1.15
 
   const vertices = pickKind('vertex') && geometry.flatMap((b) => {
@@ -124,7 +126,8 @@ export function ConstructLayer() {
       })}
       {pickKind('plane') && [...originPlanes, ...planeFeatures].map(({ id, plane }) => (
         <mesh key={'pp' + id} position={plane.origin} quaternion={planeQuaternion(plane)} renderOrder={5}
-          onClick={(e) => { e.stopPropagation(); select('plane', id) }} onPointerMove={(e) => { e.stopPropagation(); if (hot !== 'pl' + id) setHot('pl' + id) }} onPointerOut={() => setHot(null)}>
+          onClick={(e) => { if (faceUnder(e)) return; e.stopPropagation(); select('plane', id) }}
+          onPointerMove={(e) => { if (faceUnder(e)) { if (hot) setHot(null); return } e.stopPropagation(); if (hot !== 'pl' + id) setHot('pl' + id) }} onPointerOut={() => setHot(null)}>
           <planeGeometry args={[half * 2, half * 2]} />
           <meshBasicMaterial color={isSel('plane', id) || hot === 'pl' + id ? colors.sel : colors.accent} transparent opacity={isSel('plane', id) ? 0.4 : hot === 'pl' + id ? 0.35 : 0.1} side={DoubleSide} depthWrite={false} />
         </mesh>

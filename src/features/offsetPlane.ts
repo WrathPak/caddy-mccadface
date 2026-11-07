@@ -13,6 +13,7 @@ import type { PlaneDef } from '@/sketch/types'
 import { useUi } from '@/store/ui'
 import type { ParamSchema, ParamValues } from '@/ui/schema'
 import { resetManip, useManip } from '@/viewport/preview'
+import { watchSelection } from './previewKit'
 
 export const offsetPlaneSchema: ParamSchema = {
   id: 'offsetPlane',
@@ -70,7 +71,22 @@ registerFeature({
       } catch { usePlanes.getState().set('preview', null); resetManip() }
     }
     show(values)
-    return { update: show, dispose: () => { usePlanes.getState().set('preview', null); resetManip() } }
+    // a face (or an origin plane) clicked while the dialog is open becomes the base, as one selected before the tool started does
+    const off = watchSelection(['face', 'plane'], (hits) => {
+      const f = hits.find((r) => r.kind === 'face')
+      const pl = hits.find((r) => r.kind === 'plane' && ['planeXY', 'planeXZ', 'planeYZ'].includes(r.id))
+      if (f) {
+        const ref = encodeSelection([f], useDoc.getState().geometry)
+        if (JSON.stringify(cur.face) === JSON.stringify(ref) && cur.base === 'face') return
+        cur = { ...cur, base: 'face', face: ref }
+      } else if (pl) {
+        if (cur.base === pl.id.slice(5)) return
+        cur = { ...cur, base: pl.id.slice(5) }
+      } else return
+      setValues(cur)
+      show(cur)
+    })
+    return { update: show, dispose: () => { off(); usePlanes.getState().set('preview', null); resetManip() } }
   },
 })
 

@@ -186,3 +186,93 @@ export const bodyVolume = (app: App, i = 0) => app.ev((c, i) => c.doc.getState()
   const ids: string[] = await app.ev((c) => c.doc.getState().geometry.map((b: any) => b.id)) // eslint-disable-line
   return app.volume(ids[i])
 })
+
+// ------------------------------------------------------------------------------------------------ solids tools (spec 61, 62)
+
+/** Volume of every body added together. */
+export const totalVol = async (app: App) => {
+  const ids: string[] = await app.ev((c) => c.doc.getState().geometry.map((b: any) => b.id)) // eslint-disable-line
+  let v = 0
+  for (const id of ids) v += await app.volume(id)
+  return v
+}
+export const relNear = (a: number, b: number, rel = 0.01) => expect(Math.abs(a - b) / Math.max(1, Math.abs(b)), `${a} vs ${b}`).toBeLessThanOrEqual(rel)
+export const featTypes = async (app: App) => (await app.features()).map((f) => f.type)
+export const selection = (app: App) => app.ev((c) => c.ui.getState().selection as { kind: string; id: string; index?: number }[])
+export const inspectorText = (app: App) => app.inspector().innerText().catch(() => '')
+export const settle = async (app: App) => { await app.ev((c) => { c.runCommand('view.home'); c.runCommand('view.frame') }); await app.cameraStable() }
+
+/** Click a world point with Shift held (adds to the selection). */
+export async function shiftClickWorld(app: App, w: P3) {
+  const p = await px(app, w)
+  await app.page.mouse.move(p.x, p.y, { steps: 2 })
+  await app.page.keyboard.down('Shift')
+  await app.page.mouse.click(p.x, p.y)
+  await app.page.keyboard.up('Shift')
+}
+
+/** Every entry the Solid tab offers a user: the buttons and the items of every caret menu (each opened and closed again). */
+export async function ribbonEntries(app: App, tab = 'Solid'): Promise<string> {
+  const { page } = app
+  await app.tab(tab)
+  const names: string[] = await page.locator('.ribbon-body button').evaluateAll((bs) => bs.map((b) => ((b as HTMLElement).innerText || b.getAttribute('aria-label') || '').trim()))
+  const out = [...names]
+  for (const n of names.filter((x) => /options$/.test(x))) {
+    await page.locator('.ribbon-body').getByRole('button', { name: n }).click()
+    out.push(...(await page.getByRole('menuitem').allInnerTexts()))
+    await page.keyboard.press('Escape')
+  }
+  return out.join(' | ')
+}
+/** Every ribbon tab's buttons and menus, for a tool that might live outside the Solid tab. */
+export async function allEntries(app: App): Promise<string> {
+  const tabs = await app.page.locator('.ribbon-tabs').getByRole('tab').allInnerTexts()
+  const parts: string[] = []
+  for (const t of tabs) parts.push(await ribbonEntries(app, t.trim()))
+  return parts.join(' | ')
+}
+
+/** A box added as a precondition (not under test), position is its base centre. */
+export async function seedBox(app: App, w: number, d: number, h: number, at: P3 = [0, 0, 0]) {
+  await app.ev((c, a) => c.doc.getState().addFeature('box', { width: a[0], depth: a[1], height: a[2], position: a[3] }), [w, d, h, at])
+  await app.idle()
+  await settle(app)
+}
+
+/** Fillet tool: click each world point (edges), type the radius, OK. */
+export async function filletAt(app: App, pts: P3[], r: string) {
+  await app.ribbon('Fillet').first().click()
+  for (const p of pts) await clickWorld(app, p)
+  await expect.poll(async () => ((await selection(app)).length)).toBeGreaterThan(0)
+  await app.field('Radius', r)
+  await app.ok()
+}
+export async function chamferAt(app: App, pts: P3[], d: string) {
+  await app.ribbon('Chamfer').first().click()
+  for (const p of pts) await clickWorld(app, p)
+  await expect.poll(async () => ((await selection(app)).length)).toBeGreaterThan(0)
+  await app.field('Distance', d)
+  await app.ok()
+}
+/** A plate whose (60, 0) corner is a rounded corner (R6) drawn in the sketch, as an extruded imported or sketch-filleted part would be. */
+export async function roundedPlate(app: App, w = 60, h = 40, d = 10, r = 6) {
+  await addSketch(app, XY, [
+    { k: 'line', a: [0, 0], b: [w - r, 0] }, { k: 'arc', c: [w - r, r], s: [w - r, 0], e: [w, r] },
+    { k: 'line', a: [w, r], b: [w, h] }, { k: 'line', a: [w, h], b: [0, h] }, { k: 'line', a: [0, h], b: [0, 0] },
+  ])
+  await app.ribbon('Extrude').click()
+  await app.field('Distance', String(d))
+  await app.ok()
+  await settle(app)
+}
+/** Open the feature at timeline position i (0 based) for editing. */
+export async function editChip(app: App, i: number) {
+  await app.page.locator('.tl .chip').nth(i).dblclick()
+  await expect(app.inspector()).toBeVisible()
+}
+export const chipCount = (app: App) => app.page.locator('.tl .chip').count()
+
+/** The labels and buttons of the open dialog (what a user can set), not its help text. */
+export const controls = (app: App) => app.inspector().locator('.field-label, button, [role=radio], [role=tab], .seg-btn').allInnerTexts().then((a) => a.join(' | ')).catch(() => '')
+/** Click a row in the Browser tree. */
+export const treeRow = (app: App, name: string | RegExp) => app.page.locator('.tree-row', { hasText: name }).first().click()

@@ -20,7 +20,8 @@ export interface SelectionRef {
   snap?: { kind: string; ref: string }
 }
 
-export interface SectionState { on: boolean; axis: 'X' | 'Y' | 'Z'; offset: number; flip: boolean }
+/** `normal` (unit) replaces `axis` when the plane was picked from a face or a plane: the plane is then normal . p = offset */
+export interface SectionState { on: boolean; axis: 'X' | 'Y' | 'Z'; offset: number; flip: boolean; normal?: [number, number, number] | null; /** the plane or face it was picked from, and the offset from it (so the dialog can open on it again) */ ref?: string[]; rel?: number }
 
 /** Origin planes start hidden (like Fusion); the Browser's eye toggles show them. */
 export const DEFAULT_HIDDEN: Record<string, true> = { planeXY: true, planeXZ: true, planeYZ: true }

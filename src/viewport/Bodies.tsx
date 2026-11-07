@@ -338,12 +338,12 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
 
   const matrix = useMemo(() => {
     const placed = !isIdentity(inst.world)
-    const moving = move.active && move.bodyIds.includes(body.id)
+    const moving = move.active && !move.keep && move.bodyIds.includes(body.id)
     if (!placed && !moving) return null
     const m = new Matrix4().fromArray(inst.world)
     if (moving) m.multiply(new Matrix4().fromArray(composeTransform({ pivot: move.pivot, translate: move.translate, rotate: move.rotate, scale: move.scale })))
     return m
-  }, [inst.world, move.active, move.bodyIds, move.pivot, move.translate, move.rotate, move.scale, body.id])
+  }, [inst.world, move.active, move.keep, move.bodyIds, move.pivot, move.translate, move.rotate, move.scale, body.id])
 
   const snapAt = (e: ThreeEvent<PointerEvent | MouseEvent>) => {
     const local = point(invert(inst.world), [e.point.x, e.point.y, e.point.z])

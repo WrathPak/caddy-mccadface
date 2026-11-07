@@ -234,14 +234,16 @@ export function carryNames(from: AnyShape, names: string[][], to: AnyShape, fid:
 
 // ---------------------------------------------------------------- builders with history
 
-type Builder = History & { Build(): void; Shape(): never; SimplifyResult?(a: boolean, b: boolean, c: number): void; delete(): void }
+type Builder = History & { Build(): void; Shape(): never; SimplifyResult?(a: boolean, b: boolean, c: number): void; SetFuzzyValue?(v: number): void; delete(): void }
 
 /** Run a BOP (fuse / cut / common) with history and return the result with inherited names. */
-export function boolNamed(op: 'fuse' | 'cut' | 'common', a: NShape, b: NShape, fid: string): NShape {
+/** `fuzzy`: surfaces closer than this count as coincident (a tool built to lie exactly on an existing face is never exactly on it). */
+export function boolNamed(op: 'fuse' | 'cut' | 'common', a: NShape, b: NShape, fid: string, fuzzy = 0): NShape {
   const oc = getOC() as unknown as Record<string, new (x: unknown, y: unknown) => Builder>
   const ctor = op === 'fuse' ? oc.BRepAlgoAPI_Fuse : op === 'cut' ? oc.BRepAlgoAPI_Cut : oc.BRepAlgoAPI_Common
   const builder = new ctor(a.shape.wrapped, b.shape.wrapped)
   try {
+    if (fuzzy > 0) builder.SetFuzzyValue?.(fuzzy)
     builder.Build()
     builder.SimplifyResult!(true, true, 0.001)
     const shape = cast(builder.Shape()) as unknown as Shape
@@ -280,19 +282,19 @@ export function edgeModNamed(src: NShape, srcEdgeNames: string[][], edges: numbe
 }
 
 /** Hollow a solid by removing the given faces (indices into its topology); `offset` is the signed OCC offset. */
-export function shellNamed(src: NShape, remove: number[], offset: number, tolerance: number, fid: string): NShape {
+export function shellNamed(src: NShape, remove: number[], offset: number, tolerance: number, fid: string, join: 'arc' | 'intersection' = 'arc', inter = false): NShape {
   const oc = getOC() as unknown as {
     NCollection_List_TopoDS_Shape: new () => OCList & { Append(s: unknown): void }
     BRepOffsetAPI_MakeThickSolid: new () => Builder & { MakeThickSolidByJoin(...a: unknown[]): void }
     BRepOffset_Mode: { BRepOffset_Skin: unknown }
-    GeomAbs_JoinType: { GeomAbs_Arc: unknown }
+    GeomAbs_JoinType: { GeomAbs_Arc: unknown; GeomAbs_Intersection: unknown }
   }
   const topo = topoOf(src.shape as AnyShape)
   const list = new oc.NCollection_List_TopoDS_Shape()
   const builder = new oc.BRepOffsetAPI_MakeThickSolid()
   try {
     for (const i of remove) list.Append(topo.faces[i].wrapped)
-    builder.MakeThickSolidByJoin(src.shape.wrapped, list, offset, tolerance, oc.BRepOffset_Mode.BRepOffset_Skin, false, false, oc.GeomAbs_JoinType.GeomAbs_Arc, false)
+    builder.MakeThickSolidByJoin(src.shape.wrapped, list, offset, tolerance, oc.BRepOffset_Mode.BRepOffset_Skin, inter, false, join === 'arc' ? oc.GeomAbs_JoinType.GeomAbs_Arc : oc.GeomAbs_JoinType.GeomAbs_Intersection, false)
     const shape = cast(builder.Shape()) as unknown as Shape
     if (!isShape3D(shape as never)) throw new Error('Could not shell as a 3d shape')
     const claims = inherit(builder, [src], shape as AnyShape, { fid, genFace: 'inner' })
