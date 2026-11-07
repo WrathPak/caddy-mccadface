@@ -81,12 +81,16 @@ export function segmentFaces(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG): Se
  * (`edgeIds`) the way a B-rep's edges are: a chain continues through a vertex only while both neighbours separate the
  * same pair of faces and the path does not turn sharply.
  */
-export function meshDisplay(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG): MeshData {
+export function meshDisplay(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG, groups?: Uint32Array): MeshData {
   const p = topo.positions, idx = topo.indices
   const T = idx.length / 3
   const nv = p.length / 3
   const seg = segmentFaces(topo, creaseDeg)
-  const { faceIds, faceCount, adj, normals: un } = seg
+  // face groups made by hand replace the ones the crease angle found
+  const faceIds = groups && groups.length === T ? groups : seg.faceIds
+  let faceCount = seg.faceCount
+  if (groups && groups.length === T) { faceCount = 0; for (let t = 0; t < T; t++) if (groups[t] >= faceCount) faceCount = groups[t] + 1 }
+  const { adj, normals: un } = seg
   const fn = new Float32Array(T * 3) // area-weighted (unnormalised) normal
   for (let t = 0; t < T; t++) {
     const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3
@@ -291,8 +295,8 @@ export function topoVolume(t: TopoMesh): number {
 }
 
 /** Display data for any mesh body: the full face / edge analysis, or the cheap path for multi-million triangle meshes. */
-export function meshDisplayAuto(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG): MeshData {
-  const m = isLargeTopo(topo) ? meshDisplayLarge(topo) : meshDisplay(topo, creaseDeg)
+export function meshDisplayAuto(topo: TopoMesh, creaseDeg = DEFAULT_CREASE_DEG, groups?: Uint32Array): MeshData {
+  const m = isLargeTopo(topo) ? meshDisplayLarge(topo) : meshDisplay(topo, creaseDeg, groups)
   // the box is worked out here, so three never has to scan the vertices on the main thread for the bounding sphere
   if (!m.bounds && m.indices.length > 90_000) m.bounds = bbox(m.positions)
   return m

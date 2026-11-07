@@ -10,7 +10,7 @@ interface PickerWindow {
 const w = (typeof window === 'undefined' ? {} : window) as unknown as PickerWindow
 
 const PROJECT_TYPES = [{ description: 'CADdy McCADFace project', accept: { 'application/zip': ['.caddy'] } }]
-export const MODEL_EXTS = ['.stl', '.3mf', '.step', '.stp']
+export const MODEL_EXTS = ['.stl', '.3mf', '.obj', '.step', '.stp']
 
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError'
 

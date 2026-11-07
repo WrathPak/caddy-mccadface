@@ -1,0 +1,16 @@
+/* Mesh tab HUD: the stats card. */
+.mesh-card { position: absolute; left: calc(var(--in-l) + var(--hud)); top: calc(var(--in-t) + var(--hud)); z-index: 6; width: 236px; padding: 10px 12px 11px; border-radius: var(--radius-lg); font-size: var(--fs-sm); color: var(--text); user-select: none; }
+.mc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+.mc-x { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 10px; background: transparent; color: var(--text-dim); cursor: default; }
+.mc-x:hover { background: var(--bg-hover); color: var(--text); }
+.mc-body + .mc-body { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line-strong); }
+.mc-name { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.mc-name span { font-weight: 600; font-size: var(--fs-md, 13px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-name em { display: inline-flex; align-items: center; gap: 4px; font-style: normal; font-size: var(--fs-sm); font-weight: 500; }
+.mc-name em.ok { color: var(--ok, #4cc38a); }
+.mc-name em.bad { color: var(--err, #ff6b5e); }
+.mesh-card dl { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; margin: 0; }
+.mesh-card dt { color: var(--text-dim); }
+.mesh-card dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.mesh-card dd.bad { color: var(--err, #ff6b5e); font-weight: 600; }
+.mc-wait { color: var(--text-dim); }

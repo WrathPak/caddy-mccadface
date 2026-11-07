@@ -1,5 +1,5 @@
-/** Mesh workspace features: Plane Cut, Reduce, Refine, Smooth, Repair and Convert to Mesh (kernel ops in kernel/mesh-ops.ts). */
-import { Cube, Funnel, GridFour, MagicWand, Scissors, Waves, type Icon } from '@phosphor-icons/react'
+/** Mesh workspace features: Smooth, Repair and Convert to Mesh (kernel ops in kernel/mesh-ops.ts). Plane Cut, Reduce and Remesh are in features/mesh. */
+import { Cube, MagicWand, Waves, type Icon } from '@phosphor-icons/react'
 import { registerFeature } from '@/doc/registry'
 import { createFeature } from '@/doc/editor'
 import { resolveParams } from '@/doc/params'
@@ -7,12 +7,13 @@ import { bodyIdsOf } from '@/doc/refs'
 import { useDoc } from '@/doc/store'
 import { getKernel, type KernelClient } from '@/kernel/client'
 import type { RepairResult } from '@/kernel/mesh-ops'
-import type { Body, Vec3 } from '@/kernel/types'
+import type { Body } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import type { ParamDef, ParamSchema, ParamValues } from '@/ui/schema'
 import { clearPreview, resetManip, setPreview } from '@/viewport/preview'
 import { createRunner } from './previewKit'
-import { extentOf, showArrows, type ArrowSpec } from './handleKit'
+import { showArrows, type ArrowSpec } from './handleKit'
+import { refinement, refinementParams } from './mesh/refine'
 
 interface Ids { id: string; otherId: string }
 interface BodyTool {
@@ -29,39 +30,10 @@ interface BodyTool {
 }
 
 const bodiesParam: ParamDef = { type: 'selection-ref', key: 'bodies', help: 'The bodies to work on. Click them in the viewport or the Browser.', label: 'Bodies', accepts: ['body'], multiple: true, required: true, pick: true, default: [] }
-const AXES: Record<string, Vec3> = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }
 const asBody = (b: unknown) => b as Body
 
 const TOOLS: BodyTool[] = [
-  {
-    type: 'meshPlaneCut', label: 'Plane Cut', icon: Scissors, command: 'mesh.planeCut',
-    params: [
-      { type: 'enum', key: 'axis', help: 'The direction the cutting plane faces: X, Y or Z.', label: 'Plane normal', display: 'segmented', default: 'Z', options: [{ value: 'X', label: 'X' }, { value: 'Y', label: 'Y' }, { value: 'Z', label: 'Z' }] },
-      { type: 'number', key: 'offset', help: 'Where the cutting plane sits along that axis, in mm.', label: 'Offset', unit: 'mm', step: 1, default: 0 },
-      { type: 'enum', key: 'keep', help: 'Which side of the plane to keep: the positive side, the negative side, or both as separate bodies.', label: 'Keep', display: 'select', default: 'above', options: [{ value: 'above', label: 'Positive side' }, { value: 'below', label: 'Negative side' }, { value: 'both', label: 'Both (split)' }] },
-    ],
-    // the arrow stands on the plane through the origin (offset 0), in the middle of the bodies, and carries the cutting plane with it
-    arrows(p, bodies) {
-      const e = extentOf(bodies)
-      if (!e) return []
-      const n = AXES[p.axis as string] ?? AXES.Z
-      const c: Vec3 = [(e[0][0] + e[1][0]) / 2, (e[0][1] + e[1][1]) / 2, (e[0][2] + e[1][2]) / 2]
-      return [{ origin: [c[0] * (1 - n[0]), c[1] * (1 - n[1]), c[2] * (1 - n[2])], dir: n, key: 'offset' }]
-    },
-    async run(k, p, b, ids) {
-      return (await k.call('meshPlaneCut', { id: ids.id, name: b.name, key: b.key, normal: AXES[p.axis as string] ?? AXES.Z, offset: p.offset as number, keep: p.keep, otherId: ids.otherId })) as Body[]
-    },
-  },
-  {
-    type: 'meshReduce', label: 'Reduce', icon: Funnel, command: 'mesh.reduce',
-    params: [{ type: 'number', key: 'tolerance', help: 'How close two points must be to count as the same point when repairing holes and gaps, in mm.', label: 'Tolerance', unit: 'mm', min: 0.0001, step: 0.01, default: 0.05 }],
-    async run(k, p, b, ids) { return [asBody(await k.call('meshReduce', { id: ids.id, name: b.name, key: b.key, tolerance: p.tolerance }))] },
-  },
-  {
-    type: 'meshRefine', label: 'Refine', icon: GridFour, command: 'mesh.remesh',
-    params: [{ type: 'number', key: 'length', help: 'Triangles with edges longer than this are split until none are, in mm. Smaller gives a finer mesh (and a heavier file).', label: 'Max edge length', unit: 'mm', min: 0.01, step: 0.5, default: 2 }],
-    async run(k, p, b, ids) { return [asBody(await k.call('meshRefine', { id: ids.id, name: b.name, key: b.key, length: p.length }))] },
-  },
+  // Plane Cut, Reduce and Remesh live in features/mesh/tools.ts
   {
     type: 'meshSmooth', label: 'Smooth', icon: Waves, command: 'mesh.smooth',
     params: [
@@ -76,8 +48,8 @@ const TOOLS: BodyTool[] = [
     async run(k, p, b, ids) { return [((await k.call('meshRepair', { id: ids.id, name: b.name, key: b.key, tolerance: p.tolerance })) as RepairResult).body] },
   },
   {
-    type: 'meshConvert', label: 'Convert to Mesh', icon: Cube, command: 'mesh.convert', brepOnly: true, params: [],
-    async run(k, _p, b, ids) { return [asBody(await k.call('meshConvert', { id: ids.id, name: b.name, key: b.key }))] },
+    type: 'meshConvert', label: 'Convert to Mesh', icon: Cube, command: 'mesh.convert', brepOnly: true, params: refinementParams(),
+    async run(k, p, b, ids) { const r = refinement(p); return [asBody(await k.call('meshConvert', { id: ids.id, name: b.name, key: b.key, tol: r.tol, ang: r.ang }))] },
   },
 ]
 

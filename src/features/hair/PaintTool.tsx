@@ -2,7 +2,8 @@
 import { useEffect, useMemo } from 'react'
 import { useThree } from '@react-three/fiber'
 import { BufferAttribute, BufferGeometry, DoubleSide, Raycaster, Vector2, type Mesh } from 'three'
-import { Cursor, HandPointing, PaintBrush, PaintBucket, Trash } from '@phosphor-icons/react'
+import { Cursor, HandPointing, PaintBrush, PaintBucket, SelectionPlus, SelectionSlash, Trash } from '@phosphor-icons/react'
+import { growSelection, shrinkSelection } from '@/features/mesh/select'
 import { useDoc } from '@/doc/store'
 import { Tip } from '@/ui/Tooltip'
 import { applyTris, brushTris, clearSelection, commitSelection, floodTris, selectedIndices, setPaint, useHairPaint, type PaintMode } from './paint'
@@ -148,6 +149,16 @@ export function HairPaintBar() {
             deg
             <input type="number" min={1} max={180} value={angle} onChange={(e) => setPaint({ angle: Math.max(1, Math.min(180, +e.target.value || 30)) })} />
           </label></Tip>
+        )}
+        {kind !== 'brep' && (
+          <>
+            <Tip label="Grow" desc="Add the ring of triangles around the selection." side="bottom">
+              <button type="button" aria-label="Grow selection" disabled={!sel.size} onClick={growSelection}><SelectionPlus size={14} /> Grow</button>
+            </Tip>
+            <Tip label="Shrink" desc="Take the outer ring of triangles off the selection." side="bottom">
+              <button type="button" aria-label="Shrink selection" disabled={!sel.size} onClick={shrinkSelection}><SelectionSlash size={14} /> Shrink</button>
+            </Tip>
+          </>
         )}
         <span className="hair-count">{sel.size ? `${sel.size.toLocaleString()} ${kind === 'brep' ? 'faces' : 'tris'}` : 'Nothing selected'}</span>
         <Tip label="Clear" desc="Forget the painted surface and start again." side="bottom">

@@ -8,6 +8,7 @@ import { ViewCube } from './ViewCube'
 import { MarkingMenu } from '@/ui/MarkingMenu'
 import { SketchHud } from '@/sketch/SketchHud'
 import { HairPaintBar } from '@/features/hair/PaintTool'
+import { MeshStatsCard } from '@/features/mesh/stats'
 import { useHairPaint } from '@/features/hair/paint'
 import { PrintHud } from '@/features/print/PrintHud'
 import { DrawingWorkspace } from '@/drawing/DrawingWorkspace'
@@ -40,6 +41,7 @@ export function Viewport() {
       <ViewCube />
       <SketchHud />
       <HairPaintBar />
+      <MeshStatsCard />
       <PrintHud />
       <RenderHud />
       <DrawingWorkspace />

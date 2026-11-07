@@ -8,6 +8,7 @@ import '@/doc/engine'
 import '@/features/basic'
 import '@/features/solids'
 import '@/features/meshTools'
+import '@/features/mesh/register'
 import '@/features/offsetPlane'
 import '@/features/detail/register'
 import '@/features/print/register'
@@ -28,7 +29,7 @@ import { startSection } from '@/features/section'
 import { startHair, toggleHairPreview } from '@/features/hair'
 import { createFeature } from '@/doc/editor'
 import { useDoc } from '@/doc/store'
-import { exportDialog, importDialog, newDocument, openDocument, saveDocument } from '@/io/actions'
+import { exportDialog, importDialog, insertMeshDialog, newDocument, openDocument, saveDocument } from '@/io/actions'
 import { useParamsDialog } from '@/ui/DocUi'
 import { useUi } from '@/store/ui'
 import '@/features/modeling-tools/register'
@@ -51,7 +52,7 @@ override('file.open', () => void openDocument())
 override('file.save', () => void saveDocument(false))
 override('file.import', () => void importDialog())
 override('file.export', () => exportDialog())
-override('mesh.import', () => void importDialog())
+override('mesh.import', () => void insertMeshDialog())
 override('edit.undo', () => useDoc.getState().undo())
 override('edit.redo', () => useDoc.getState().redo())
 /** Solid tools are unavailable while a sketch is open (finish it first). */
