@@ -145,6 +145,11 @@ describe('section', () => {
     expect(l[0].closed).toBe(true)
     expect(Math.max(...l[0].points.map((p) => p[0]))).toBeCloseTo(40, 4)
   })
+  it('a plane through the vertices of the mesh still closes the outline', () => {
+    const l = sectionLoops(box(4), [0, 0, 1], 10)
+    expect(l.length).toBe(1)
+    expect(l[0].closed).toBe(true)
+  })
   it('a tilted plane works', () => {
     expect(sectionLoops(box(2), [1, 0, 1], 25).length).toBe(1)
   })

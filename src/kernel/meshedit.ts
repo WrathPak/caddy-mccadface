@@ -729,39 +729,45 @@ export function statsOf(topo: TopoMesh): MeshStats {
   const p = topo.positions, ix = topo.indices
   const nv = p.length / 3
   const T = ix.length / 3
-  const dir = new Map<number, number>() // undirected key -> bit0: a->b seen, bit1: b->a seen, count in high bits
-  const count = new Map<number, number>()
-  let flipped = 0
-  const parent = Int32Array.from({ length: nv }, (_, i) => i)
+  const parent = new Int32Array(nv)
+  for (let i = 0; i < nv; i++) parent[i] = i
   const find = (x: number): number => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x] } return x }
   let vol = 0, area = 0
   const lo: V3 = [Infinity, Infinity, Infinity], hi: V3 = [-Infinity, -Infinity, -Infinity]
   for (let i = 0; i < p.length; i += 3) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], p[i + k]); hi[k] = Math.max(hi[k], p[i + k]) }
   const used = new Uint8Array(nv)
+  // every edge use as one number: (smaller * nv + larger) * 2 + 1 when it runs from the larger to the smaller vertex; sorted, equal edges sit together
+  const keys = new Float64Array(T * 3)
   for (let t = 0; t < T; t++) {
-    const v = [ix[t * 3], ix[t * 3 + 1], ix[t * 3 + 2]]
+    const v0 = ix[t * 3], v1 = ix[t * 3 + 1], v2 = ix[t * 3 + 2]
+    const vs = [v0, v1, v2]
     for (let e = 0; e < 3; e++) {
-      const a = v[e], b = v[(e + 1) % 3]
+      const a = vs[e], b = vs[(e + 1) % 3]
       used[a] = 1
-      const key = a < b ? a * nv + b : b * nv + a
-      const bit = a < b ? 1 : 2
-      const cur = dir.get(key) ?? 0
-      if (cur & bit) flipped++
-      dir.set(key, cur | bit)
-      count.set(key, (count.get(key) ?? 0) + 1)
+      keys[t * 3 + e] = (a < b ? a * nv + b : b * nv + a) * 2 + (a < b ? 0 : 1)
       const ra = find(a), rb = find(b)
       if (ra !== rb) parent[ra] = rb
     }
-    const A = [p[v[0] * 3], p[v[0] * 3 + 1], p[v[0] * 3 + 2]] as V3, B = [p[v[1] * 3], p[v[1] * 3 + 1], p[v[1] * 3 + 2]] as V3, C = [p[v[2] * 3], p[v[2] * 3 + 1], p[v[2] * 3 + 2]] as V3
+    const A = [p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2]] as V3, B = [p[v1 * 3], p[v1 * 3 + 1], p[v1 * 3 + 2]] as V3, C = [p[v2 * 3], p[v2 * 3 + 1], p[v2 * 3 + 2]] as V3
     vol += dot(A, cross(B, C)) / 6
     area += len(cross(sub(B, A), sub(C, A))) / 2
   }
-  let open = 0, nm = 0
-  for (const n of count.values()) { if (n === 1) open++; else if (n > 2) nm++ }
-  const roots = new Set<number>()
-  for (let v = 0; v < nv; v++) if (used[v]) roots.add(find(v))
+  keys.sort()
+  let open = 0, nm = 0, flipped = 0
+  for (let i = 0; i < keys.length;) {
+    const edge = Math.floor(keys[i] / 2)
+    let j = i, dirs = 0
+    while (j < keys.length && Math.floor(keys[j] / 2) === edge) { dirs |= keys[j] % 2 === 0 ? 1 : 2; j++ }
+    const n = j - i
+    if (n === 1) open++
+    else if (n > 2) nm++
+    else if (dirs !== 3) flipped++
+    i = j
+  }
+  let shells = 0
+  for (let v = 0; v < nv; v++) if (used[v] && find(v) === v) shells++
   return {
-    triangles: T, vertices: nv, openEdges: open, nonManifoldEdges: nm, flippedEdges: flipped, shells: roots.size, volume: vol, area,
+    triangles: T, vertices: nv, openEdges: open, nonManifoldEdges: nm, flippedEdges: flipped, shells, volume: vol, area,
     manifold: open === 0 && nm === 0 && flipped === 0, bounds: { min: lo, max: hi },
   }
 }
@@ -780,7 +786,9 @@ export function sectionLoops(topo: TopoMesh, n: V3, d: number): { points: V3[]; 
   const sgn = (x: number) => (x > eps ? 1 : -1)
   const segs: [number, number][] = []
   const crossing = new Map<string, number>()
+  const byPlace = new Map<string, number>()
   const pts3: V3[] = []
+  // a crossing is shared by the triangles of its edge; crossings that land on the same place (the plane passes through a vertex) are one point
   const at = (a: number, b: number): number => {
     const k = a < b ? a + '_' + b : b + '_' + a
     let id = crossing.get(k)
@@ -788,8 +796,10 @@ export function sectionLoops(topo: TopoMesh, n: V3, d: number): { points: V3[]; 
       const [x, y] = a < b ? [a, b] : [b, a]
       const da = dist(x), db = dist(y)
       const t = da / (da - db)
-      id = pts3.length
-      pts3.push([p[x * 3] + (p[y * 3] - p[x * 3]) * t, p[x * 3 + 1] + (p[y * 3 + 1] - p[x * 3 + 1]) * t, p[x * 3 + 2] + (p[y * 3 + 2] - p[x * 3 + 2]) * t])
+      const pt: V3 = [p[x * 3] + (p[y * 3] - p[x * 3]) * t, p[x * 3 + 1] + (p[y * 3 + 1] - p[x * 3 + 1]) * t, p[x * 3 + 2] + (p[y * 3 + 2] - p[x * 3 + 2]) * t]
+      const place = `${Math.round(pt[0] * 1e5)},${Math.round(pt[1] * 1e5)},${Math.round(pt[2] * 1e5)}`
+      id = byPlace.get(place)
+      if (id === undefined) { id = pts3.length; pts3.push(pt); byPlace.set(place, id) }
       crossing.set(k, id)
     }
     return id
@@ -800,7 +810,7 @@ export function sectionLoops(topo: TopoMesh, n: V3, d: number): { points: V3[]; 
     if (s[0] === s[1] && s[1] === s[2]) continue
     const pts: number[] = []
     for (let e = 0; e < 3; e++) { const a = v[e], b = v[(e + 1) % 3]; if (sgn(dist(a)) !== sgn(dist(b))) pts.push(at(a, b)) }
-    if (pts.length === 2) segs.push([pts[0], pts[1]])
+    if (pts.length === 2 && pts[0] !== pts[1]) segs.push([pts[0], pts[1]])
   }
   const ends = new Map<number, number[]>()
   segs.forEach((s, i) => { for (const e of s) { const l = ends.get(e); if (l) l.push(i); else ends.set(e, [i]) } })
