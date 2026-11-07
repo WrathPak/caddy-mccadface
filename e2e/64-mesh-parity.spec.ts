@@ -74,15 +74,13 @@ test('3MF round trip: export a mesh as 3MF, insert that file, same volume', asyn
 })
 
 // Fusion: Insert Mesh takes OBJ as well as STL and 3MF.
-test.fail('Insert Mesh takes an OBJ file', async ({ app }) => {
-  // GAP: OBJ is not a known type: the import says "Unsupported file type"
+test('Insert Mesh takes an OBJ file', async ({ app }) => {
   await app.open()
   await importStl(app, writeObj('box', boxTris(40, 30, 20)), 1, 8000)
 })
 
 // Fusion: Insert Mesh asks for the units of the file (mm, cm, in, m) and lets you place it.
-test.fail('Insert Mesh asks for units and a position before it inserts', async ({ app }) => {
-  // GAP: the file goes straight in at scale 1 and at its own coordinates; the only unit control is the Scale number in the timeline step afterwards
+test('Insert Mesh asks for units and a position before it inserts', async ({ app }) => {
   await app.open()
   await app.tab('Mesh')
   const [chooser] = await Promise.all([app.page.waitForEvent('filechooser'), app.ribbon('Import Mesh').first().click()])
@@ -102,8 +100,7 @@ test('Insert Mesh: the Scale in the timeline step resizes it (an inch model: 25.
 })
 
 // Fusion: Insert Mesh puts the model on the origin (or lets you pick the point); a scan that sits at x = 300 comes in beside the origin.
-test.fail('Insert Mesh can put the model on the origin', async ({ app }) => {
-  // GAP: no placement, no "centre on origin": a model made far from the origin stays there until the user moves it
+test('Insert Mesh can put the model on the origin', async ({ app }) => {
   await app.open()
   await importStl(app, writeStl('far', boxTris(40, 30, 20, [300, 200, 0], 1)))
   await editChip(app, 0)
@@ -121,8 +118,7 @@ test('Convert to Mesh (Tessellate): a solid becomes a mesh body of the same volu
 })
 
 // Fusion: Tessellate has a Refinement setting (coarse, medium, fine, custom surface deviation and angle).
-test.fail('Convert to Mesh has a refinement setting', async ({ app }) => {
-  // GAP: no options at all, the tessellation is whatever the display uses
+test('Convert to Mesh has a refinement setting', async ({ app }) => {
   await app.open()
   await seedBox(app, 40, 30, 20)
   expect(await dialogOf(app, 'Convert to Mesh')).toMatch(/Refinement|Deviation|Tolerance|Quality/)
@@ -141,15 +137,13 @@ test('Face groups: the Face split angle in the Insert step regroups the faces of
 })
 
 // Fusion: Generate Face Groups (Fast / Accurate) as a command on the mesh.
-test.fail('Generate Face Groups is a Mesh tab command (Fast, Accurate, with a threshold)', async ({ app }) => {
-  // GAP: face groups are a crease angle at insert time and cannot be redone on a mesh made by Reduce, Smooth or Plane Cut
+test('Generate Face Groups is a Mesh tab command (Fast, Accurate, with a threshold)', async ({ app }) => {
   await app.open()
   expect(await meshEntries(app)).toMatch(/Face Groups/)
 })
 
 // Fusion: Combine Face Groups, Separate Face Groups.
-test.fail('Combine Face Groups and Separate Face Groups are Mesh tab commands', async ({ app }) => {
-  // GAP: no face group editing at all
+test('Combine Face Groups and Separate Face Groups are Mesh tab commands', async ({ app }) => {
   await app.open()
   expect(await meshEntries(app)).toMatch(/Combine Face Groups|Separate Face Groups/)
 })
@@ -252,8 +246,7 @@ test('Refine (Remesh): long edges are split, the shape does not change', async (
 })
 
 // Fusion: Remesh has Type (Adaptive / Uniform), Density, Preserve sharp edges and boundaries, and it also makes a mesh coarser.
-test.fail('Remesh has Uniform, Adaptive and Density types', async ({ app }) => {
-  // GAP: Refine only splits edges longer than a length (a box face of two triangles into hundreds), it never merges or re-triangulates, and has no sharp edge setting
+test('Remesh has Uniform, Adaptive and Density types', async ({ app }) => {
   await app.open()
   await importStl(app, box(1))
   expect(await dialogOf(app, /Refine|Remesh/)).toMatch(/Type|Uniform|Adaptive|Density|sharp/i)
@@ -275,8 +268,7 @@ test('Reduce by tolerance: a sphere of 4000 triangles becomes about a quarter, w
 })
 
 // Fusion: Reduce has Reduce Type Tolerance / Proportion / Face count, Preserve Boundaries, Preserve Sharp Edges.
-test.fail('Reduce to a face count or a proportion (50 percent)', async ({ app }) => {
-  // GAP: tolerance only (and its help text describes welding, not the error allowed); a user wanting "half the triangles" has to guess a tolerance
+test('Reduce to a face count or a proportion (50 percent)', async ({ app }) => {
   await app.open()
   await importStl(app, writeStl('sph', sphereTris(20, 64, 32)))
   expect(await dialogOf(app, 'Reduce')).toMatch(/Proportion|Face count|Percent|Target/i)
@@ -322,8 +314,7 @@ test('Plane Cut: the preview shows the cut before OK and Escape leaves the body 
 })
 
 // Fusion: Plane Cut takes any plane: an origin plane, a construction plane or a face, with an offset and an angle.
-test.fail('Plane Cut can cut along a picked face or a tilted plane', async ({ app }) => {
-  // GAP: only X, Y or Z through the origin plus an offset: a part that is not square to the axes (a scan on the bed at an angle) cannot be cut along its own face
+test('Plane Cut can cut along a picked face or a tilted plane', async ({ app }) => {
   await app.open()
   await importStl(app, box())
   const c = (await dialogOf(app, 'Plane Cut')).replace(/Plane normal/g, '')
@@ -331,8 +322,7 @@ test.fail('Plane Cut can cut along a picked face or a tilted plane', async ({ ap
 })
 
 // Fusion: Fill Type None / Uniform / Minimal.
-test.fail('Plane Cut has a Fill Type (None, Uniform, Minimal)', async ({ app }) => {
-  // GAP: the cut is always capped flat; leaving it open (to hollow a model or to keep the inside visible) is not possible
+test('Plane Cut has a Fill Type (None, Uniform, Minimal)', async ({ app }) => {
   await app.open()
   await importStl(app, box())
   expect(await dialogOf(app, 'Plane Cut')).toMatch(/Fill/)
@@ -433,15 +423,12 @@ test('Delete on a selected mesh face removes the face (Fusion: Delete Faces open
   expect((await meshStats(app)).open).toBeGreaterThan(0)
 })
 
-test.fail('Erase And Fill is a Mesh tab command (remove selected faces and fill the gap)', async ({ app }) => {
-  // GAP: nothing selects part of a mesh and rebuilds it, so a blemish or a mounting boss cannot be taken off a scan
+test('Erase And Fill is a Mesh tab command (remove selected faces and fill the gap)', async ({ app }) => {
   await app.open()
   expect(await meshEntries(app)).toMatch(/Erase|Fill/)
 })
 
 test('Direct edit: Press/Pull on a mesh face moves the face group (Fusion: Direct editing of face groups)', async ({ app }) => {
-  // GAP: Press/Pull and Move on a face of a mesh do nothing; only whole bodies move
-  test.fail()
   await app.open()
   await importStl(app, box())
   await clickWorld(app, [20, 15, 20])
@@ -496,8 +483,7 @@ test('Scale (uniform) on a mesh: Move > Scale 0.5 halves it', async ({ app }) =>
 })
 
 // Fusion: Scale has Uniform and Non-Uniform (a separate factor per axis).
-test.fail('Scale can be non-uniform (a different factor in X, Y and Z)', async ({ app }) => {
-  // GAP: one number; stretching a model 5 percent in one direction to fit a part means a Move step per... there is no way
+test('Scale can be non-uniform (a different factor in X, Y and Z)', async ({ app }) => {
   await app.open()
   await importStl(app, box())
   await app.page.locator('.tree-row', { hasText: /box4/ }).first().click()
@@ -549,8 +535,7 @@ test('Selection: the Browser row of a mesh body picks the body', async ({ app })
 })
 
 // Fusion: Select by brush, Grow, Shrink and "select by angle" on a mesh.
-test.fail('Selection: paint (brush), Grow and Shrink selection on a mesh', async ({ app }) => {
-  // GAP: faces only as the crease angle made them; picking a worn patch of a scan (a few hundred triangles) is not possible, and Delete / Smooth / Shell have no selection to work on anyway
+test('Selection: paint (brush), Grow and Shrink selection on a mesh', async ({ app }) => {
   await app.open()
   expect(await meshEntries(app)).toMatch(/Brush|Paint|Grow|Shrink/i)
 })
@@ -582,8 +567,7 @@ test('Section Analysis on a mesh: the plane opens and can be set to z = 10', asy
 })
 
 // Fusion: Mesh Section Sketch makes a sketch from the cut outline of a mesh on a plane, to extrude or measure from.
-test.fail('Mesh Section Sketch is a Mesh tab command', async ({ app }) => {
-  // GAP: the section view is only a picture; the outline of a scan cannot become a sketch to build a B-rep part from (a bracket that fits a scanned mount)
+test('Mesh Section Sketch is a Mesh tab command', async ({ app }) => {
   await app.open()
   expect(await meshEntries(app)).toMatch(/Section Sketch/)
 })
@@ -603,8 +587,7 @@ test('Status bar: Tris is shown for the mesh', async ({ app }) => {
 })
 
 // Fusion: the Mesh properties show triangles, open edges and whether the mesh is closed/manifold, so you know it is ready to print.
-test.fail('Mesh stats: open edges, non-manifold edges and volume of the mesh are shown', async ({ app }) => {
-  // GAP: only the triangle count of the whole scene; "is this closed?" can be answered only by running Repair or a Boolean and reading the error ("Not manifold")
+test('Mesh stats: open edges, non-manifold edges and volume of the mesh are shown', async ({ app }) => {
   await app.open()
   await importStl(app, writeStl('hole', without(boxTris(40, 30, 20, [0, 0, 0], 4), [40, 41])))
   await app.page.locator('.tree-row', { hasText: /hole/ }).first().click()
@@ -626,8 +609,7 @@ test('Export STL of a mesh body downloads a .stl with the triangles', async ({ a
 })
 
 // Fusion: export as OBJ too, with refinement for solids.
-test.fail('Export offers OBJ and a mesh refinement', async ({ app }) => {
-  // GAP: STL, 3MF and STEP only, no Refinement (coarse to fine) for the solids that are tessellated on the way out
+test('Export offers OBJ and a mesh refinement', async ({ app }) => {
   await app.open()
   await importStl(app, box())
   await app.ribbon('Export').first().click()

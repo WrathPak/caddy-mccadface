@@ -1,4 +1,5 @@
 /** Direct edits: Press/Pull, Offset Face, Delete Face, Replace Face, Split Face, Split Body and Draft. */
+import { regionFrame, trisOfFaces } from '@/features/mesh/frame'
 import { ArrowsOutLineVertical, Eraser, Knife, PushPin, Scissors, SplitVertical, TrendDown, ArrowsVertical } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { createFeature } from '@/doc/editor'
@@ -118,6 +119,14 @@ const distanceParam: NumberParam = { type: 'number', key: 'distance', help: 'How
 async function offsetFaces(p: ParamValues, env: BuildEnv, report: RefReport): Promise<Built> {
   const bodies: Body[] = []
   for (const g of byBody(p.faces as string[], env, report)) {
+    if (g.body.kind === 'mesh') {
+      // a face group of a mesh moves along its normal, the triangles around it stretch (Mesh tab > Move Face Group)
+      const tris = trisOfFaces(g.body, g.faces.map((f) => f.index))
+      const f = regionFrame(g.body, tris)
+      const d = p.distance as number
+      bodies.push(await call<Body>(env, 'meshTranslateFaces', { id: g.body.id, name: g.body.name, key: g.body.key, tris: [...tris], delta: [f.normal[0] * d, f.normal[1] * d, f.normal[2] * d] }))
+      continue
+    }
     if (g.body.kind !== 'brep' || g.body.surface) throw new Error('Offset Face needs a solid body' + (g.body.surface ? ': for a surface use Offset Surface' : ', not a mesh'))
     bodies.push(await call<Body>(env, 'offsetFaces', { id: g.body.id, name: g.body.name, key: g.body.key, faces: g.faces, distance: p.distance as number, fid: env.fid }))
   }
