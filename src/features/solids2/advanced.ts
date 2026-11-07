@@ -23,19 +23,21 @@ const num = (p: ParamValues, k: string, d = 0) => (typeof p[k] === 'number' ? (p
 
 export const sweepExtraParams: ParamDef[] = [
   { type: 'selection-ref', key: 'guide', help: 'An optional second sketch curve that steers the profile: the profile turns so it follows this guide rail along the path.', label: 'Guide rail', accepts: ['sketch'], pick: true, default: [] },
-  { type: 'enum', key: 'orientation', help: 'Perpendicular: the profile stays square to the path as it bends. Parallel: the profile keeps the direction it started in and just slides along the path.', label: 'Orientation', display: 'segmented', default: 'perpendicular', options: [{ value: 'perpendicular', label: 'Perpendicular' }, { value: 'parallel', label: 'Parallel' }], visibleWhen: (v) => !((v.guide as string[] | undefined)?.length) },
+  { type: 'enum', key: 'orientation', help: 'Perpendicular: the profile stays square to the path as it bends. Parallel: the profile keeps the direction it started in and just slides along the path.', label: 'Orientation', display: 'segmented', default: 'perpendicular', options: [{ value: 'perpendicular', label: 'Perpendicular' }, { value: 'parallel', label: 'Parallel' }], visibleWhen: (v) => guideRefs(v).length === 0 },
   { type: 'number', key: 'taper', help: 'Makes the profile shrink (positive) or grow (negative) along the path by this angle, scaling about the middle of the profile. A circle tapers exactly by this angle; other shapes taper in proportion.', label: 'Taper angle', unit: 'deg', min: -45, max: 45, step: 0.5, default: 0 },
-  { type: 'number', key: 'twist', help: 'Turns the profile this many degrees about the path from start to end.', label: 'Twist angle', unit: 'deg', step: 5, default: 0, visibleWhen: (v) => !((v.guide as string[] | undefined)?.length) },
+  { type: 'number', key: 'twist', help: 'Turns the profile this many degrees about the path from start to end.', label: 'Twist angle', unit: 'deg', step: 5, default: 0, visibleWhen: (v) => guideRefs(v).length === 0 },
 ]
 
-export const sweepIsAdvanced = (p: ParamValues) => !!((p.guide as string[] | undefined)?.length) || num(p, 'taper') !== 0 || num(p, 'twist') !== 0 || p.orientation === 'parallel'
+/** The guide rail sketch; a click on the path that lands in the (empty) guide field must not turn the path into its own guide. */
+const guideRefs = (p: ParamValues) => ((p.guide as string[] | undefined) ?? []).filter((g) => !((p.path as string[] | undefined) ?? []).includes(g))
+export const sweepIsAdvanced = (p: ParamValues) => guideRefs(p).length > 0 || num(p, 'taper') !== 0 || num(p, 'twist') !== 0 || p.orientation === 'parallel'
 
 export async function sweepAdvanced(kernel: Kernel, p: ParamValues, env: Env, groups: ProfileGroup[], path: PathSeg[], id: string, name: string): Promise<Body> {
-  const guideRefs = (p.guide as string[] | undefined) ?? []
+  const guides = guideRefs(p)
   const args: SweepAdvArgs = {
     id, name, groups, path,
     orientation: p.orientation === 'parallel' ? 'parallel' : 'perpendicular', taper: num(p, 'taper'), twist: num(p, 'twist'),
-    ...(guideRefs.length ? { guide: sketchPath(sketchDataOf(guideRefs, env, 'guide rail')) } : {}),
+    ...(guides.length ? { guide: sketchPath(sketchDataOf(guides, env, 'guide rail')) } : {}),
   }
   return (await kernel.call('sweepAdv', args)) as Body
 }
@@ -156,7 +158,7 @@ export const edgeExtraParams = (mode: 'fillet' | 'chamfer'): ParamDef[] => mode 
     { type: 'enum', key: 'rule', help: 'Rule fillet: which edges are rounded besides the ones you picked. Selected edges: just those. Edges of the faces: every edge of the faces the picked edges lie on. All convex / concave / all: every outside / inside / any sharp edge of the body.', label: 'Rule', display: 'select', default: 'selected', options: [{ value: 'selected', label: 'Selected edges' }, { value: 'faceEdges', label: 'All edges of their faces' }, { value: 'convex', label: 'All convex edges' }, { value: 'concave', label: 'All concave edges' }, { value: 'all', label: 'All edges' }] },
   ]
   : [
-    { type: 'enum', key: 'chamferType', help: 'Equal distance: the same distance on both faces. Two distances: a different distance on each face. Distance and angle: a distance on one face and the angle of the bevel from it.', label: 'Chamfer type', display: 'select', default: 'equal', options: [{ value: 'equal', label: 'Equal distance' }, { value: 'twoDist', label: 'Two distances' }, { value: 'distAngle', label: 'Distance and angle' }] },
+    { type: 'enum', key: 'chamferType', help: 'Equal distance: the same distance on both faces. Two distances: a different distance on each face. Distance and angle: a distance on one face and the angle of the bevel from it.', label: 'Chamfer type', display: 'segmented', default: 'equal', options: [{ value: 'equal', label: 'Equal distance' }, { value: 'twoDist', label: 'Two distances' }, { value: 'distAngle', label: 'Distance and angle' }] },
     { type: 'number', key: 'dist2', help: 'The distance on the other face, in mm.', label: 'Distance 2', unit: 'mm', min: 0.001, step: 0.25, default: 1, visibleWhen: (v) => v.chamferType === 'twoDist' },
     { type: 'number', key: 'angle', help: 'The angle the bevel makes with the first face, in degrees.', label: 'Angle', unit: 'deg', min: 1, max: 89, step: 1, default: 45, visibleWhen: (v) => v.chamferType === 'distAngle' },
     { type: 'bool', key: 'flipFace', help: 'Measure the first distance on the other face of the edge.', label: 'Flip side', default: false, visibleWhen: (v) => v.chamferType === 'twoDist' || v.chamferType === 'distAngle' },
