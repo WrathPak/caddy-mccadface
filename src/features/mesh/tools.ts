@@ -76,9 +76,9 @@ const reduce: MeshTool = {
 // ================================================================================================ Remesh
 
 const remesh: MeshTool = {
-  type: 'meshRefine', label: 'Remesh', icon: GridFour, command: 'mesh.remesh',
+  type: 'meshRefine', label: 'Refine', icon: GridFour, command: 'mesh.remesh',
   schema: {
-    id: 'meshRefine', title: 'Remesh',
+    id: 'meshRefine', title: 'Refine',
     params: [
       bodiesParam,
       {

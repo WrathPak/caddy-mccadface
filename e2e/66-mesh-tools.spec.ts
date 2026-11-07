@@ -292,17 +292,16 @@ test('Mesh Section Sketch: the outline of a box becomes four lines you can extru
   expect(f).toBeTruthy()
   const model = JSON.parse(f.params.sketch).model
   expect(model.entities.filter((e: { type: string }) => e.type === 'line')).toHaveLength(4)
+  // Extrude takes the profile of the new sketch, like it does after a sketch drawn by hand
   await app.tab('Solid')
   await app.ribbon('Extrude').click()
-  await app.page.locator('.tree-row', { hasText: /Section Sketch/ }).first().click()
-  await app.inspector().locator('.field', { hasText: 'Profile' }).getByRole('button', { name: 'Use selection' }).click().catch(() => {})
   await app.field('Distance', '10')
   await app.inspector().locator('.field', { hasText: 'Operation' }).locator('.sel').click()
   await app.page.getByRole('option', { name: 'New body' }).click()
   await app.ok()
   const bodies = await app.bodies()
   const brep = bodies.find((b) => b.kind === 'brep')!
-  expect(brep).toBeTruthy()
+  expect(brep, JSON.stringify(await featStates(app))).toBeTruthy()
   relNear(await app.volume(brep.id), 12000, 0.002)
 })
 
