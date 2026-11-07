@@ -380,7 +380,9 @@ registerFeature({
       // a closed hollow (a whole body, no faces yet) leaves the original faint and pickable, so a face can still be clicked to open the shell instead
       const ids = out.map((b) => b.id.replace('preview-', ''))
       const closed = !((p.faces as string[]) ?? []).length
-      setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), closed ? [] : ids, closed ? ids : [])
+      // (Individual thickness also leaves the original faint and pickable: its faces are clicked while the preview is up)
+      const keep = closed || !!p.individual
+      setPreview(out.map((b) => ({ mesh: b.mesh, kind: 'result' as const })), keep ? [] : ids, keep ? ids : [])
     })
     runner.schedule()
     return {

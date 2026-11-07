@@ -305,9 +305,11 @@ test('Shell: a flat face given its own thickness', async ({ app }) => {
   await app.field('Thickness', '2')
   relNear(await totalVol(app), 24000, 1e-9) // nothing applied yet: a preview only
   await toggle(app, 'Individual thickness')
-  await app.inspector().locator('.field', { hasText: 'Faces with own thickness' }).click()
-  await clickWorld(app, [30, 0, 5])
-  await expect.poll(async () => ((await dlg(app)).thickFaces as string[]).length).toBe(1)
+  await expect(async () => {
+    await app.inspector().locator('.field', { has: app.page.locator('.field-label', { hasText: /^Faces with own thickness/ }) }).first().click()
+    await clickWorld(app, [30, 0, 5])
+    await expect.poll(async () => ((await dlg(app)).thickFaces as string[]).length, { timeout: 4000 }).toBe(1)
+  }).toPass({ timeout: 25000 })
   await app.field('Face thickness', '5')
   await app.ok()
   // cavity 56 x (36 - 3) x 8
@@ -346,7 +348,7 @@ test('Move: Create copy leaves the original where it is', async ({ app }) => {
   await app.vec('Translate', 0, '30')
   await app.ok()
   const bodies = await app.bodies()
-  expect(bodies.length).toBe(2)
+  expect(bodies.length, JSON.stringify(await app.features())).toBe(2)
   const boxes = await app.ev((c) => c.doc.getState().geometry.map((b: any) => Math.round((Math.min(...b.mesh.positions.filter((_: number, i: number) => i % 3 === 0)) + Math.max(...b.mesh.positions.filter((_: number, i: number) => i % 3 === 0))) / 2))) // eslint-disable-line
   expect(boxes.sort((a: number, b: number) => a - b)).toEqual([0, 30])
 })
