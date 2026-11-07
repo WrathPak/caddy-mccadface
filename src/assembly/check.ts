@@ -30,7 +30,7 @@ export async function runInterference(occs: string[] = []): Promise<Interference
   const a = useDoc.getState().assembly
   const scope = occs.length ? new Set(occs.flatMap((o) => subtree(a, o))) : null
   const inScope = (i: Instance) => !scope || [...scope].some((o) => i.path.split('/').includes(o))
-  const items = (occs.length > 1 ? all.filter(inScope) : all).map((i) => ({ id: i.key, key: i.body.key, matrix: i.world, group: i.occ }))
+  const items = (occs.length > 1 ? all.filter(inScope) : all).map((i) => ({ id: i.key, key: i.body.key, matrix: i.world, group: i.occ || 'body:' + i.body.id }))
   const focus = occs.length === 1 ? all.filter(inScope).map((i) => i.key) : undefined
   const out = (await getKernel().call('assemblyInterference', { items, focus })) as { hits: (Omit<InterferenceHit, 'a' | 'b'> & { a: string; b: string })[]; checked: number }
   const byKey = new Map(all.map((i) => [i.key, i]))

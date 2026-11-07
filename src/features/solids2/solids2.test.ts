@@ -17,6 +17,9 @@ describe('revolve to an object', () => {
     near(angleToPlane([10, 0, 0], [0, 0, 0], [0, 0, 1], [0, 0, 0], [1, 1, 0])!, 135)
     // the plane y = 5 is met at asin(5/10) = 30 degrees
     near(angleToPlane([10, 0, 0], [0, 0, 0], [0, 0, 1], [0, 5, 0], [0, 1, 0])!, 30, 1e-6)
+    // tangent contact: the plane y = 10 from a point 10 out, from either side
+    near(angleToPlane([10, 0, 0], [0, 0, 0], [0, 0, 1], [0, 10, 10], [0, -1, 0])!, 90, 1e-3)
+    near(angleToPlane([10, 0, 0], [0, 0, 0], [0, 0, 1], [0, 10, 10], [0, 1, 0])!, 90, 1e-3)
     // a plane the point never reaches
     expect(angleToPlane([10, 0, 0], [0, 0, 0], [0, 0, 1], [0, 50, 0], [0, 1, 0])).toBeNull()
     // already on the plane y = 0: the next time round, not zero

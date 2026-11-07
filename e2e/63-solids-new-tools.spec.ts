@@ -351,20 +351,74 @@ test('Move: Create copy leaves the original where it is', async ({ app }) => {
   expect(boxes.sort((a: number, b: number) => a - b)).toEqual([0, 30])
 })
 
-test('Move: translate along an axis and rotate about an axis through the origin (by feature values)', async ({ app }) => {
+/** Centre of a body's bounding box, from its mesh. */
+const centreOf = async (app: App, i: number) => {
+  const id: string = await app.ev((c, i) => c.doc.getState().geometry[i].id, i)
+  const b = await app.bbox(id)
+  return b.min.map((m, k) => (m + b.max[k]) / 2)
+}
+const bounds = async (app: App, i: number) => app.bbox(await app.ev((c, i) => c.doc.getState().geometry[i].id, i))
+const near = (a: number, b: number, tol = 0.1) => expect(Math.abs(a - b), `${a} vs ${b}`).toBeLessThan(tol)
+const pickType = async (app: App, label: string, option: string) => {
+  await app.inspector().locator('.field', { hasText: label }).locator('.sel').first().click()
+  await app.page.getByRole('option', { name: option }).click()
+}
+/** Click into a pick field, click the world point, wait until the field holds one entry. */
+async function pickInto(app: App, label: string, key: string, at: [number, number, number]) {
+  await app.inspector().locator('.field', { has: app.page.locator('.field-label', { hasText: new RegExp('^' + label) }) }).first().click()
+  await clickWorld(app, at)
+  await expect.poll(async () => ((await dlg(app))[key] as string[]).length).toBe(1)
+}
+async function twoBoxes(app: App) {
+  await seedBox(app, 10, 10, 10, [0, 0, 0])
+  await seedBox(app, 10, 10, 10, [40, 0, 0])
+}
+
+test('Move: point to point carries a corner of one box onto a corner of the other', async ({ app }) => {
   await app.open()
-  await seedBox(app, 10, 10, 10, [30, 0, 0])
-  const id: string = await app.ev((c) => c.doc.getState().geometry[0].id)
-  await app.ev((c, id) => c.doc.getState().addFeature('move', { bodyIds: [id], moveType: 'rotate', axisRef: ['axisZ'], axisAngle: 90 }), id)
-  await app.idle()
-  let bb = await app.bbox()
-  expect(Math.abs((bb.min[1] + bb.max[1]) / 2 - 30)).toBeLessThan(0.1)
-  expect(Math.abs((bb.min[0] + bb.max[0]) / 2)).toBeLessThan(0.1)
-  await app.ev((c, id) => c.doc.getState().addFeature('move', { bodyIds: [id], moveType: 'axis', axisRef: ['axisX'], distance: 25 }), id)
-  await app.idle()
-  bb = await app.bbox()
-  expect(Math.abs((bb.min[0] + bb.max[0]) / 2 - 25)).toBeLessThan(0.1)
-  expect((await app.features()).every((f) => f.state === 'ok')).toBe(true)
+  await twoBoxes(app)
+  await app.ribbon('Move').first().click()
+  await app.page.locator('.tree-row', { hasText: 'Box1' }).first().click()
+  await expect.poll(async () => ((await dlg(app)).bodyIds as string[]).length).toBe(1)
+  await pickType(app, 'Move type', 'Point to point')
+  await pickInto(app, 'From point', 'fromPt', [5, -5, 10])
+  await pickInto(app, 'To point', 'toPt', [45, -5, 10])
+  await app.ok()
+  // the corner (5, -5, 10) lands on (45, -5, 10): the box moves 40 along X
+  const c0 = await centreOf(app, 0)
+  near(c0[0], 40); near(c0[1], 0); near(c0[2], 5)
+})
+
+test('Move: rotate about the vertical edge of the other box, 90 degrees', async ({ app }) => {
+  await app.open()
+  await twoBoxes(app)
+  await app.ribbon('Move').first().click()
+  await app.page.locator('.tree-row', { hasText: 'Box2' }).first().click()
+  await expect.poll(async () => ((await dlg(app)).bodyIds as string[]).length).toBe(1)
+  await pickType(app, 'Move type', 'Rotate about axis')
+  await pickInto(app, 'Axis', 'axisRef', [45, 5, 5]) // the vertical edge at x = 45, y = 5
+  await app.field('Angle', '90')
+  await app.ok()
+  // box 2 centred (40, 0) turns 90 degrees about (45, 5): its centre goes to (50, 0)
+  const c = await centreOf(app, 1)
+  near(c[0], 50); near(c[1], 0); near(c[2], 5)
+  const b = await bounds(app, 1)
+  near(b.max[0] - b.min[0], 10); near(b.max[2] - b.min[2], 10)
+})
+
+test('Move: translate along an edge as the axis', async ({ app }) => {
+  await app.open()
+  await twoBoxes(app)
+  await app.ribbon('Move').first().click()
+  await app.page.locator('.tree-row', { hasText: 'Box2' }).first().click()
+  await expect.poll(async () => ((await dlg(app)).bodyIds as string[]).length).toBe(1)
+  await pickType(app, 'Move type', 'Translate along axis')
+  await pickInto(app, 'Axis', 'axisRef', [40, -5, 10]) // the top front edge, along X
+  await app.field('Distance', '25')
+  await app.ok()
+  const c = await centreOf(app, 1)
+  // an edge has no preferred direction: 25 mm along X, whichever way the edge was drawn
+  near(Math.abs(c[0] - 40), 25); near(c[1], 0); near(c[2], 5)
 })
 
 test('Scale: uniform about the middle, non-uniform gives a mesh body', async ({ app }) => {
@@ -385,27 +439,39 @@ test('Scale: uniform about the middle, non-uniform gives a mesh body', async ({ 
   expect(bodies[0].kind).toBe('mesh')
 })
 
-test('Align: a box lands face to face on another', async ({ app }) => {
+test('Align: the top face of one box goes coplanar with the top face of another, with an offset', async ({ app }) => {
   await app.open()
   await seedBox(app, 10, 10, 10, [0, 0, 0])
-  await seedBox(app, 10, 10, 10, [40, 0, 0])
-  const ids: string[] = await app.ev((c) => c.doc.getState().geometry.map((b: any) => b.id)) // eslint-disable-line
-  // faces by their index in the first body: the +X face of box 1 onto the -X face of box 2 is already touching after a move of 30; start from far away
-  await app.ev((c, ids) => c.doc.getState().addFeature('move', { bodyIds: [ids[0]], translate: [-20, 5, 3] }), ids)
-  await app.idle()
+  await seedBox(app, 10, 10, 10, [40, 6, 2])
   await menu(app, 'Move', 'Align')
-  // the Bodies field takes box 1, then the From face is clicked on it and the To face on box 2
   await app.page.locator('.tree-row', { hasText: 'Box1' }).first().click()
   await expect.poll(async () => ((await dlg(app)).bodyIds as string[]).length).toBe(1)
-  await app.inspector().locator('.field', { hasText: 'From' }).first().click()
-  await app.ev((c) => c.ui.getState().setSelectionFilter('face'))
-  await clickWorld(app, [-15, 5, 8])
-  await app.inspector().locator('.field', { hasText: /^To/ }).first().click()
-  await clickWorld(app, [35, 0, 5])
-  await expect.poll(async () => ((await dlg(app)).toRef as string[]).length).toBe(1)
+  await pickInto(app, 'From', 'fromRef', [0, 0, 10])
+  await pickInto(app, 'To', 'toRef', [40, 6, 12])
+  await toggle(app, 'Flip') // faces pointing the same way: coplanar instead of face to face
+  await app.field('Offset', '3')
+  await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBeGreaterThan(0)
   await app.ok()
   expect((await lastFeature(app)).state).toBe('ok')
-  expect((await featTypes(app)).at(-1)).toBe('align')
+  // the 10 mm cube's top at 12 + 3 along the To normal, centred over box 2 in X and Y
+  const b = await bounds(app, 0)
+  near(b.max[2], 15); near(b.min[2], 5)
+  near((b.min[0] + b.max[0]) / 2, 40); near((b.min[1] + b.max[1]) / 2, 6)
+})
+
+test('Align: without Flip the faces meet face to face', async ({ app }) => {
+  await app.open()
+  await seedBox(app, 10, 10, 10, [0, 0, 0])
+  await seedBox(app, 10, 10, 10, [40, 6, 2])
+  await menu(app, 'Move', 'Align')
+  await app.page.locator('.tree-row', { hasText: 'Box1' }).first().click()
+  await expect.poll(async () => ((await dlg(app)).bodyIds as string[]).length).toBe(1)
+  await pickInto(app, 'From', 'fromRef', [0, 0, 10])
+  await pickInto(app, 'To', 'toRef', [40, 6, 12])
+  await app.ok()
+  // top onto top, touching: box 1 turns over and sits on box 2
+  const b = await bounds(app, 0)
+  near(b.min[2], 12); near(b.max[2], 22)
 })
 
 test('Physical Material: steel gives Measure a mass and a center of gravity', async ({ app }) => {
@@ -424,4 +490,59 @@ test('Physical Material: steel gives Measure a mass and a center of gravity', as
   await expect.poll(() => app.inspector().innerText()).toMatch(/Mass\s+16\.2 g/)
   expect(await app.inspector().innerText()).toMatch(/Aluminium/)
   expect(await app.inspector().innerText()).toMatch(/Center of gravity\s+0, 0, 15 mm/)
+})
+
+test('Revolve: To object stops at an origin plane picked in the viewport', async ({ app }) => {
+  await app.open()
+  await addSketch(app, XZ, [{ k: 'rect', x0: 0, y0: 0, x1: 10, y1: 30 }])
+  await seedBox(app, 20, 20, 20, [0, 40, 0]) // out of the way: it only widens the view so the plane can be clicked clear of the part
+  await settle(app)
+  const before = await totalVol(app)
+  await app.ribbon('Revolve').first().click()
+  await expect.poll(async () => ((await dlg(app)).profiles as string[]).length).toBe(1)
+  await seg(app, 'To object')
+  await pickInto(app, 'To object', 'toFace', [0, -20, 20])
+  expect((await dlg(app)).toFace).toEqual(['planeYZ'])
+  await expect.poll(() => app.ev((c) => c.preview.getState().items.length)).toBe(1)
+  await app.ok()
+  expect((await lastFeature(app)).state).toBe('ok')
+  // the profile (on +X) turns until it reaches the plane x = 0: a quarter turn
+  relNear((await totalVol(app)) - before, (Math.PI * 100 * 30) / 4, 0.02)
+})
+
+test('Revolve: To object stops at the flat face of another body', async ({ app }) => {
+  await app.open()
+  await addSketch(app, XZ, [{ k: 'rect', x0: 0, y0: 0, x1: 10, y1: 30 }])
+  await seedBox(app, 100, 100, 30, [-60, 0, 0]) // its +X face is the plane x = -10
+  await settle(app)
+  const before = await totalVol(app)
+  await app.ribbon('Revolve').first().click()
+  await expect.poll(async () => ((await dlg(app)).profiles as string[]).length).toBe(1)
+  await seg(app, 'To object')
+  // a click on that face lands on the XZ origin plane drawn over the part (planes win the pick), so the face is selected through the selection store the click feeds
+  await app.inspector().locator('.field', { has: app.page.locator('.field-label', { hasText: /^To object/ }) }).first().click()
+  await app.ev((c) => {
+    const b = c.doc.getState().geometry.find((g: any) => g.name === 'Box1') // eslint-disable-line
+    const P = b.mesh.positions, I = b.mesh.indices, F = b.mesh.faceIds
+    for (let t = 0; t < I.length / 3; t++) {
+      const x = [0, 1, 2].map((k) => P[I[t * 3 + k] * 3])
+      if (x.every((v: number) => Math.abs(v + 10) < 1e-3)) return c.ui.getState().setSelection([{ kind: 'face', id: b.id, index: F[t] }])
+    }
+  })
+  await expect.poll(async () => ((await dlg(app)).toFace as string[]).length).toBe(1)
+  expect(((await dlg(app)).toFace as string[])[0]).toContain('"kind":"face"')
+  await app.ok()
+  expect((await lastFeature(app)).state).toBe('ok')
+  // the profile on +X turns half way round to reach x = -10 (a tangent touch): half a revolution
+  relNear((await totalVol(app)) - before, (Math.PI * 100 * 30) / 2, 0.02)
+})
+
+test('Interference: two overlapping plain bodies, from the Solid tab, report the overlap volume', async ({ app }) => {
+  await app.open()
+  await seedBox(app, 20, 20, 20, [0, 0, 0])
+  await seedBox(app, 20, 20, 20, [10, 0, 0])
+  await app.ribbon('Interference').first().click()
+  await expect.poll(() => app.ev((c) => c.assembly.rt.getState().interference?.hits?.length ?? 0)).toBe(1)
+  const v: number = await app.ev((c) => c.assembly.rt.getState().interference.hits[0].volume)
+  expect(Math.abs(v - 4000)).toBeLessThan(40)
 })
