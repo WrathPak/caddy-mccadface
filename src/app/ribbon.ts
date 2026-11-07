@@ -65,11 +65,12 @@ export const RIBBON_TABS: RibbonTab[] = [
     id: 'mesh',
     label: 'Mesh',
     groups: [
-      { label: 'Create', items: [{ cmd: 'mesh.import' }, { cmd: 'mesh.convert', menu: ['mesh.convert', 'mesh.toBrep'] }, { cmd: 'mesh.sectionSketch' }] },
+      { label: 'Create', items: [{ cmd: 'mesh.import' }, { cmd: 'mesh.convert' }, { cmd: 'mesh.sectionSketch' }] },
       {
         label: 'Prepare',
         items: [
-          { cmd: 'mesh.repair', menu: ['mesh.repair', 'mesh.makeClosed', 'mesh.reverse'] },
+          { cmd: 'mesh.repair' },
+          { stack: ['mesh.makeClosed', 'mesh.reverse'] },
           { stack: ['mesh.reduce', 'mesh.remesh'] },
           { cmd: 'mesh.faceGroups', menu: ['mesh.generateGroups', 'mesh.combineGroups', 'mesh.separateGroups'] },
         ],
@@ -80,6 +81,7 @@ export const RIBBON_TABS: RibbonTab[] = [
           { cmd: 'mesh.planeCut' },
           { cmd: 'mesh.smooth' },
           { cmd: 'solid.shell' },
+          { cmd: 'mesh.toBrep' },
           { cmd: 'mesh.deleteFaces', menu: ['mesh.deleteFaces', 'mesh.eraseFill'] },
           { cmd: 'mesh.moveFaces' },
           { cmd: 'solid.move' },
