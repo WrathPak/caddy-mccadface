@@ -80,6 +80,17 @@ export const GUIDES: Guide[] = [
         steps: [
           'Sweep: draw a profile and a separate path curve on different sketches. Click Sweep, pick the profile, then the path.',
           'Loft: draw two or more profiles on different planes (use Offset Plane to make planes). Click Loft and pick them in order. Turn on Ruled for straight, angular transitions.',
+          'Sweep also takes an Orientation, a Taper angle, a Twist angle and a Guide rail. Loft takes Guide rails, a Center line and start and end conditions.',
+        ],
+      },
+      {
+        id: 'shapes',
+        title: 'Rib, Web, Sphere, Torus, Coil and Pipe',
+        steps: [
+          'Rib and Web: draw a line inside a hollow part, click Rib (or Web) in the Create group, set the thickness. The wall grows from the line up to the faces it meets.',
+          'Sphere and Torus sit in the same menu as Box and Cylinder. Type the radii.',
+          'Coil winds a spring: set two of revolutions, height and pitch, and pick a round, square or triangular wire.',
+          'Pipe follows a sketch path with a round, square or triangular section. Turn on Hollow and set a wall for a tube.',
         ],
       },
       {
@@ -88,7 +99,8 @@ export const GUIDES: Guide[] = [
         steps: [
           'Fillet: click Fillet, click the edges to round (or a face for all its edges), set the radius.',
           'Chamfer: the same, but it cuts a flat bevel instead of a round.',
-          'Shell: click Shell, pick the faces that should be open, set the wall thickness. The rest of the part is hollowed out.',
+          'Shell: click Shell, pick the faces that should be open, set the wall thickness. The rest of the part is hollowed out. Individual thickness gives chosen flat faces a wall of their own.',
+          'Fillet can also be Variable (a radius at each end) or by Chord length, with a corner Setback and a Rule that rounds more edges. Chamfer can use Two distances or a Distance and angle.',
         ],
         note: 'Rounds and bevels are best added late. If you add them early, the steps after them can break when you change the shape.',
       },
@@ -113,7 +125,7 @@ export const GUIDES: Guide[] = [
         id: 'measure',
         title: 'Measure and Section',
         steps: [
-          'Measure (I): click two things to see the distance or angle between them.',
+          'Measure (I): click two things to see the distance or angle between them. Click a body to see its volume, mass and center of gravity; give it a material first with Physical Material in the Modify group.',
           'Section Analysis: slice the view with a plane to look inside. It only changes the view.',
         ],
       },
@@ -611,6 +623,15 @@ export const FEATURE_GUIDE: Record<string, { guide: string; section: string }> =
   // solid
   box: { guide: 'solid', section: 'flow' },
   cylinder: { guide: 'solid', section: 'flow' },
+  rib: { guide: 'solid', section: 'shapes' },
+  web: { guide: 'solid', section: 'shapes' },
+  sphere: { guide: 'solid', section: 'shapes' },
+  torus: { guide: 'solid', section: 'shapes' },
+  coil: { guide: 'solid', section: 'shapes' },
+  pipe: { guide: 'solid', section: 'shapes' },
+  align: { guide: 'solid', section: 'combine' },
+  scale: { guide: 'solid', section: 'combine' },
+  material: { guide: 'solid', section: 'measure' },
   sketch: { guide: 'sketch', section: 'flow' },
   extrude: { guide: 'solid', section: 'extrude' },
   revolve: { guide: 'solid', section: 'revolve' },

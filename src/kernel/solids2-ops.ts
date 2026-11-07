@@ -594,6 +594,15 @@ registerOp<RibArgs>('ribTool', (a, h) => {
   }
   const picked = a.depth > 0 && a.depth < diag * 2 ? solids : solids.filter((s) => seeds.some((p) => holds(s, p)))
   if (!picked.length) throw new Error('The rib has nothing to grow into. Draw the line inside the empty space of the part (or against a face) and check the direction')
+  if (!(a.depth > 0 && a.depth < diag * 2)) {
+    // up to the next face: a piece that sticks out of the body's box never met one
+    const [blo, bhi] = boundsOfShape(body.shape)
+    const tol = 1e-4
+    for (const s of picked) {
+      const [lo, hi] = boundsOfShape(s)
+      if ([0, 1, 2].some((k) => lo[k] < blo[k] - tol || hi[k] > bhi[k] + tol)) throw new Error('The wall does not end on a face in that direction. Flip it, or give it a Distance')
+    }
+  }
   const topoRest = topoOf(rest.shape as unknown as AnyShape)
   const idx = indexer(topoRest.faces, topoRest.faceHashes)
   const parts: NShape[] = picked.map((s, i) => {

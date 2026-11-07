@@ -70,6 +70,12 @@ describe('advanced sweep', () => {
     expect(vol(tp)).toBeLessThan(100 * 40 * 0.85)
     expect(vol(tp)).toBeGreaterThan(100 * 40 * 0.4)
   })
+  it('a tapered circle is a cone frustum', async () => {
+    const g = [{ plane: XY, profiles: [{ outer: circ(0, 0, 5), holes: [] }] }]
+    const tp = await run('sweepAdv', { id: 's', name: 's', groups: g, path: straight, orientation: 'perpendicular', taper: 5, twist: 0 })
+    const r2 = 5 - 40 * Math.tan((5 * Math.PI) / 180)
+    near(vol(tp), (Math.PI * 40 * (25 + 5 * r2 + r2 * r2)) / 3, 0.02)
+  })
   it('parallel orientation along a curved path and a guide rail', async () => {
     const path: PathSeg[] = [{ k: 'a', a: [0, 0, 0], m: [2.9289, 0, 7.0711], b: [10, 0, 10] }]
     const g = [{ plane: XY, profiles: [{ outer: circ(0, 0, 2), holes: [] }] }]
@@ -122,9 +128,16 @@ describe('rib', () => {
     const out = await run('ribTool', { id: 'b', name: 'b', key: b.key, segs, normal: [0, 1, 0], thickness: 2, symmetric: true, direction: 'plane', flip: false, both: false, depth: 0, fid: 'f' })
     // a 56 wide rib from z=20 down to the floor at z=2, 2 thick
     near(vol(out) - base, 56 * 18 * 2, 0.01)
-    // the other way the cavity is open at the top: no face to stop at, so a depth is needed
+    // the other way the cavity is open at the top: no face to stop at
+    await expect(run('ribTool', { id: 'b', name: 'b', key: b.key, segs, normal: [0, 1, 0], thickness: 2, symmetric: true, direction: 'plane', flip: true, both: false, depth: 0, fid: 'f' })).rejects.toThrow(/does not end on a face/)
+    // so a depth is needed
     const up = await run('ribTool', { id: 'b', name: 'b', key: b.key, segs, normal: [0, 1, 0], thickness: 2, symmetric: true, direction: 'plane', flip: true, both: false, depth: 5, fid: 'f' })
     near(vol(up) - base, 56 * 5 * 2, 0.01)
+    // a web: grows out of the sketch plane (square to it) to the wall, thickness within the plane
+    const web = await run('ribTool', { id: 'b', name: 'b', key: b.key, segs, normal: [0, 1, 0], thickness: 2, symmetric: true, direction: 'normal', flip: false, both: false, depth: 0, fid: 'f' })
+    near(vol(web) - base, 56 * 28 * 2, 0.01)
+    const both = await run('ribTool', { id: 'b', name: 'b', key: b.key, segs, normal: [0, 1, 0], thickness: 2, symmetric: true, direction: 'normal', flip: false, both: true, depth: 0, fid: 'f' })
+    near(vol(both) - base, 56 * 56 * 2, 0.01)
   })
 })
 
