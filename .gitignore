@@ -10,3 +10,6 @@ playwright-report/
 *.tsbuildinfo
 .claude/
 dist-e2e
+
+# slicer engine and profiles, fetched by scripts/fetch-slicer.mjs
+public/slicer/

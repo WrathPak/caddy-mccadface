@@ -64,6 +64,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2,wasm}'],
+        // the slicer engine is big and only fetched when slicing: the http cache keeps it, not the precache
+        globIgnores: ['slicer/**'],
         maximumFileSizeToCacheInBytes: 64 * 1024 * 1024,
         // the new worker waits, and the old one keeps serving its own precache (lazy chunks too) until the person switches
         skipWaiting: false,

@@ -46,3 +46,6 @@ RIBBON_TABS.splice(at < 0 ? RIBBON_TABS.length : at, 0, {
     { label: 'Prepare', items: [{ cmd: 'print.split' }, { cmd: 'print.hollow' }] },
   ],
 })
+
+// spike: the slicer engine, reachable from the e2e specs as window.__slicerSpike (dev and e2e builds only, nothing in a release)
+if (import.meta.env.DEV || import.meta.env.VITE_E2E === '1') void import('./engine/spike')

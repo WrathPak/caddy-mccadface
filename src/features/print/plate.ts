@@ -68,7 +68,11 @@ function uniqueNames(names: string[]): string[] {
   })
 }
 
-export interface BuiltPlate { bytes: Uint8Array; fileName: string; count: number; fits: boolean; colors: number; settings: PrintSettings }
+export interface BuiltPlate {
+  bytes: Uint8Array; fileName: string; count: number; fits: boolean; colors: number; settings: PrintSettings
+  /** the objects and where each sits on the plate: what the 3MF was written from, for a slicer engine to take directly */
+  plan: { objects: PlateObject[]; placements: Placement[] }
+}
 
 /** The visible bodies as a Bambu / Orca 3MF. Throws a readable error when there is nothing to print. */
 /**
@@ -118,5 +122,5 @@ export async function buildPlate(): Promise<BuiltPlate> {
   const plan = planPlate(items, settings)
   const bytes = writeBambu3mf(plan.objects, plan.placements, settings)
   const safe = (d.name || 'Untitled').replace(/[\\/:*?"<>|]+/g, '_')
-  return { bytes, fileName: `${safe}.3mf`, count: items.length, fits: plan.fits, colors: slotsNeeded(plan.objects), settings }
+  return { bytes, fileName: `${safe}.3mf`, count: items.length, fits: plan.fits, colors: slotsNeeded(plan.objects), settings, plan }
 }
