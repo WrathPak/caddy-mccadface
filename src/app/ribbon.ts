@@ -65,10 +65,33 @@ export const RIBBON_TABS: RibbonTab[] = [
     id: 'mesh',
     label: 'Mesh',
     groups: [
-      { label: 'Import', items: [{ cmd: 'mesh.import' }] },
-      { label: 'Modify', items: [{ cmd: 'mesh.remesh' }, { cmd: 'mesh.smooth' }, { cmd: 'mesh.reduce' }, { cmd: 'mesh.planeCut' }] },
-      { label: 'Prepare', items: [{ cmd: 'mesh.repair' }, { cmd: 'mesh.convert' }] },
-      { label: 'Inspect', items: [{ cmd: 'inspect.measure' }, { cmd: 'inspect.section' }] },
+      { label: 'Create', items: [{ cmd: 'mesh.import' }, { cmd: 'mesh.convert' }, { cmd: 'mesh.sectionSketch' }] },
+      {
+        label: 'Prepare',
+        items: [
+          { cmd: 'mesh.repair' },
+          { stack: ['mesh.makeClosed', 'mesh.reverse'] },
+          { stack: ['mesh.reduce', 'mesh.remesh'] },
+          { cmd: 'mesh.faceGroups', menu: ['mesh.generateGroups', 'mesh.combineGroups', 'mesh.separateGroups'] },
+        ],
+      },
+      {
+        label: 'Modify',
+        items: [
+          { cmd: 'mesh.planeCut' },
+          { cmd: 'mesh.smooth' },
+          { cmd: 'solid.shell' },
+          { cmd: 'mesh.toBrep' },
+          { cmd: 'mesh.deleteFaces', menu: ['mesh.deleteFaces', 'mesh.eraseFill'] },
+          { cmd: 'mesh.moveFaces' },
+          { cmd: 'solid.move' },
+        ],
+      },
+      { label: 'Assemble', items: [{ cmd: 'solid.combine', menu: ['solid.join', 'solid.cut', 'solid.intersect'] }] },
+      { label: 'Construct', items: [{ cmd: 'construct.plane' }] },
+      { label: 'Inspect', items: [{ stack: ['inspect.measure', 'inspect.section', 'mesh.stats'] }] },
+      { label: 'Select', items: [{ cmd: 'mesh.brush' }, { stack: ['mesh.grow', 'mesh.shrink'] }] },
+      { label: 'Export', items: [{ cmd: 'file.export' }] },
     ],
   },
   {

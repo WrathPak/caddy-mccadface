@@ -247,7 +247,9 @@ function extrudePreview({ values, setValues }: PreviewCtx): PreviewHandle {
 
   const off = watchSelection(['face'], () => {
     if (ui.getState().pickKinds.length) return // To object / Start object is taking the picks
-    const faces = encodeSelection(ui.getState().selection.filter((r) => r.kind === 'face'), useDoc.getState().geometry)
+    const geo = useDoc.getState().geometry
+    // faces of a mesh are never profiles: they are the thing a cut goes into
+    const faces = encodeSelection(ui.getState().selection.filter((r) => r.kind === 'face' && geo.find((b) => b.id === r.id)?.kind !== 'mesh'), geo)
     cur = { ...cur, profiles: [...(cur.profiles as string[]).filter((s) => s.startsWith('prof:')), ...faces] }
     setValues(cur)
   })
@@ -292,7 +294,7 @@ export function startExtrude() {
   const ui = useUi.getState()
   const doc = useDoc.getState()
   const profiles: string[] = []
-  const faces = ui.selection.filter((r) => r.kind === 'face')
+  const faces = ui.selection.filter((r) => r.kind === 'face' && doc.geometry.find((b) => b.id === r.id)?.kind !== 'mesh')
   if (faces.length) profiles.push(...encodeSelection(faces, doc.geometry))
   const data = useSketchData.getState().data
   const visible = doc.features.filter((f, i) => f.type === 'sketch' && i < doc.rollback && !f.suppressed && data[f.id])

@@ -18,12 +18,16 @@ import { useSettings } from '@/settings/settings'
 import { parseProject } from './projectParse'
 import { write3mf } from './threemf'
 import { writeStl } from './stl'
+import { writeObj } from './obj'
+import { openInsertDialog } from '@/features/mesh/insert'
+import { refinement, refinementParams } from '@/features/mesh/refine'
 import { assemblyObjects, exportAssemblyStep, mergePlaced } from '@/assembly/exportAssembly'
 import { assembledInstances } from '@/assembly/check'
 import { persistExternalHandles, restoreExternals, setExternalHost } from '@/assembly/external'
 import { within } from '@/assembly/instances'
 import type { ParamSchema } from '@/ui/schema'
 
+type ExportFormat = 'stl' | '3mf' | 'obj' | 'step'
 let handle: FileHandleLike | null = null
 const baseName = (n: string) => n.replace(/\.[^.]+$/, '')
 /** STL and 3MF describe solids; an open surface has no inside, so it is left out with a note (STEP keeps surfaces as they are). */
@@ -118,7 +122,8 @@ export async function saveDocument(asNew = false, note?: string) {
 }
 
 // ---------------- import
-export async function importFiles(files: File[]) {
+/** `dialog`: the Mesh tab's Insert Mesh, which opens the Insert dialog (units, placement) on each mesh once it is in. */
+export async function importFiles(files: File[], opts: { dialog?: boolean } = {}) {
   for (const f of files) {
     const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase()
     try {
@@ -129,10 +134,15 @@ export async function importFiles(files: File[]) {
         loadProject(bytes)
         handle = null
         useDoc.setState({ name: baseName(f.name) })
-      } else if (ext === '.stl' || ext === '.3mf') {
+      } else if (ext === '.stl' || ext === '.3mf' || ext === '.obj') {
         rememberSource(bytes, f)
         const blob = d.addBlob(bytes)
-        d.addFeature('importMesh', { blob, format: ext.slice(1), fileName: f.name, scale: 1 }, baseName(f.name))
+        const id = d.addFeature('importMesh', { blob, format: ext.slice(1), fileName: f.name, scale: 1 }, baseName(f.name))
+        if (opts.dialog) {
+          await frameWhenReady()
+          openInsertDialog(id)
+          continue
+        }
       } else if (ext === '.step' || ext === '.stp') {
         const blob = d.addBlob(bytes)
         d.addFeature('importStep', { blob, fileName: f.name }, baseName(f.name))
@@ -154,16 +164,23 @@ export async function importDialog() {
   if (files.length) await importFiles(files)
 }
 
+/** The Mesh tab's Insert Mesh: pick a file, then the Insert dialog (units, placement, scale) works on the mesh that is already in the document. */
+export async function insertMeshDialog() {
+  const files = await pickFiles(['.stl', '.3mf', '.obj'].join(','), true)
+  if (files.length) await importFiles(files, { dialog: true })
+}
+
 // ---------------- export
 export const exportSchema: ParamSchema = {
   id: 'export',
   title: 'Export',
   params: [
     {
-      type: 'enum', key: 'format', help: 'STL and 3MF are meshes for 3D printing (3MF keeps units and colours). STEP keeps exact curved surfaces for other CAD programs.', label: 'Format', display: 'segmented', default: 'stl',
-      options: [{ value: 'stl', label: 'STL' }, { value: '3mf', label: '3MF' }, { value: 'step', label: 'STEP' }],
+      type: 'enum', key: 'format', help: 'STL, 3MF and OBJ are meshes (3MF keeps units and colours, STL is what slicers expect, OBJ is for other 3D programs). STEP keeps exact curved surfaces for other CAD programs.', label: 'Format', display: 'segmented', default: 'stl',
+      options: [{ value: 'stl', label: 'STL' }, { value: '3mf', label: '3MF' }, { value: 'obj', label: 'OBJ' }, { value: 'step', label: 'STEP' }],
     },
     { type: 'enum', key: 'scope', help: 'Export only the selected bodies, or every visible body.', label: 'Bodies', display: 'segmented', default: 'all', options: [{ value: 'selection', label: 'Selection' }, { value: 'all', label: 'All visible' }] },
+    ...refinementParams((v) => v.format !== 'step'),
     { type: 'enum', key: 'configs', help: 'The model as it is now, or one file per configuration (sizes) of the document.', label: 'Configurations', display: 'segmented', default: 'active', options: [{ value: 'active', label: 'Current' }, { value: 'all', label: 'Every configuration' }], visibleWhen: () => useDoc.getState().configs.length > 0 },
   ],
 }
@@ -179,21 +196,22 @@ export function exportDialog() {
     onCancel: close,
     onOk: (v) => {
       close()
-      if (v.configs === 'all' && useDoc.getState().configs.length) void exportAllConfigs(v.format as 'stl' | '3mf' | 'step', v.scope as 'selection' | 'all')
-      else void exportBodies(v.format as 'stl' | '3mf' | 'step', v.scope as 'selection' | 'all')
+      const refine = v.format === 'step' ? undefined : refinement(v)
+      if (v.configs === 'all' && useDoc.getState().configs.length) void exportAllConfigs(v.format as ExportFormat, v.scope as 'selection' | 'all', refine)
+      else void exportBodies(v.format as ExportFormat, v.scope as 'selection' | 'all', '', refine)
     },
   })
 }
 
 /** One file per configuration: each is switched on, rebuilt and exported; the document ends up as it was. */
-export async function exportAllConfigs(format: 'stl' | '3mf' | 'step', scope: 'selection' | 'all') {
+export async function exportAllConfigs(format: ExportFormat, scope: 'selection' | 'all', refine?: { tol: number; ang: number }) {
   const d = useDoc.getState()
   const keep = d.activeConfig
   try {
     for (const c of d.configs) {
       useDoc.getState().setActiveConfig(c.name)
       await regenerate()
-      await exportBodies(format, scope, '-' + c.name.replace(/[^\w.-]+/g, '_'))
+      await exportBodies(format, scope, '-' + c.name.replace(/[^\w.-]+/g, '_'), refine)
     }
   } finally {
     useDoc.getState().setActiveConfig(keep)
@@ -202,7 +220,7 @@ export async function exportAllConfigs(format: 'stl' | '3mf' | 'step', scope: 's
 }
 
 /** An assembly leaves as its structure: STEP products per component instance, 3MF objects per instance, STL as one placed mesh. */
-async function exportAssembly(format: 'stl' | '3mf' | 'step', scope: 'selection' | 'all', suffix: string) {
+async function exportAssembly(format: ExportFormat, scope: 'selection' | 'all', suffix: string, refine?: { tol: number; ang: number }) {
   const s = useDoc.getState()
   const ui = useUi.getState()
   const name = (s.name || 'Untitled') + suffix
@@ -216,20 +234,21 @@ async function exportAssembly(format: 'stl' | '3mf' | 'step', scope: 'selection'
     }
     const sel = ui.selection
     const keep = scope === 'selection' && sel.length ? (i: { body: { id: string }; path: string }) => sel.some((r) => r.id === i.body.id || (r.path ? within(i.path, r.path) : false) || (r.kind === 'component' && within(i.path, r.id))) : undefined
-    const objects = await assemblyObjects(keep)
+    const objects = await assemblyObjects(keep, refine)
     const surfaces = assembledInstances().filter((i) => i.body.surface).length
     if (!objects.length) return toast(surfaces ? `Nothing to export. ${SURFACE_NOTE}` : 'Nothing to export', 'error')
     if (format === 'stl') downloadFile(`${name}.stl`, writeStl([mergePlaced(objects.map((o) => ({ ...o.mesh, matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] })))]), 'model/stl')
+    else if (format === 'obj') downloadFile(`${name}.obj`, writeObj(objects), 'model/obj')
     else downloadFile(`${name}.3mf`, write3mf(objects), 'model/3mf')
-    toast(`Exported ${objects.length} ${format === '3mf' ? (objects.length === 1 ? 'object' : 'objects') : 'objects as one mesh'} as ${format.toUpperCase()}${surfaces ? `. ${SURFACE_NOTE}` : ''}`)
+    toast(`Exported ${objects.length} ${format === '3mf' || format === 'obj' ? (objects.length === 1 ? 'object' : 'objects') : 'objects as one mesh'} as ${format.toUpperCase()}${surfaces ? `. ${SURFACE_NOTE}` : ''}`)
   } catch (e) {
     fail('Export failed', e)
   }
 }
 
-export async function exportBodies(format: 'stl' | '3mf' | 'step', scope: 'selection' | 'all', suffix = '') {
+export async function exportBodies(format: ExportFormat, scope: 'selection' | 'all', suffix = '', refine?: { tol: number; ang: number }) {
   const s = useDoc.getState()
-  if (s.assembly.occurrences.length) return exportAssembly(format, scope, suffix)
+  if (s.assembly.occurrences.length) return exportAssembly(format, scope, suffix, refine)
   const ui = useUi.getState()
   const selIds = new Set(ui.selection.map((r) => r.id))
   let bodies = s.geometry.filter((b) => !ui.hiddenIds[b.id])
@@ -246,8 +265,9 @@ export async function exportBodies(format: 'stl' | '3mf' | 'step', scope: 'selec
       const buf = await k.exportStep(bodies.map((b) => ({ key: b.key, name: label(b) })))
       downloadFile(`${name}.step`, buf, 'model/step')
     } else {
-      const meshes = await k.exportMeshes(bodies.map((b) => b.key))
+      const meshes = await k.exportMeshes(bodies.map((b) => b.key), refine)
       if (format === 'stl') downloadFile(`${name}.stl`, writeStl(meshes), 'model/stl')
+      else if (format === 'obj') downloadFile(`${name}.obj`, writeObj(meshes.map((mesh, i) => ({ name: label(bodies[i]), mesh }))), 'model/obj')
       else downloadFile(`${name}.3mf`, write3mf(meshes.map((mesh, i) => ({ name: label(bodies[i]), mesh }))), 'model/3mf')
     }
     toast(`Exported ${bodies.length} ${bodies.length === 1 ? 'body' : 'bodies'} as ${format.toUpperCase()}${surfaces ? `. ${SURFACE_NOTE}` : ''}`)

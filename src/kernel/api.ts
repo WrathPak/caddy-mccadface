@@ -3,8 +3,9 @@ import * as Comlink from 'comlink'
 import { box, initOcc, readStep, writeStep, type Shape } from './occ'
 import { initManifold, meshBoolean, type BoolOp } from './mesh'
 import { DEFAULT_CREASE_DEG, weld } from './meshutil'
+import { orientTopo } from './meshfix'
 import {
-  bodyFromShape, bodyFromTopo, gc, getBrep, getNamed, getOp, getStored, getTopo, helpers, putStored, requireSolids, sendBodies, sendBody,
+  bodyFromShape, bodyFromTopo, gc, getBrep, getNamed, getOp, getStored, getTopo, getTopoAt, helpers, putStored, requireSolids, sendBodies, sendBody,
 } from './store'
 import { boolNamed, boxNames, carryNames, type NShape } from './naming'
 import { composeTransform, type Body, type TopoMesh, type TransformSpec, type Vec3 } from './types'
@@ -35,7 +36,7 @@ export const api = {
   },
   /** Create a mesh body from raw triangles (welded here). Input buffers are consumed. */
   async createMesh(a: BodyMeta & { positions: Float32Array; indices?: Uint32Array; /** face-split dihedral angle in degrees */ creaseDeg?: number }): Promise<Body> {
-    return sendBody(bodyFromTopo(a.id, a.name, weld(a.positions, a.indices), a.creaseDeg))
+    return sendBody(bodyFromTopo(a.id, a.name, orientTopo(weld(a.positions, a.indices)).mesh, a.creaseDeg))
   },
   /**
    * Take ownership of a welded mesh that a compute-pool worker already parsed and built display data for. Returns the new
@@ -102,8 +103,8 @@ export const api = {
 
   // ---- export
   /** Welded triangle meshes for STL/3MF export. */
-  async exportMeshes(keys: string[]): Promise<TopoMesh[]> {
-    const out = keys.map(getTopo).map((t) => ({ positions: t.positions.slice(), indices: t.indices.slice() }))
+  async exportMeshes(keys: string[], refine?: { tol: number; ang: number }): Promise<TopoMesh[]> {
+    const out = keys.map((k) => (refine ? getTopoAt(k, refine.tol, refine.ang) : getTopo(k))).map((t) => ({ positions: t.positions.slice(), indices: t.indices.slice() }))
     return Comlink.transfer(out, out.flatMap((t) => [t.positions.buffer, t.indices.buffer]))
   },
   async exportStep(items: { key: string; name: string }[]): Promise<ArrayBuffer> {

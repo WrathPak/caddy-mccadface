@@ -24,8 +24,9 @@ export async function readFileBytes(file: File): Promise<Uint8Array> {
 }
 
 export interface MeshImportOptions {
-  format: 'stl' | '3mf'
+  format: 'stl' | '3mf' | 'obj'
   scale: number
+  place?: 'keep' | 'center' | 'ground'
   creaseDeg: number
   baseName: string
   /** id of the n-th body (feature id based) */
@@ -42,7 +43,7 @@ export async function importMeshPooled(source: Blob | Uint8Array, o: MeshImportO
 }
 
 async function importPooled(source: Blob | Uint8Array, o: MeshImportOptions): Promise<Body[]> {
-  const parts = await getComputePool().run((w) => w.importMesh({ source, format: o.format, scale: o.scale, creaseDeg: o.creaseDeg }))
+  const parts = await getComputePool().run((w) => w.importMesh({ source, format: o.format, scale: o.scale, creaseDeg: o.creaseDeg, place: o.place }))
   noteBodyBounds(parts.map((p) => ({ mesh: p.display })))
   const kernel = getKernel()
   return Promise.all(
