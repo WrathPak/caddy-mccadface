@@ -12,6 +12,9 @@ import './print.css'
 import { PreviewLegend, SlicePreviewHud, usePreviewOn } from './preview/PreviewHud'
 import { SliceCard } from './slice/SliceCard'
 import { SliceSheet } from './slice/SliceSheet'
+import { PrintersPanel } from './link/PrintersPanel'
+import { SendDialog } from './link/SendDialog'
+import { useLink } from './link/store'
 import { DEBUG_HANDLE } from '@/app/flags'
 
 const TITLES: Record<MapKind, string> = { overhang: 'Overhang map', thin: 'Thin walls', small: 'Small features' }
@@ -109,12 +112,14 @@ export function PrintHud() {
   useEffect(() => {
     // test handle: the stores
     const w = window as unknown as { __caddy?: Record<string, unknown> }
-    if (DEBUG_HANDLE && w.__caddy) w.__caddy.print = { view: usePrintView, drains: useDrains, showMap }
+    if (DEBUG_HANDLE && w.__caddy) w.__caddy.print = { view: usePrintView, drains: useDrains, showMap, link: useLink }
   }, [])
   return (
     <>
       <DrainBar />
       <SliceSheet />
+      <PrintersPanel />
+      <SendDialog />
       <div className="print-cards" data-previewing={previewing}>
         <PreviewLegend />
         <SliceCard compact={previewing} />

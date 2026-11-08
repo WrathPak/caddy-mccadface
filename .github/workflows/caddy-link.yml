@@ -1,0 +1,81 @@
+name: caddy-link
+
+# Builds the CADdy Link helper for every platform when a tag like caddy-link-v0.1.0 is pushed, and attaches the binaries to a release.
+# On pull requests that touch helper/, it only runs the Go checks.
+
+on:
+  push:
+    tags: ['caddy-link-v*']
+  pull_request:
+    paths: ['helper/**', '.github/workflows/caddy-link.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: helper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: helper/go.mod
+      - run: go vet ./...
+      - run: go test ./...
+
+  build:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/caddy-link-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - { goos: windows, goarch: amd64, ext: .exe }
+          - { goos: windows, goarch: arm64, ext: .exe }
+          - { goos: darwin, goarch: amd64, ext: '' }
+          - { goos: darwin, goarch: arm64, ext: '' }
+          - { goos: linux, goarch: amd64, ext: '' }
+          - { goos: linux, goarch: arm64, ext: '' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: helper/go.mod
+      - name: build
+        working-directory: helper
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          version="${GITHUB_REF_NAME#caddy-link-v}"
+          out="caddy-link-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          go build -trimpath -ldflags "-s -w -X main.version=${version}" -o "../dist/${out}" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: caddy-link-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: checksums
+        working-directory: dist
+        run: sha256sum caddy-link-* > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

@@ -1,6 +1,6 @@
 /** Print workspace: commands, ribbon tab and feature registration. The only hook into the shared code is the import of this file. */
 import {
-  ArrowsClockwise, Bug, Crosshair, DownloadSimple, Drop, Eye, FileArrowDown, Scissors, Tent, Waves, PaintBrush, PaintBucket, PaperPlaneTilt, Printer, Ruler, SplitVertical, Triangle,
+  ArrowsClockwise, Bug, Plugs, Crosshair, DownloadSimple, Drop, Eye, FileArrowDown, Scissors, Tent, Waves, PaintBrush, PaintBucket, PaperPlaneTilt, Printer, Ruler, SplitVertical, Triangle,
 } from '@phosphor-icons/react'
 import { RIBBON_TABS } from '@/app/ribbon'
 import { registerCommand } from '@/app/commands'
@@ -19,6 +19,7 @@ import { exportGcode } from './slice/exportGcode'
 import { runSlice } from './slice/run'
 import { showMap, usePrintView, type MapKind } from './view'
 import { togglePreview } from './preview/command'
+import { togglePrinters } from './link/client'
 
 /** Tools are unavailable while a sketch is open (finish it first). */
 const solid = (fn: () => void) => () => { if (!useSketch.getState().active) fn() }
@@ -28,6 +29,7 @@ const toggleMap = (kind: MapKind) => () => showMap(usePrintView.getState().kind 
 registerCommand({ id: 'print.settings', label: 'Print Settings', tip: 'Printer, presets and every Orca setting, per-body settings and filament colors', icon: Printer, category: 'Print', run: solid(openPrintSettings) })
 registerCommand({ id: 'print.slice', label: 'Slice', tip: 'Slice the plate here in the browser with the OrcaSlicer engine: print time, filament and layers', icon: Scissors, category: 'Print', run: solid(() => void runSlice()) })
 registerCommand({ id: 'print.exportGcode', label: 'Export G-code', tip: 'Save the sliced plate: a .gcode.3mf for Bambu printers, a .gcode for the others', icon: FileArrowDown, category: 'Print', run: () => void exportGcode() })
+registerCommand({ id: 'print.printers', label: 'Printers', tip: 'Your Bambu Lab printers on the network through CADdy Link: live status, AMS, pause and stop', icon: Plugs, category: 'Print', run: togglePrinters })
 registerCommand({ id: 'print.paintSupport', label: 'Paint Support', tip: 'Paint where support must be added (enforcer) or kept away (blocker)', icon: Tent, category: 'Print', run: solid(() => startPaint('faces', 'supports')) })
 registerCommand({ id: 'print.paintSeam', label: 'Paint Seam', tip: 'Paint where the layer seam should hide (enforcer) or stay away (blocker)', icon: Crosshair, category: 'Print', run: solid(() => startPaint('faces', 'seam')) })
 registerCommand({ id: 'print.paintFuzzy', label: 'Paint Fuzzy Skin', tip: 'Paint the faces that get a rough, fuzzy surface', icon: Waves, category: 'Print', run: solid(() => startPaint('faces', 'fuzzy')) })
@@ -49,7 +51,7 @@ RIBBON_TABS.splice(at < 0 ? RIBBON_TABS.length : at, 0, {
   id: 'print',
   label: 'Print',
   groups: [
-    { label: 'Slicer', items: [{ cmd: 'print.slice' }, { cmd: 'print.settings' }, { cmd: 'print.exportGcode' }, { cmd: 'print.sendBambu' }, { cmd: 'print.sendOrca' }, { cmd: 'print.export3mf' }, { cmd: 'print.preview' }] },
+    { label: 'Slicer', items: [{ cmd: 'print.slice' }, { cmd: 'print.settings' }, { cmd: 'print.exportGcode' }, { cmd: 'print.printers' }, { cmd: 'print.sendBambu' }, { cmd: 'print.sendOrca' }, { cmd: 'print.export3mf' }, { cmd: 'print.preview' }] },
     { label: 'Color', items: [{ cmd: 'print.paintBody' }, { cmd: 'print.paintFaces' }, { cmd: 'print.paintSupport' }, { cmd: 'print.paintSeam' }, { cmd: 'print.paintFuzzy' }] },
     { label: 'Analyze', items: [{ cmd: 'print.overhang' }, { cmd: 'print.thin' }, { cmd: 'print.small' }, { cmd: 'print.orient' }] },
     { label: 'Prepare', items: [{ cmd: 'print.split' }, { cmd: 'print.hollow' }] },
