@@ -262,4 +262,5 @@ registerProjectSection({
     return d.sheets.length ? { format: FORMAT, ...d } : null
   },
   load: parseSection,
+  watch: (fn) => useDrawing.subscribe((s, p) => { if (s.doc !== p.doc) fn() }),
 })

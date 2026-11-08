@@ -3,7 +3,7 @@
 import { PencilSimpleLine } from '@phosphor-icons/react'
 import { registerFeature } from '@/doc/registry'
 import { RefError, RefReport, decodeRef, faceSigs, resolveFace } from '@/doc/refs'
-import { useDoc } from '@/doc/store'
+import { setEditRollback, useDoc } from '@/doc/store'
 import { refreshDims } from '@/sketch/dims'
 import { reprojectModel } from '@/sketch/project'
 import { useSketchData } from '@/sketch/draw'
@@ -65,8 +65,9 @@ registerFeature({
     const idx = d.features.findIndex((f) => f.id === id)
     const prev = d.rollback
     d.setRollback(idx)
+    setEditRollback(prev)
     const st = parse(params.sketch)
     const plane = useSketchData.getState().data[id]?.plane ?? st.plane
-    void beginSketch({ plane, face: st.face, model: st.model, editing: id, onClose: () => useDoc.getState().setRollback(prev) })
+    void beginSketch({ plane, face: st.face, model: st.model, editing: id, onClose: () => { useDoc.getState().setRollback(prev); setEditRollback(null) } })
   },
 })

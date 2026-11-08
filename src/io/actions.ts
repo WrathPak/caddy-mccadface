@@ -14,6 +14,7 @@ import { readFileBytes, rememberSource } from './meshImport'
 import { hasContent, shouldAutosave, worthRecovering } from './autosave'
 import { readFolderCopy, tidyFolder, writeDiskCopy } from './diskAutosave'
 import { useProjects } from '@/projects/store'
+import { setSessionHooks, wasRestored } from './session'
 import { useSettings } from '@/settings/settings'
 import { parseProject } from './projectParse'
 import { write3mf } from './threemf'
@@ -99,6 +100,17 @@ async function openProjectBytes(bytes: Uint8Array, name: string, h: FileHandleLi
 /** The file the open project saves to, if it has one. */
 export const currentFile = () => handle
 export function setCurrentFile(h: FileHandleLike | null) { handle = h }
+
+// the session snapshot (io/session.ts) keeps the file handle and puts it back after a reload, so Ctrl+S goes to the same file
+setSessionHooks({
+  getHandle: () => handle,
+  restored: (h, name) => {
+    handle = h
+    setExternalHost(h?.name ?? name + '.caddy')
+    // linked components are read again from their files, as after an open
+    void restoreExternals()
+  },
+})
 
 /** Save to the open file (or ask where). `note` is the optional text for this version in the History panel. */
 export async function saveDocument(asNew = false, note?: string) {
@@ -385,9 +397,11 @@ export async function initPersistence() {
   // the projects folder (if one was picked) comes back first, so its autosave copies can be offered next to the browser's
   try { await useProjects.getState().init() } catch { /* no folder */ }
   void tidyFolder()
-  const found = await findRecovery()
+  // a reload of this tab was put back from its session snapshot: the work is on screen, there is nothing to recover
+  const restored = wasRestored()
+  const found = restored ? null : await findRecovery()
   if (found) useRecovery.setState({ record: found })
-  let folderChecked = useProjects.getState().access === 'granted'
+  let folderChecked = restored || useProjects.getState().access === 'granted'
   // the folder is behind a "reconnect" click: once it is back, look for a newer copy in it (only while the document is still untouched)
   useProjects.subscribe((s, p) => {
     if (folderChecked || s.access !== 'granted' || p.access === 'granted') return

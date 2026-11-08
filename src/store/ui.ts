@@ -43,7 +43,7 @@ export interface InspectorSession {
   latest?: ParamValues
 }
 
-interface UiState {
+export interface UiState {
   workspace: Workspace
   /** contextual SKETCH tab visible/active */
   sketchMode: boolean

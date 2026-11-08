@@ -17,6 +17,7 @@ import { parseProject } from '@/io/projectParse'
 import { getFeature } from './registry'
 import { effectiveParams, evalScope, getScope, resolveParams, swapScope, type Scope } from './params'
 import { RefError } from './refs'
+import { docSig, hashString } from './sig'
 import { setRegenHandler, useDoc, type FeatureStatus } from './store'
 import type { DocData, Feature, FeatureCtx, FeatureResult } from './types'
 
@@ -30,17 +31,7 @@ let around = new Map<string, { before: Body[]; after: Body[] }>()
 /** The state around a feature as of the last regeneration. */
 export const stateAround = (id: string) => around.get(id)
 
-function hash(s: string): string {
-  let h1 = 0xdeadbeef, h2 = 0x41c6ce57
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i)
-    h1 = Math.imul(h1 ^ c, 2654435761)
-    h2 = Math.imul(h2 ^ c, 1597334677)
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
-  return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36) + s.length.toString(36)
-}
+const hash = hashString
 
 /** Bodies a feature creates belong to the feature's component; bodies it modifies keep their owner. */
 function merge(state: Body[], r: FeatureResult, featureId: string, component: string | undefined): Body[] {
@@ -72,7 +63,8 @@ export function regenerate(): Promise<void> {
         }
       } finally {
         running = null
-        useDoc.setState({ regenerating: false })
+        // the bodies kept from before a reload (see io/session.ts) are only a stand-in until a pass has run
+        useDoc.setState({ regenerating: false, ghost: null })
       }
     })()
   }
@@ -235,6 +227,8 @@ async function pass() {
 
   const d = useDoc.getState()
   d.applyStatus(out.status)
+  // what these bodies were made from, so a copy kept elsewhere can tell whether it still fits the document
+  useDoc.setState({ geometrySig: docSig(d0) })
   d.setGeometry(ext.bodies.length ? [...out.state, ...ext.bodies] : out.state)
   for (const e of cache.values()) Object.assign(upgrades, e.upgrades)
   if (Object.keys(upgrades).length && writeUpgrades(upgrades)) again = true // the upgraded features re-run once with their names

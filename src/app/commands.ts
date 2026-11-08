@@ -18,6 +18,7 @@ import { demoExtrudeSchema, schemaDefaults } from '@/ui/schema'
 import { viewportBus } from '@/viewport/bus'
 import { selectionBounds } from '@/viewport/selectionBounds'
 import { currentInstances } from '@/assembly/place'
+import { gateClosed, whenGateOpens } from './startGate'
 
 export interface Command {
   id: string
@@ -54,6 +55,8 @@ export function allCommands() {
 export function runCommand(id: string) {
   const c = registry.get(id)
   if (!c) return console.warn('[commands] unknown', id)
+  // a reload is still putting the model back (see startGate.ts): a tool starts the moment it is done
+  if (gateClosed() && !id.startsWith('view.')) return whenGateOpens(() => c.run())
   c.run()
 }
 

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const events: string[] = []
+vi.mock('@/io/session', () => ({ flushSession: vi.fn(async () => {}) }))
 vi.mock('@/io/actions', () => ({ flushAutosave: vi.fn(async () => { await new Promise((r) => setTimeout(r, 20)); events.push('saved') }) }))
 
 import { applyUpdate, markUpdateReady, setUpdater, UPDATE_CHECK_MS, useUpdate, watchForUpdates } from './updates'
