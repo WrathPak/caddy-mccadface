@@ -1,8 +1,10 @@
 /** Reads OrcaSlicer's presets from the profile set served next to the app and flattens them (the reference flow of PROFILES.md). */
 import {
-  flattenPreset, type Config, type ProfileIndex, type ProfileIndexVendor, type VendorBundle,
+  flattenPreset, type Config, type PresetScope, type ProfileIndex, type ProfileIndexVendor, type VendorBundle,
 } from '@muon3d/slicer-engine-protocol'
-import type { EnginePresets, PresetSelection } from './types'
+import { compatiblePresets, type PresetListing } from '../slice/compat'
+import { applyPatch, type SliceProfile, type UserRef } from '../slice/profile'
+import type { EnginePresets } from './types'
 
 const base = () => `${import.meta.env.BASE_URL}slicer/profiles/`
 
@@ -26,8 +28,6 @@ async function bundle(url: string): Promise<VendorBundle> {
 
 export interface ProfileSet {
   index: ProfileIndex
-  /** bytes fetched for the index and every bundle read so far (compressed, as stored) */
-  bytes: number
   vendor(id: string): Promise<VendorBundle>
 }
 
@@ -38,21 +38,16 @@ export function loadProfileSet(): Promise<ProfileSet> {
   setPromise ??= (async () => {
     const latest = await json<{ index: string }>(`${base()}latest.json`)
     const indexUrl = `${base()}${latest.index}`
-    const res = await fetch(indexUrl)
-    if (!res.ok) throw new Error(`${indexUrl}: HTTP ${res.status}`)
-    const raw = await res.arrayBuffer()
-    const index = JSON.parse(new TextDecoder().decode(raw)) as ProfileIndex
+    const index = await json<ProfileIndex>(indexUrl)
     const dir = indexUrl.slice(0, indexUrl.lastIndexOf('/') + 1)
     const cache = new Map<string, Promise<VendorBundle>>()
     const set: ProfileSet = {
       index,
-      bytes: raw.byteLength,
       vendor(id) {
         let p = cache.get(id)
         if (!p) {
           const v: ProfileIndexVendor | undefined = index.vendors.find((x) => x.id === id)
           if (!v) return Promise.reject(new Error(`no vendor "${id}" in the profile set`))
-          set.bytes += v.bundle.bytes
           p = bundle(dir + v.bundle.path)
           cache.set(id, p)
         }
@@ -60,27 +55,104 @@ export function loadProfileSet(): Promise<ProfileSet> {
       },
     }
     return set
-  })()
+  })().catch((e) => { setPromise = null; throw e })
   return setPromise
 }
 
-/**
- * Flatten the chosen presets. `colours` (one hex per slot) repeats a single filament choice for every slot of the plate and is
- * written as each filament's `filament_colour`: a filament preset has none, a project does, and with several filaments the
- * engine reads past the end of that list ("memory access out of bounds") when it is missing.
- */
-export async function resolvePresets(sel: PresetSelection, colours: string[]): Promise<EnginePresets> {
-  const set = await loadProfileSet()
-  const [vendor, library] = await Promise.all([set.vendor(sel.vendor), set.vendor(set.index.library)])
-  const sources = { vendor, library, defaults: set.index.defaults }
-  const names = Array.from({ length: Math.max(colours.length, 1) }, (_, i) => sel.filaments[i] ?? sel.filaments[0])
-  const filaments: Config[] = names.map((n, i) => ({ ...flattenPreset('filament', n, sources), filament_colour: [colours[i] ?? '#FFFFFF'] }))
-  return { machine: flattenPreset('machine', sel.machine, sources), process: flattenPreset('process', sel.process, sources), filaments }
+export type VendorGroup = 'Bambu Lab' | 'Prusa' | 'Other vendors'
+export interface CatalogModel { vendor: string; model: string; nozzles: { nozzle: string; machine: string }[]; cover?: string }
+export interface CatalogVendor { id: string; name: string; group: VendorGroup; models: CatalogModel[] }
+
+/** Every vendor's printers grouped for the picker: Bambu Lab, Prusa, then all other vendors by name. */
+export function buildCatalog(index: ProfileIndex): CatalogVendor[] {
+  const out: CatalogVendor[] = []
+  for (const v of index.vendors) {
+    if (v.id === index.library || !v.printers.length) continue
+    const byModel = new Map<string, CatalogModel>()
+    for (const p of v.printers) {
+      const m = byModel.get(p.model) ?? { vendor: v.id, model: p.model, nozzles: [], cover: v.models.find((x) => x.name === p.model)?.cover }
+      m.nozzles.push({ nozzle: p.variant || p.nozzle[0] || '', machine: p.name })
+      byModel.set(p.model, m)
+    }
+    const models = [...byModel.values()]
+    for (const m of models) m.nozzles.sort((a, b) => parseFloat(a.nozzle) - parseFloat(b.nozzle))
+    out.push({ id: v.id, name: v.name, group: v.id === 'BBL' ? 'Bambu Lab' : v.id === 'Prusa' ? 'Prusa' : 'Other vendors', models })
+  }
+  const rank = { 'Bambu Lab': 0, Prusa: 1, 'Other vendors': 2 }
+  return out.sort((a, b) => rank[a.group] - rank[b.group] || a.name.localeCompare(b.name))
 }
 
-/** The presets the spike checks against the desktop slicers. */
-export const SPIKE_PRESETS: Record<'a1' | 'mk4s' | 'mk4', PresetSelection> = {
-  a1: { vendor: 'BBL', machine: 'Bambu Lab A1 0.4 nozzle', process: '0.20mm Standard @BBL A1', filaments: ['Bambu PLA Basic @BBL A1'] },
-  mk4s: { vendor: 'Prusa', machine: 'Prusa MK4S 0.4 nozzle', process: '0.20mm SPEED @MK4S 0.4', filaments: ['Generic PLA @Prusa MK4S'] },
-  mk4: { vendor: 'Prusa', machine: 'Prusa MK4 0.4 nozzle', process: '0.20mm Standard @MK4', filaments: ['Generic PLA @Prusa MK4'] },
+/** The vendor a machine preset belongs to, found by name in the index. */
+export function vendorOfMachine(index: ProfileIndex, machine: string): string | null {
+  return index.vendors.find((v) => v.printers.some((p) => p.name === machine))?.id ?? null
+}
+
+interface Sources { vendor: VendorBundle; library: VendorBundle; defaults: ProfileIndex['defaults'] }
+
+async function sources(vendorId: string): Promise<Sources> {
+  const set = await loadProfileSet()
+  const [vendor, library] = await Promise.all([set.vendor(vendorId), set.vendor(set.index.library)])
+  return { vendor, library, defaults: set.index.defaults }
+}
+
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? ''
+
+export interface Resolved extends EnginePresets {
+  /** the process and filament preset names in effect (the printer's defaults filled in) */
+  processName: string
+  filamentNames: string[]
+  /** the unmodified presets (user preset applied, no overrides): what "modified" is measured against */
+  base: { machine: Config; process: Config; filaments: Config[] }
+}
+
+const withUser = (c: Config, u?: UserRef | null): Config => (u ? applyPatch(c, u.keys) : c)
+
+/** Flatten the presets a profile names, apply user presets and overrides, and set each filament's colour. */
+export async function resolveProfile(p: SliceProfile, colours: string[]): Promise<Resolved> {
+  const src = await sources(p.vendor)
+  const baseMachine = withUser(flattenPreset('machine', p.machine, src), p.user.machine)
+  const processName = p.process || first(baseMachine.default_print_profile)
+  const baseProcess = withUser(flattenPreset('process', processName, src), p.user.process)
+  const defaultFilament = first(baseMachine.default_filament_profile)
+  const filamentNames = p.filaments.map((n) => n || defaultFilament)
+  const baseFilaments = filamentNames.map((n, i) => withUser(flattenPreset('filament', n, src), p.user.filaments[i]))
+  const machine = applyPatch(baseMachine, p.overrides.machine)
+  const process = applyPatch(baseProcess, p.overrides.process)
+  const filaments = baseFilaments.map((f, i) => ({ ...applyPatch(f, p.overrides.filaments[i] ?? {}), filament_colour: [colours[i] ?? '#FFFFFF'] }))
+  return { machine, process, filaments, processName, filamentNames, base: { machine: baseMachine, process: baseProcess, filaments: baseFilaments } }
+}
+
+/** One flattened preset (for the settings service). */
+export async function flattenOne(vendor: string, type: PresetScope, name: string): Promise<Config> {
+  return flattenPreset(type, name, await sources(vendor))
+}
+
+/** Process presets Orca offers with the printer. */
+export async function listProcesses(vendor: string, machineName: string): Promise<PresetListing[]> {
+  const src = await sources(vendor)
+  return compatiblePresets([src.vendor, src.library], 'process', flattenPreset('machine', machineName, src), machineName)
+}
+
+/** Filament presets Orca offers with the printer (and the chosen process). */
+export async function listFilaments(vendor: string, machineName: string, process?: string): Promise<PresetListing[]> {
+  const src = await sources(vendor)
+  return compatiblePresets([src.vendor, src.library], 'filament', flattenPreset('machine', machineName, src), machineName, process)
+}
+
+/** The bed, height and nozzle of a machine preset, for the plate layout. */
+export async function machineGeometry(vendor: string, machineName: string): Promise<{ bed: [number, number]; height: number; nozzle: number; modelId: string }> {
+  const src = await sources(vendor)
+  const m = flattenPreset('machine', machineName, src)
+  const pts = (Array.isArray(m.printable_area) ? m.printable_area : String(m.printable_area ?? '').split(',')).map((s) => s.split('x').map(Number))
+  const w = Math.max(...pts.map((q) => q[0] || 0)) - Math.min(...pts.map((q) => q[0] || 0))
+  const d = Math.max(...pts.map((q) => q[1] || 0)) - Math.min(...pts.map((q) => q[1] || 0))
+  const model = src.vendor.models[String(m.printer_model)]
+  return { bed: [w || 256, d || 256], height: parseFloat(first(m.printable_height)) || 256, nozzle: parseFloat(first(m.nozzle_diameter)) || 0.4, modelId: model?.model_id ?? '' }
+}
+
+/** The default process and filament of a printer. */
+export async function printerDefaults(vendor: string, machineName: string): Promise<{ process: string; filament: string }> {
+  const src = await sources(vendor)
+  const m = flattenPreset('machine', machineName, src)
+  return { process: first(m.default_print_profile), filament: first(m.default_filament_profile) }
 }

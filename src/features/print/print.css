@@ -1,4 +1,14 @@
 .print-cards { position: absolute; left: calc(var(--in-l) + var(--hud)); bottom: calc(var(--in-b) + 64px); z-index: 6; display: flex; flex-direction: column; gap: 6px; max-width: 280px; pointer-events: none; }
+.print-cards[data-previewing='true'] { z-index: 8; top: calc(var(--in-t) + var(--hud)); bottom: calc(var(--in-b) + 80px); width: 262px; gap: 8px; }
+.print-cards[data-previewing='true'] > * { flex: none; }
+.print-cards[data-previewing='true'] .slice-card { width: 100%; max-width: none; box-sizing: border-box; }
+/* phones: the column keeps clear of the view cube (top right) and the layer slider; an opened legend may reach over them */
+@media (max-width: 720px) {
+  .print-cards[data-previewing='true'] { width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud) - 148px); }
+  .print-cards[data-previewing='true'] .sp-legend { width: min(262px, calc(100vw - 24px)); }
+  .print-cards[data-previewing='true'] .sc-compact .btn[data-testid='export-gcode'] { display: none; }
+}
+.print-cards[data-previewing='true'] > .sp-legend { flex: 0 1 auto; min-height: 0; }
 .print-card { pointer-events: auto; background: var(--glass); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); border-radius: var(--radius-lg); padding: 10px 12px 12px; box-shadow: var(--shadow-panel), var(--shadow-inner); font-size: var(--fs-sm); color: var(--text); }
 .print-card-head { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: var(--fs-md); margin-bottom: 6px; }
 .print-card-head button { background: transparent; border: none; color: var(--text-dim); padding: 2px; border-radius: var(--radius-sm); display: inline-flex; }
@@ -12,7 +22,8 @@
 .print-legend .ends { display: flex; justify-content: space-between; gap: 8px; margin-top: 2px; color: var(--text-faint); font-size: var(--fs-xs); }
 .print-result { color: var(--text-dim); line-height: 1.35; }
 .print-chip { display: flex; align-items: center; gap: 6px; margin: 2px 0; color: var(--text-dim); }
-.print-chip .sw { width: 12px; height: 12px; border-radius: 3px; box-shadow: 0 0 0 1px var(--line-strong); display: inline-block; }
+/* a filament color chip: round, with an inner ring that reads on the panel for white and for black alike */
+.chip { width: 12px; height: 12px; border-radius: 50%; flex: none; display: inline-block; box-sizing: border-box; box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 42%, transparent), inset 0 0 0 1px rgba(128, 128, 128, 0.5), inset 0 1px 1.5px rgba(255, 255, 255, 0.25); }
 .print-drain-bar { position: absolute; left: calc(var(--in-l) + (100% - var(--in-l) - var(--in-r)) / 2); top: calc(var(--in-t) + var(--hud)); transform: translateX(-50%); z-index: 6; }
 .print-count { padding: 0 6px; color: var(--text-dim); font-size: var(--fs-sm); }
 .print-drain-bar .vp-bar button:disabled { opacity: 0.4; }

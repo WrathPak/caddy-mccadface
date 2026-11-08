@@ -6,8 +6,13 @@ import type { Body } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import { assembledInstances } from '@/assembly/check'
 import { mergePlaced, objectGroups } from '@/assembly/exportAssembly'
-import { computePaintMap } from './paint'
+import { computeKindMaps, computePaintMap } from './paint'
+import { resolveProfile } from './engine/profiles'
+import { flatProjectConfig } from './slice/projectConfig'
+import type { KindPaint } from './engine/types'
+import { colorById } from './palette'
 import { settingsOf, type PrintSettings } from './settings'
+import { withSlots } from './slice/profile'
 import { arrangeOnPlate, slotsNeeded, writeBambu3mf, type PlateObject, type Placement } from './threemf'
 
 /** Filament slot per print-mesh triangle, from the slots the viewport shows (null when the body is unpainted). */
@@ -27,7 +32,7 @@ export function exportSlots(body: Body, paint: Uint8Array | undefined, mesh: Exp
   return out
 }
 
-export interface PlateItem { name: string; mesh: ExportMesh; slots: Uint8Array | null }
+export interface PlateItem { id?: string; name: string; mesh: ExportMesh; slots: Uint8Array | null; paint?: KindPaint }
 
 const bboxOf = (p: Float32Array) => {
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]
@@ -54,7 +59,7 @@ export function planPlate(items: PlateItem[], settings: PrintSettings): { object
     const off: [number, number, number] = [plate[0] / 2 - (lo[0] + hi[0]) / 2, plate[1] / 2 - (lo[1] + hi[1]) / 2, -lo[2]]
     placements = items.map(() => ({ offset: off }))
   }
-  const objects: PlateObject[] = items.map((it) => ({ name: it.name, positions: it.mesh.positions, indices: it.mesh.indices, slots: it.slots ?? undefined }))
+  const objects: PlateObject[] = items.map((it) => ({ name: it.name, positions: it.mesh.positions, indices: it.mesh.indices, slots: it.slots ?? undefined, id: it.id, paint: it.paint }))
   return { objects, placements, fits }
 }
 
@@ -88,6 +93,7 @@ async function assemblyItems(): Promise<PlateItem[]> {
   const meshes = (await getKernel().call('printMeshes', { keys })) as ExportMesh[]
   const byKey = new Map(keys.map((k, n) => [k, meshes[n]]))
   return objectGroups(insts, d.assembly, d.bodyNames).map((g) => {
+    const id = g.instances[0].occ ? `occ:${g.instances[0].occ}` : g.instances[0].body.id
     const parts = g.instances.map((i) => ({ ...byKey.get(i.body.key)!, matrix: i.world }))
     const merged = mergePlaced(parts)
     const slotParts = g.instances.map((i) => exportSlots(i.body, paint.get(i.body.id), byKey.get(i.body.key)!))
@@ -101,8 +107,19 @@ async function assemblyItems(): Promise<PlateItem[]> {
         at += tris
       })
     }
-    return { name: g.name, mesh: { positions: merged.positions, indices: merged.indices, faceIds: new Uint32Array(0) }, slots }
+    return { id, name: g.name, mesh: { positions: merged.positions, indices: merged.indices, faceIds: new Uint32Array(0) }, slots }
   })
+}
+
+/** The objects of the plate as the Objects tab lists them: id (the key of their own settings) and name. */
+export function plateObjects(): { id: string; name: string }[] {
+  const d = useDoc.getState()
+  if (d.assembly.occurrences.length) {
+    return objectGroups(assembledInstances().filter((i) => !i.body.surface), d.assembly, d.bodyNames).map((g) => ({ id: g.instances[0].occ ? `occ:${g.instances[0].occ}` : g.instances[0].body.id, name: g.name }))
+  }
+  const hidden = useUi.getState().hiddenIds
+  const bodies = d.geometry.filter((b) => !hidden[b.id] && !b.surface)
+  return bodies.map((b, i) => ({ id: b.id, name: uniqueNames(bodies.map((x) => d.bodyNames[x.id] ?? x.name))[i] }))
 }
 
 export async function buildPlate(): Promise<BuiltPlate> {
@@ -117,10 +134,27 @@ export async function buildPlate(): Promise<BuiltPlate> {
     const paint = computePaintMap(d.features, d.rollback, d.geometry)
     const meshes = (await getKernel().call('printMeshes', { keys: bodies.map((b) => b.key) })) as ExportMesh[]
     const names = uniqueNames(bodies.map((b) => d.bodyNames[b.id] ?? b.name))
-    items = bodies.map((b, i) => ({ name: names[i], mesh: meshes[i], slots: exportSlots(b, paint.get(b.id), meshes[i]) }))
+    const kinds = computeKindMaps(d.features, d.rollback, d.geometry)
+    items = bodies.map((b, i) => {
+      const kp: KindPaint = {}
+      for (const k of ['supports', 'seam', 'fuzzy'] as const) {
+        const st = exportSlots(b, kinds[k].get(b.id), meshes[i])
+        if (st) kp[k] = st
+      }
+      return { id: b.id, name: names[i], mesh: meshes[i], slots: exportSlots(b, paint.get(b.id), meshes[i]), paint: Object.keys(kp).length ? kp : undefined }
+    })
   }
   const plan = planPlate(items, settings)
-  const bytes = writeBambu3mf(plan.objects, plan.placements, settings)
+  for (const o of plan.objects) if (o.id && Object.keys(settings.profile.objects[o.id] ?? {}).length) o.config = settings.profile.objects[o.id]
+  const colors = slotsNeeded(plan.objects)
+  // the 3MF carries the presets as they are (every key), when the profile set is installed
+  let full: Record<string, unknown> | undefined
+  try {
+    const hex = Array.from({ length: colors }, (_, i) => colorById(settings.slotColors[i] ?? 'white').hex.toUpperCase())
+    const profile = withSlots(settings.profile, colors)
+    full = flatProjectConfig(await resolveProfile(profile, hex), profile)
+  } catch { /* no engine files: the 3MF carries the short settings only */ }
+  const bytes = writeBambu3mf(plan.objects, plan.placements, settings, undefined, undefined, full)
   const safe = (d.name || 'Untitled').replace(/[\\/:*?"<>|]+/g, '_')
   return { bytes, fileName: `${safe}.3mf`, count: items.length, fits: plan.fits, colors: slotsNeeded(plan.objects), settings, plan }
 }

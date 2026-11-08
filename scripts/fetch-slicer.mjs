@@ -11,17 +11,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { gunzipSync } from 'fflate'
 
-const VERSION = '0.6.1'
-const RELEASE = `https://github.com/Muon-3D/muon3d-slicer-engine/releases/download/v${VERSION}`
-// pinned, so a changed release cannot slip in: these are the values the release notes list
-const PINNED = {
-  [`muon3d-slicer-engine-${VERSION}.tgz`]: '1c6b676e0405c387fb9742568f7b142b5cb2ac3942f05022ceb9769d87cac573',
-  [`muon3d-slicer-profiles-${VERSION}.tgz`]: '8c349e2fd4f2318ce373e7a657de22047e303b900ed51a3a0ed3ba6fc6ee9f56',
-}
+import { PINNED, RELEASE, VERSION } from './slicer-pin.mjs'
 const root = path.resolve(import.meta.dirname, '..')
 const outEngine = path.join(root, 'public/slicer/engine')
 const outProfiles = path.join(root, 'public/slicer/profiles')
 const stamp = path.join(root, 'public/slicer/.version')
+// downloaded archives are kept here (checked against the pinned hash on every use), so CI can cache the folder and a rebuild needs no network
+const cacheDir = path.join(root, 'node_modules/.cache/slicer')
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
 
@@ -79,16 +75,24 @@ if (fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8').trim() === VERSION &&
   process.exit(0)
 }
 
-const sums = new Map(
-  (await download('SHA256SUMS')).toString('utf8').split(/\r?\n/).map((l) => /^([0-9a-f]{64})\s+\*?(.+)$/.exec(l)).filter(Boolean).map((m) => [m[2], m[1]]),
-)
+let sums = null
 const archives = {}
 for (const name of Object.keys(PINNED)) {
+  const cached = path.join(cacheDir, name)
+  if (fs.existsSync(cached)) {
+    const buf = fs.readFileSync(cached)
+    if (sha256(buf) === PINNED[name]) { console.log(`using cached ${name}`); archives[name] = buf; continue }
+  }
   console.log(`downloading ${name}`)
+  sums ??= new Map(
+    (await download('SHA256SUMS')).toString('utf8').split(/\r?\n/).map((l) => /^([0-9a-f]{64})\s+\*?(.+)$/.exec(l)).filter(Boolean).map((m) => [m[2], m[1]]),
+  )
   const buf = await download(name)
   const got = sha256(buf)
   if (got !== PINNED[name]) throw new Error(`${name}: sha256 ${got} is not the pinned ${PINNED[name]}`)
   if (sums.get(name) !== got) throw new Error(`${name}: sha256 does not match the release's SHA256SUMS`)
+  fs.mkdirSync(cacheDir, { recursive: true })
+  fs.writeFileSync(cached, buf)
   archives[name] = buf
 }
 

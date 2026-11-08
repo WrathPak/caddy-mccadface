@@ -1,7 +1,7 @@
 import * as D from '@radix-ui/react-dropdown-menu'
 import { CaretDown, CaretLeft, CaretRight, GithubLogo, Moon, SidebarSimple, Sun } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef } from 'react'
-import { RIBBON_TABS, type RibbonGroup, type RibbonItem } from '@/app/ribbon'
+import { PRIMARY_COMMANDS, RIBBON_TABS, type RibbonGroup, type RibbonItem } from '@/app/ribbon'
 import { useRibbonExtras, withExtras } from '@/app/ribbonExtras'
 import { getCommand, runCommand } from '@/app/commands'
 import { useUi } from '@/store/ui'
@@ -17,7 +17,7 @@ export function Btn({ id, small }: { id: string; small?: boolean }) {
   if (!c) return null
   return (
     <CmdTip cmd={c}>
-      <button type="button" className={'rbtn' + (small ? ' small' : '')} data-active={active} onClick={() => runCommand(id)}>
+      <button type="button" className={'rbtn' + (small ? ' small' : '')} data-active={active} data-primary={PRIMARY_COMMANDS.has(id) || undefined} onClick={() => runCommand(id)}>
         <c.icon size={small ? 16 : 22} weight="duotone" />
         <span className="lbl">{c.label.split(' / ')[0].replace('Create ', '')}</span>
       </button>

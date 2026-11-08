@@ -12,6 +12,8 @@ import { slotHex, settingsOf } from './settings'
 import { useDrains, type Drain } from './hollow'
 import { useSplitView } from './split'
 import { SMALL_COLOR, severityColor, usePrintView } from './view'
+import { SlicePreviewLayer } from './preview/PreviewLayer'
+import { KindPaintLayer } from './KindPaintLayer'
 
 /** Triangles of `body` whose slot is `slot`, as an index list into the body's own vertices. */
 function slotGeometry(body: Body, slots: Uint8Array, slot: number): BufferGeometry | null {
@@ -34,7 +36,7 @@ function useBodyMatrix(bodyId: string) {
   }, [move.active, move.bodyIds, move.pivot, move.translate, move.rotate, move.scale, bodyId])
 }
 
-function PaintedBody({ body, map, colors, clip, opacity }: { body: Body; map: Uint8Array; colors: Record<number, string>; clip: ReturnType<typeof sectionPlane>[]; opacity: number }) {
+export function PaintedBody({ body, map, colors, clip, opacity }: { body: Body; map: Uint8Array; colors: Record<number, string>; clip: ReturnType<typeof sectionPlane>[]; opacity: number }) {
   const { invalidate } = useThree()
   const geos = useMemo(() => {
     const out: { slot: number; geo: BufferGeometry }[] = []
@@ -215,9 +217,11 @@ export function PrintCanvas() {
   return (
     <>
       <PaintLayer />
+      <KindPaintLayer />
       <AnalysisLayer />
       <SplitPlaneLayer />
       <DrainLayer />
+      <SlicePreviewLayer />
     </>
   )
 }
