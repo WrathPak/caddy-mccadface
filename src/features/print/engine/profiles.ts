@@ -107,13 +107,30 @@ export interface Resolved extends EnginePresets {
 
 const withUser = (c: Config, u?: UserRef | null): Config => (u ? applyPatch(c, u.keys) : c)
 
+const exists = (type: PresetScope, name: string, src: Sources) => {
+  try { flattenPreset(type, name, src); return true } catch { return false }
+}
+
+/**
+ * The printer's default process or filament. Some of Orca's vendor profiles name a default that isn't in the set (a typo,
+ * an empty name, or several names joined with ';'), so like Orca's own picker this takes the first named one that exists,
+ * else the first compatible preset.
+ */
+function defaultPreset(type: 'process' | 'filament', declared: string, src: Sources, machine: Config, machineName: string, process?: string): string {
+  for (const n of declared.split(';').map((s) => s.trim())) if (n && exists(type, n, src)) return n
+  const compatible = compatiblePresets([src.vendor, src.library], type, machine, machineName, process)[0]?.name
+  if (compatible) return compatible
+  throw new Error(`${machineName} has no ${type} preset in Orca's profiles. Pick another printer, or a user preset.`)
+}
+
 /** Flatten the presets a profile names, apply user presets and overrides, and set each filament's colour. */
 export async function resolveProfile(p: SliceProfile, colours: string[]): Promise<Resolved> {
   const src = await sources(p.vendor)
   const baseMachine = withUser(flattenPreset('machine', p.machine, src), p.user.machine)
-  const processName = p.process || first(baseMachine.default_print_profile)
+  const processName = p.process || defaultPreset('process', first(baseMachine.default_print_profile), src, baseMachine, p.machine)
   const baseProcess = withUser(flattenPreset('process', processName, src), p.user.process)
-  const defaultFilament = first(baseMachine.default_filament_profile)
+  const needsDefault = p.filaments.some((n) => !n)
+  const defaultFilament = needsDefault ? defaultPreset('filament', first(baseMachine.default_filament_profile), src, baseMachine, p.machine, processName) : ''
   const filamentNames = p.filaments.map((n) => n || defaultFilament)
   const baseFilaments = filamentNames.map((n, i) => withUser(flattenPreset('filament', n, src), p.user.filaments[i]))
   const machine = applyPatch(baseMachine, p.overrides.machine)
