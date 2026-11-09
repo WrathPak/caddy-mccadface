@@ -11,7 +11,7 @@ import { plateObjects } from '../plate'
 import { showPreview } from '../preview/command'
 import { cancelSlice, runSlice } from '../slice/run'
 import { profileNow } from '../slice/controller'
-import { arrangeParts, autoOrientParts, centreParts, layOnFace, resetParts, setPose } from './ops'
+import { arrangeParts, autoOrientParts, centreParts, resetParts, setPose } from './ops'
 import { bodyNames, plateProblems, usePlate, usePlateModel, useStage, type PlateTool } from './store'
 import { usePlateActive, usePlateKeys } from './sync'
 import { PrintSidebar } from './Sidebar'
@@ -171,25 +171,6 @@ function Readout() {
   )
 }
 
-/** Lay on face: a click on a face turns the part so that face lies on the bed. */
-function useFaceTool(active: boolean) {
-  const tool = usePlate((s) => s.tool)
-  useEffect(() => {
-    if (!active || tool !== 'face') return
-    const ui = useUi.getState()
-    ui.setSelectionFilter('face')
-    const off = useUi.subscribe((s, prev) => {
-      if (s.selection === prev.selection) return
-      const f = s.selection.find((r) => r.kind === 'face')
-      if (!f || f.index === undefined) return
-      void layOnFace(f.id, f.index)
-      useUi.getState().setSelection([{ kind: 'body', id: f.id }])
-      usePlate.setState({ tool: 'move' })
-    })
-    return () => { off(); useUi.getState().setSelectionFilter('body') }
-  }, [active, tool])
-}
-
 /** Phone: the sidebar as a bottom sheet you pull up. */
 function Sheet() {
   const [open, setOpen] = useState(false)
@@ -216,7 +197,6 @@ export function WorkspaceHud() {
   const hidden = useUi((s) => s.hiddenIds)
   const count = useMemo(() => plateObjects().length, [geometry, hidden]) // eslint-disable-line react-hooks/exhaustive-deps
   usePlateKeys(active)
-  useFaceTool(active && stage === 'prepare')
   // picking a part is whole-body picking
   useEffect(() => { useUi.getState().setSelectionFilter('body') }, [])
   const showWarn = stage === 'prepare' && notes.length > 0

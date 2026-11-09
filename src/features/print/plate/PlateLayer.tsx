@@ -1,15 +1,18 @@
 /** The bed in the 3D view (plate surface, outline, origin, build volume) and the gizmo that moves or turns the selected part. */
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { TransformControls, Line } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
-import { BufferGeometry, CanvasTexture, ExtrudeGeometry, Float32BufferAttribute, LinearMipmapLinearFilter, Matrix4, Mesh, Path, Plane, Quaternion, Raycaster, RepeatWrapping, Shape, SRGBColorSpace, Vector2, Vector3, type Group } from 'three'
+import { BufferGeometry, CanvasTexture, DoubleSide, ExtrudeGeometry, Float32BufferAttribute, LinearMipmapLinearFilter, Matrix4, Mesh, Path, Plane, Quaternion, Raycaster, RepeatWrapping, Shape, SRGBColorSpace, Vector2, Vector3, type Group } from 'three'
 import { useDoc } from '@/doc/store'
 import { useUi } from '@/store/ui'
 import { useDevice } from '@/app/device'
 import { eulerFromMatrix } from '@/kernel/print-geom'
+import { usePlateXf } from '@/viewport/plateXf'
 import { markGrab, registerFingerOwner } from '@/viewport/touchGrab'
 import { useSlice } from '../engine/sliceStore'
 import { eulerMatrix, mul3, type BedShape } from './model'
+import { faceRegion } from './faceRegion'
+import { layOnNormal } from './ops'
 import { commitPlacements, getPlateModel, useBed, usePlate, usePlateModel, useStage } from './store'
 import { usePlateActive } from './sync'
 
@@ -257,12 +260,104 @@ export function PlateDrag() {
   return null
 }
 
+/**
+ * Lay on face: hover shows the whole flat face under the pointer (a B-rep face, or the connected coplanar triangles of a mesh), a
+ * click lays the part on it. The pick is ours (not the generic face selection) so the region is always the full planar area.
+ */
+export function PlateFaceTool() {
+  const on = usePlateActive()
+  const stage = useStage()
+  const tool = usePlate((s) => s.tool)
+  const { gl, camera, scene, invalidate } = useThree()
+  const active = on && stage === 'prepare' && tool === 'face'
+  const [shown, setShown] = useState<{ geo: BufferGeometry; matrix: Matrix4 } | null>(null)
+  const meshRef = useRef<Mesh>(null)
+  useEffect(() => {
+    if (!active) return
+    usePlateXf.setState({ facePick: true })
+    const el = gl.domElement
+    const rc = new Raycaster()
+    let last: { geo: BufferGeometry; id: string; normal: [number, number, number] } | null = null
+    let key = ''
+    const clear = () => { last?.geo.dispose(); last = null; key = ''; setShown(null) }
+    const pick = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect()
+      rc.setFromCamera(new Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera)
+      const root = scene.getObjectByName('bodies')
+      if (!root) return null
+      const hit = rc.intersectObjects(root.children, true).find((h) => (h.object as Mesh).isMesh && h.object.visible && (h.object as Mesh).geometry?.getAttribute?.('position') && h.faceIndex != null)
+      if (!hit) return null
+      const geo = (hit.object as Mesh).geometry
+      const body = getPlateModel().bodies.find((b) => b.mesh.positions === geo.getAttribute('position').array)
+      if (!body) return null
+      const region = faceRegion(body.mesh, hit.faceIndex!)
+      return region ? { body, region, geo, matrix: hit.object.matrixWorld.clone() } : null
+    }
+    const move = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return
+      const p = pick(e)
+      if (!p) { if (last) { clear(); invalidate() } return }
+      const k = `${p.body.id}:${Math.min(...p.region.tris)}:${p.region.tris.length}`
+      if (k === key) return
+      const idx: number[] = []
+      for (const t of p.region.tris) idx.push(p.body.mesh.indices[t * 3], p.body.mesh.indices[t * 3 + 1], p.body.mesh.indices[t * 3 + 2])
+      const g = new BufferGeometry()
+      g.setAttribute('position', p.geo.getAttribute('position'))
+      g.setIndex(idx)
+      last?.geo.dispose()
+      last = { geo: g, id: p.body.id, normal: p.region.normal }
+      key = k
+      setShown({ geo: g, matrix: p.matrix })
+      invalidate()
+    }
+    let down: { x: number; y: number } | null = null
+    const pdown = (e: PointerEvent) => { down = e.button === 0 && e.isPrimary ? { x: e.clientX, y: e.clientY } : null }
+    const up = (e: PointerEvent) => {
+      const d = down
+      down = null
+      if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return
+      const p = pick(e)
+      if (!p) return
+      void layOnNormal(p.body.id, p.region.normal)
+      useUi.getState().setSelection([{ kind: 'body', id: p.body.id }])
+      usePlate.setState({ tool: 'move' })
+    }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerleave', clear)
+    el.addEventListener('pointerdown', pdown)
+    el.addEventListener('pointerup', up)
+    return () => {
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerleave', clear)
+      el.removeEventListener('pointerdown', pdown)
+      el.removeEventListener('pointerup', up)
+      usePlateXf.setState({ facePick: false })
+      clear()
+    }
+  }, [active, gl, camera, scene, invalidate])
+  useEffect(() => {
+    const m = meshRef.current
+    if (!m || !shown) return
+    m.matrixAutoUpdate = false
+    m.matrix.copy(shown.matrix)
+    m.matrixWorldNeedsUpdate = true
+    invalidate()
+  }, [shown, invalidate])
+  if (!active || !shown) return null
+  return (
+    <mesh ref={meshRef} geometry={shown.geo} raycast={() => null} renderOrder={5} name="face-region" userData={{ noAo: true }}>
+      <meshBasicMaterial color="#2f9bff" transparent opacity={0.55} depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} side={DoubleSide} />
+    </mesh>
+  )
+}
+
 export function PlateCanvas() {
   return (
     <>
       <BedLayer />
       <PlateDrag />
       <PlateGizmo />
+      <PlateFaceTool />
     </>
   )
 }
