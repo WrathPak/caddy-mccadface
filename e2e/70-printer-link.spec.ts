@@ -124,13 +124,14 @@ test('add the simulated PrusaLink printer, slice a cube for a Prusa MK4S, send i
   await expect(card.getByTestId('printer-extras')).toContainText('Print fan')
   await page.getByTestId('printers-close').click()
 
-  // slice a cube for the MK4S
-  await app.ribbon('Print Settings').click()
-  await page.getByTestId('printer-picker').click()
+  // slice a cube for the MK4S: the printer is picked in the Print sidebar
+  const side = page.getByTestId('print-sidebar')
+  await side.getByTestId('printer-picker').click()
   await page.getByPlaceholder('Search printers').fill('MK4S')
   await page.getByTestId('printer-list').getByRole('button', { name: 'Prusa MK4S', exact: true }).click()
-  await expect(page.getByTestId('preset-process')).toContainText('MK4S', { timeout: 30_000 })
-  await page.getByTestId('slice-go').click()
+  await expect(side.getByTestId('preset-process')).toContainText('MK4S', { timeout: 30_000 })
+  await expect(side.getByTestId('plate-size')).toContainText('250 x 210')
+  await page.getByTestId('slice-plate').click()
   await expect(page.getByTestId('slice-card')).toHaveAttribute('data-status', 'done', { timeout: 150_000 })
 
   // send: only the PrusaLink printer is offered for a Prusa machine, with its storage; the file goes as plain G-code

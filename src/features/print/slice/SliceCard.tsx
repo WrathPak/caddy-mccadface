@@ -1,4 +1,8 @@
-/** The result card in the viewport: engine download, slice progress with Cancel, then the print time, filament and warnings. */
+/**
+ * The slice card: engine download, slice progress with Cancel, then the print time, filament and warnings with Export and Send.
+ * `result` is the summary card of the preview (bottom right); `status` is the Prepare view's own, which only shows while a slice runs
+ * or failed (a finished slice opens on the preview).
+ */
 import { useState } from 'react'
 import { CircleNotch, DownloadSimple, Gear, PaperPlaneTilt, WarningCircle, X, ArrowClockwise } from '@phosphor-icons/react'
 import { useSlice } from '../engine/sliceStore'
@@ -11,20 +15,21 @@ import { useSlicer } from './store'
 const mb = (n: number) => (n / 1048576).toFixed(1)
 const f1 = (n: number) => (n >= 100 ? n.toFixed(0) : n.toFixed(1))
 
-export function SliceCard({ compact = false }: { compact?: boolean }) {
+export function SliceCard({ variant = 'result' }: { variant?: 'result' | 'status' }) {
   const s = useSlice()
   const [hidden, setHidden] = useState(false)
   const [seen, setSeen] = useState(s.result)
   if (seen !== s.result) { setSeen(s.result); setHidden(false) }
-  if (s.status === 'idle' || (hidden && s.status === 'done')) return null
+  // Prepare shows progress and errors only; the finished slice is summarised by the preview
+  if (s.status === 'idle' || (hidden && s.status === 'done') || (variant === 'status' && s.status === 'done' && !!s.result?.toolpaths?.extrusions.count)) return null
   const busy = s.status === 'loading' || s.status === 'slicing'
   const snap = s.snapshot
   const r = s.result
   return (
-    <div className="print-card slice-card" data-testid="slice-card" data-status={s.status} data-stale={s.stale}>
+    <div className="print-card slice-card" data-variant={variant} data-testid="slice-card" data-status={s.status} data-stale={s.stale}>
       <div className="print-card-head">
         <span>{busy ? (s.download ? 'Getting the slicer' : s.status === 'loading' ? 'Getting ready' : 'Slicing') : s.status === 'error' ? 'Could not slice' : 'Sliced'}{s.stale && s.status === 'done' && <em className="sc-stale" data-testid="stale-badge">out of date</em>}</span>
-        {!busy && <Tip label="Close" side="top"><button type="button" aria-label="Close" onClick={() => setHidden(true)}><X size={12} /></button></Tip>}
+        {!busy && variant === 'status' && <Tip label="Close" side="top"><button type="button" aria-label="Close" onClick={() => setHidden(true)}><X size={12} /></button></Tip>}
       </div>
       {busy && (
         <>
@@ -40,24 +45,12 @@ export function SliceCard({ compact = false }: { compact?: boolean }) {
         <>
           <div className="sc-line err" data-testid="slice-error"><WarningCircle size={14} weight="fill" /><span>{s.message}</span></div>
           <div className="sc-actions">
-            <button type="button" className="btn" onClick={() => useSlicer.getState().openSheet()}><Gear size={14} /> Settings</button>
+            <button type="button" className="btn" onClick={() => useSlicer.getState().openSheet('process')}><Gear size={14} /> Settings</button>
             <button type="button" className="btn primary" onClick={() => void runSlice()}>Try again</button>
           </div>
         </>
       )}
-      {s.status === 'done' && r && snap && compact && (
-        <div className="sc-compact">
-          <div className="sc-compact-main">
-            <b data-testid="print-time">{snap.timeKnown ? r.stats.printTimeText ?? 'unknown' : 'no time'}</b>
-            <i />
-            <b>{r.stats.filamentG ? `${f1(r.stats.filamentG)} g` : '-'}</b>
-          </div>
-          <Tip label="Export G-code" side="top"><button type="button" className="btn" data-testid="export-gcode" aria-label="Export G-code" onClick={() => void exportGcode()}><DownloadSimple size={14} /></button></Tip>
-          <Tip label="Send to printer" side="top"><button type="button" className="btn" data-testid="send-to-printer" aria-label="Send to printer" onClick={() => setSendOpen(true)}><PaperPlaneTilt size={14} /></button></Tip>
-          {s.stale && <Tip label="Slice again" side="top"><button type="button" className="btn" data-testid="reslice" aria-label="Slice again" onClick={() => void runSlice()}><ArrowClockwise size={14} /></button></Tip>}
-        </div>
-      )}
-      {s.status === 'done' && r && snap && !compact && (
+      {s.status === 'done' && r && snap && (
         <>
           <div className="sc-stats">
             <div><span>Print time</span><b data-testid="print-time">{snap.timeKnown ? r.stats.printTimeText ?? 'unknown' : 'not available'}</b></div>

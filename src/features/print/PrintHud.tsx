@@ -11,6 +11,12 @@ import { runMap, showMap, usePrintView, type MapKind } from './view'
 import './print.css'
 import { PreviewLegend, SlicePreviewHud, usePreviewOn } from './preview/PreviewHud'
 import { SliceCard } from './slice/SliceCard'
+import { WorkspaceHud } from './plate/WorkspaceHud'
+import { useFrameBed, usePlateSync } from './plate/sync'
+import { getPlateModel, usePlate } from './plate/store'
+import * as plateOps from './plate/ops'
+import { setPreview, useSlice } from './engine/sliceStore'
+import { useUi } from '@/store/ui'
 import { SliceSheet } from './slice/SliceSheet'
 import { PrintersPanel } from './link/PrintersPanel'
 import { SendDialog } from './link/SendDialog'
@@ -28,7 +34,7 @@ const LEGENDS: Record<MapKind, { ramp: string; from: string; to: string }> = {
 function MapPanel() {
   const { kind, angle, minThickness, minFeature, busy, result } = usePrintView()
   const geometry = useDoc((s) => s.geometry)
-  const hiddenKey = useDoc((s) => s.features.length)
+  const hiddenKey = useDoc((s) => s.features)
   // recompute when the thresholds or the bodies change
   useEffect(() => {
     if (!kind) return
@@ -109,10 +115,16 @@ function DrainBar() {
 /** Mounted once in the viewport. */
 export function PrintHud() {
   const previewing = usePreviewOn()
+  const workspace = useUi((s) => s.workspace)
+  const preview = useSlice((s) => s.preview)
+  usePlateSync()
+  useFrameBed()
+  // the layers belong to the Print workspace: leaving it leaves them
+  useEffect(() => { if (workspace !== 'print' && preview) setPreview(false) }, [workspace, preview])
   useEffect(() => {
     // test handle: the stores
     const w = window as unknown as { __caddy?: Record<string, unknown> }
-    if (DEBUG_HANDLE && w.__caddy) w.__caddy.print = { view: usePrintView, drains: useDrains, showMap, link: useLink }
+    if (DEBUG_HANDLE && w.__caddy) w.__caddy.print = { view: usePrintView, drains: useDrains, showMap, link: useLink, plate: usePlate, model: getPlateModel, ops: plateOps }
   }, [])
   return (
     <>
@@ -122,11 +134,12 @@ export function PrintHud() {
       <SendDialog />
       <div className="print-cards" data-previewing={previewing}>
         <PreviewLegend />
-        <SliceCard compact={previewing} />
+        {!previewing && <SliceCard variant="status" />}
         <MapPanel />
         <FilamentLegend />
       </div>
       <SlicePreviewHud />
+      {workspace === 'print' && <WorkspaceHud />}
     </>
   )
 }

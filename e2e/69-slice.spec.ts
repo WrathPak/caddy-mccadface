@@ -17,8 +17,8 @@ test('slice a cube on the A1 with a changed setting, then export the .gcode.3mf'
   const sheet = page.getByTestId('slice-sheet')
   await expect(sheet).toBeVisible()
   // the A1 is the default printer, with its default process and filament
-  await expect(page.getByTestId('printer-picker')).toContainText('Bambu Lab A1')
-  await expect(page.getByTestId('preset-process')).toContainText('0.20mm Standard @BBL A1', { timeout: 30_000 })
+  await expect(sheet.getByTestId('printer-picker')).toContainText('Bambu Lab A1')
+  await expect(sheet.getByTestId('preset-process')).toContainText('0.20mm Standard @BBL A1', { timeout: 30_000 })
   await app.shot('slice-quick')
 
   // a setting in Orca's own Strength page: infill density
@@ -33,6 +33,7 @@ test('slice a cube on the A1 with a changed setting, then export the .gcode.3mf'
   expect(await app.ev((c) => c.doc.getState().features.find((f: any) => f.type === 'printSettings').params.infill)).toBe(35) // eslint-disable-line
 
   await page.getByTestId('slice-go').click()
+  // a finished slice opens on its layers; the summary card sits at the bottom right
   const card = page.getByTestId('slice-card')
   await expect(card).toHaveAttribute('data-status', 'done', { timeout: 120_000 })
   await expect(page.getByTestId('print-time')).toContainText('m')

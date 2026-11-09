@@ -4,10 +4,11 @@ import { useDoc, activeDefId } from '@/doc/store'
 import { useUi } from '@/store/ui'
 import type { Body } from '@/kernel/types'
 import { expandInstances, placeAssembly, type Instance, type Placement } from './instances'
-import { isIdentity } from './matrix'
+import { isIdentity, multiply } from './matrix'
 import { useAssemblyRuntime } from './runtime'
 import type { AssemblyData, Joint } from './types'
 import { ROOT } from './types'
+import { usePlateXf } from '@/viewport/plateXf'
 
 let last: { key: unknown[]; value: Placement } | null = null
 
@@ -47,7 +48,13 @@ export function useInstances(): Instance[] {
   const geometry = useDoc((s) => (s.geometry.length === 0 && s.ghost ? s.ghost : s.geometry))
   const assembly = useDoc((s) => s.assembly)
   const placement = usePlacement()
-  return useMemo(() => expandInstances(assembly, geometry, placement.worlds), [geometry, assembly, placement])
+  // the Print workspace stands the bodies on the printer's bed: each is drawn through its plate matrix
+  const plate = usePlateXf((s) => s.worlds)
+  return useMemo(() => {
+    const list = expandInstances(assembly, geometry, placement.worlds)
+    if (!plate) return list
+    return list.map((i) => (plate[i.body.id] ? { ...i, world: multiply(plate[i.body.id], i.world) } : i))
+  }, [geometry, assembly, placement, plate])
 }
 
 /** Whether an instance is hidden: its body, any occurrence it sits in, or (for hidden component ids) the component itself. */

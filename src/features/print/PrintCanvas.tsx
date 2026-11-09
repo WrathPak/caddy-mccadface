@@ -7,6 +7,8 @@ import { composeTransform, type Body } from '@/kernel/types'
 import { useUi } from '@/store/ui'
 import { sectionPlane } from '@/viewport/section'
 import { useMove } from '../move'
+import { usePlateXf } from '@/viewport/plateXf'
+import { PlateCanvas } from './plate/PlateLayer'
 import { computePaintMap, usePendingPaint, type PaintMap } from './paint'
 import { slotHex, settingsOf } from './settings'
 import { useDrains, type Drain } from './hollow'
@@ -28,12 +30,18 @@ function slotGeometry(body: Body, slots: Uint8Array, slot: number): BufferGeomet
   return g
 }
 
-function useBodyMatrix(bodyId: string) {
+/** Where a body is drawn: on the print bed (its plate matrix), and through a Move that is being previewed. */
+export function useBodyMatrix(bodyId: string) {
   const move = useMove()
+  const plate = usePlateXf((s) => s.worlds?.[bodyId])
   return useMemo(() => {
-    if (!move.active || !move.bodyIds.includes(bodyId)) return null
-    return new Matrix4().fromArray(composeTransform({ pivot: move.pivot, translate: move.translate, rotate: move.rotate, scale: move.scale }))
-  }, [move.active, move.bodyIds, move.pivot, move.translate, move.rotate, move.scale, bodyId])
+    const moving = move.active && move.bodyIds.includes(bodyId)
+    if (!moving && !plate) return null
+    const m = new Matrix4()
+    if (plate) m.fromArray(plate)
+    if (moving) m.multiply(new Matrix4().fromArray(composeTransform({ pivot: move.pivot, translate: move.translate, rotate: move.rotate, scale: move.scale })))
+    return m
+  }, [move.active, move.bodyIds, move.pivot, move.translate, move.rotate, move.scale, bodyId, plate])
 }
 
 export function PaintedBody({ body, map, colors, clip, opacity }: { body: Body; map: Uint8Array; colors: Record<number, string>; clip: ReturnType<typeof sectionPlane>[]; opacity: number }) {
@@ -90,6 +98,17 @@ export function PaintLayer() {
   )
 }
 
+function AnalysisMesh({ id, geo }: { id: string; geo: BufferGeometry }) {
+  const matrix = useBodyMatrix(id)
+  return (
+    <group matrixAutoUpdate={matrix === null} matrix={matrix ?? undefined}>
+      <mesh geometry={geo} renderOrder={6} raycast={() => null} userData={{ noAo: true }}>
+        <meshBasicMaterial vertexColors side={DoubleSide} transparent opacity={0.92} depthWrite={false} polygonOffset polygonOffsetFactor={-3} polygonOffsetUnits={-3} />
+      </mesh>
+    </group>
+  )
+}
+
 /** The flagged triangles of the active printability map, colored by how bad they are. */
 export function AnalysisLayer() {
   const result = usePrintView((s) => s.result)
@@ -122,11 +141,7 @@ export function AnalysisLayer() {
   useEffect(() => { invalidate(); return () => geos.forEach((g) => g.geo.dispose()) }, [geos, invalidate])
   return (
     <group name="print-analysis">
-      {geos.map((g) => hidden[g.id] ? null : (
-        <mesh key={g.id} geometry={g.geo} renderOrder={6} raycast={() => null} userData={{ noAo: true }}>
-          <meshBasicMaterial vertexColors side={DoubleSide} transparent opacity={0.92} depthWrite={false} polygonOffset polygonOffsetFactor={-3} polygonOffsetUnits={-3} />
-        </mesh>
-      ))}
+      {geos.map((g) => hidden[g.id] ? null : <AnalysisMesh key={g.id} id={g.id} geo={g.geo} />)}
     </group>
   )
 }
@@ -216,6 +231,7 @@ export function DrainLayer() {
 export function PrintCanvas() {
   return (
     <>
+      <PlateCanvas />
       <PaintLayer />
       <KindPaintLayer />
       <AnalysisLayer />

@@ -20,7 +20,8 @@ export const settingsHost = new SettingsHost()
 export function slotCount(): number {
   const d = useDoc.getState()
   const used = usedSlots(computePaintMap(d.features, d.rollback, d.geometry))
-  return Math.max(1, ...used)
+  // slots added in the Filaments list stay, painted or not
+  return Math.max(1, ...used, currentSettings().profile.filaments.length)
 }
 
 export const slotColours = (): string[] => {
@@ -137,6 +138,21 @@ export async function refreshAll() {
     const r = await resolveProfile(profileNow(), slotColours())
     useSlicer.getState().set({ resolved: r })
     await loadViews()
+  })
+}
+
+/** Like syncFromDoc for the Print sidebar: presets only, no settings views (so the settings engine is not started for it). */
+export function syncResolvedFromDoc() {
+  const k = keyOf()
+  if (k === lastKey && useSlicer.getState().resolved) return
+  void refreshResolved()
+}
+
+/** Resolve the presets only (no settings views): what the Print sidebar needs to show them. */
+export async function refreshResolved() {
+  lastKey = keyOf()
+  await serial(async () => {
+    useSlicer.getState().set({ resolved: await resolveProfile(profileNow(), slotColours()) })
   })
 }
 

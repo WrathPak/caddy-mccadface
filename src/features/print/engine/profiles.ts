@@ -167,6 +167,15 @@ export async function machineGeometry(vendor: string, machineName: string): Prom
   return { bed: [w || 256, d || 256], height: parseFloat(first(m.printable_height)) || 256, nozzle: parseFloat(first(m.nozzle_diameter)) || 0.4, modelId: model?.model_id ?? '' }
 }
 
+/** The printable area of a machine preset as a polygon (bed coordinates, mm) and its build height. */
+export async function machineBed(vendor: string, machineName: string): Promise<{ poly: [number, number][]; height: number }> {
+  const src = await sources(vendor)
+  const m = flattenPreset('machine', machineName, src)
+  const raw = (Array.isArray(m.printable_area) ? m.printable_area : String(m.printable_area ?? '').split(',')).map((s) => s.trim().split('x').map(Number))
+  const poly = raw.filter((q) => q.length === 2 && isFinite(q[0]) && isFinite(q[1])).map((q) => [q[0], q[1]] as [number, number])
+  return { poly, height: parseFloat(first(m.printable_height)) || 256 }
+}
+
 /** The default process and filament of a printer. */
 export async function printerDefaults(vendor: string, machineName: string): Promise<{ process: string; filament: string }> {
   const src = await sources(vendor)

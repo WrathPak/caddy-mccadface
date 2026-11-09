@@ -3,6 +3,8 @@ import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IDockvie
 import 'dockview-react/dist/styles/dockview.css'
 import { SquaresFour } from '@phosphor-icons/react'
 import { BrowserTree } from '@/ui/BrowserTree'
+import { PrintSidebar } from '@/features/print/plate/Sidebar'
+import { useUi } from '@/store/ui'
 import { Inspector } from '@/ui/Inspector'
 import { Timeline } from '@/ui/Timeline'
 import { ViewToolbar } from '@/viewport/ViewToolbar'
@@ -48,8 +50,16 @@ function ViewportHole() {
   return <div className="vp-hole" ref={ref} />
 }
 
+function BrowserOrPrint() {
+  const printing = useUi((s) => s.workspace === 'print')
+  return printing
+    ? <ErrorBoundary name="Print setup"><PrintSidebar /></ErrorBoundary>
+    : <ErrorBoundary name="Browser"><BrowserTree /></ErrorBoundary>
+}
+
 const baseComponents = {
-  browser: (_: IDockviewPanelProps) => <ErrorBoundary name="Browser"><BrowserTree /></ErrorBoundary>,
+  // the Print workspace swaps the Browser for its own setup sidebar (printer, filaments, process, objects)
+  browser: (_: IDockviewPanelProps) => <BrowserOrPrint />,
   inspector: (_: IDockviewPanelProps) => <ErrorBoundary name="Inspector"><Inspector /></ErrorBoundary>,
   // one slim glass bar along the bottom: the view controls, then the feature timeline
   timeline: (_: IDockviewPanelProps) => <ErrorBoundary name="Timeline"><div className="panel bottom-dock"><ViewToolbar /><span className="dock-sep" /><Timeline /></div></ErrorBoundary>,
@@ -137,6 +147,30 @@ function onReady(e: DockviewReadyEvent) {
 
 export function Layout() {
   const components = useMemo(() => ({ ...baseComponents, ...panelComponents() }), [])
+  // the setup sidebar of the Print workspace is wider than the Browser, and the tab says so
+  const printing = useUi((s) => s.workspace === 'print')
+  // nothing is shown in the Inspector column while Print has no dialog open: that width goes back to the view
+  const inspecting = useUi((s) => !!s.inspector)
+  useEffect(() => {
+    const g = dock?.getPanel('inspector')?.group
+    if (g) g.api.setVisible(!(printing && !inspecting))
+    return () => { dock?.getPanel('inspector')?.group.api.setVisible(true) }
+  }, [printing, inspecting])
+  const widthBefore = useRef<number | null>(null)
+  useEffect(() => {
+    const p = dock?.getPanel('browser')
+    if (!p) return
+    if (printing) {
+      widthBefore.current = p.api.width
+      p.api.setTitle('Print')
+      p.api.setSize({ width: Math.max(p.api.width, 340) })
+    } else if (widthBefore.current !== null) {
+      // back from Print: the Browser has the width it had (the saved layout stays as it was)
+      p.api.setTitle('Browser')
+      p.api.setSize({ width: widthBefore.current })
+      widthBefore.current = null
+    }
+  }, [printing])
   // switching to the phone layout takes the dock down: forget it, and the layout it saved last stays for the way back
   // (development's StrictMode takes an effect down and sets it up again at once: only a take-down that stays counts)
   useEffect(() => {

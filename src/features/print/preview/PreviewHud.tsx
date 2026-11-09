@@ -8,6 +8,7 @@ import { setPreview, useSlice } from '../engine/sliceStore'
 import { EXTRAS_MODES, MODE_LABEL, MODE_UNIT, fmtLength, fmtPct, fmtTime, rampCss, segmentRange, type ColorMode } from './data'
 import { setBottom, setMode, setPlaying, setScrub, setTop, setTravel, toggleFilament, toggleRole, usePreview } from './previewStore'
 import { roleColor } from './roles'
+import { SliceCard } from '../slice/SliceCard'
 import './preview.css'
 
 const fmtZ = (z: number | undefined) => (z === undefined ? '' : `${z.toFixed(2)} mm`)
@@ -146,7 +147,13 @@ function Legend() {
   const filOff = usePreview((s) => s.filOff)
   const travel = usePreview((s) => s.travel)
   const colors = useSlice((s) => s.filamentColors)
-  const [open, setOpen] = useState(() => typeof window === 'undefined' || window.innerWidth > 720)
+  // open where there is room beside the summary card (the Inspector takes a share of narrow windows), a button otherwise
+  const [open, setOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 1000)
+  useEffect(() => {
+    const narrow = () => { if (window.innerWidth < 1000) setOpen(false) }
+    window.addEventListener('resize', narrow)
+    return () => window.removeEventListener('resize', narrow)
+  }, [])
   const options = useMemo(() => (['feature', 'filament', 'width', 'speed', 'fan', 'temperature', 'layerTime'] as ColorMode[])
     .filter((m) => info?.hasExtras || !EXTRAS_MODES.includes(m))
     .filter((m) => m !== 'filament' || colors.length > 1 || (info?.filaments?.length ?? 0) > 1)
@@ -255,6 +262,22 @@ function useKeys() {
   }, [])
 }
 
+/** The result card's place (bottom right); its height is published as --card-h so the slider and scrubber stop above it. */
+function CardSlot({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    const hud = el?.parentElement
+    if (!el || !hud) return
+    const set = () => hud.style.setProperty('--card-h', `${Math.round(el.getBoundingClientRect().height)}px`)
+    set()
+    const ro = new ResizeObserver(set)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return <div className="sp-card" ref={ref}>{children}</div>
+}
+
 export function SlicePreviewHud() {
   const on = usePreviewOn()
   const stale = useSlice((s) => s.stale)
@@ -272,7 +295,8 @@ export function SlicePreviewHud() {
           <span className="sp-dot" />Out of date, slice again
         </button>
       )}
-      <LayerSlider />
+      <div className="sp-right"><LayerSlider /></div>
+      <CardSlot><SliceCard variant="result" /></CardSlot>
       <Scrubber />
     </div>
   )

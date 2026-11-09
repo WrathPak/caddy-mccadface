@@ -42,6 +42,7 @@ export const printSettingsSchema: ParamSchema = {
     { type: 'number', key: 'overhang', label: 'Overhang angle', unit: 'deg', min: 5, max: 85, step: 5, default: 45, visibleWhen: hidden },
     { type: 'text', key: 'brim', label: 'Brim', default: 'auto', visibleWhen: hidden },
     { type: 'text', key: 'placement', label: 'Plate layout', default: 'arrange', visibleWhen: hidden },
+    { type: 'text', key: 'plate', label: 'Plate placement', default: '', visibleWhen: hidden },
     ...slotParams(),
   ] as ParamDef[]).map((p) => (p.type === 'group' || p.help ? p : { ...p, help: 'Edited in the Slice panel, not here.' })),
 }
@@ -99,6 +100,16 @@ export function settingsFromValues(v: ParamValues, raw: ParamValues = {}): Print
     slotColors: Array.from({ length: SLOT_COUNT }, (_, i) => v[`slot${i + 1}`] as string),
     profile,
   }
+}
+
+/** The stored plate placement text of the document's active Print settings (parsed by plate/model). */
+export function plateTextOf(features: Feature[], rollback: number): string {
+  for (let i = Math.min(rollback, features.length) - 1; i >= 0; i--) {
+    const f = features[i]
+    if (f.type !== 'printSettings' || f.suppressed) continue
+    return typeof f.params.plate === 'string' ? f.params.plate : ''
+  }
+  return ''
 }
 
 export const defaultSettings = (): PrintSettings => settingsFromValues(resolveParams(printSettingsSchema, {}))

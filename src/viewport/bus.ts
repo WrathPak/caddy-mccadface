@@ -7,6 +7,11 @@ export interface ViewportEvents {
   frame: undefined
   /** fit the view to a world-space box (View > Frame Selection) */
   frameBox: { min: [number, number, number]; max: [number, number, number] }
+  /**
+   * look at points from a direction (target -> camera) and stand back until their projection fills `fill` (0..1) of the visible window
+   * less the pixel margins (the part of the window panels float over); the content is centred in what is left
+   */
+  frameFit: { points: [number, number, number][]; /** more points that must stay inside the free window, without having to fill it */ keep?: [number, number, number][]; dir: [number, number, number]; fill: number; margin?: { t?: number; r?: number; b?: number; l?: number } }
   view: ViewDir
   /** back to the view a fresh page opens with: home direction, default distance, centred on the origin (a new document) */
   resetView: undefined

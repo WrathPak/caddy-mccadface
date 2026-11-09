@@ -375,6 +375,56 @@ export function NavControls() {
         const sph = b.getBoundingSphere(new Sphere())
         fitSphere(sph.center.clone(), sph.radius)
       }),
+      viewportBus.on('frameFit', ({ points, keep, dir, fill, margin }) => {
+        if (!points.length) return
+        const c = cameraOf()
+        const pts = points.map((p) => new Vector3(...p))
+        const box = new Box3().setFromPoints(pts)
+        const centre = box.getCenter(new Vector3())
+        if (!c) return fitSphere(centre, box.getBoundingSphere(new Sphere()).radius)
+        // an orthographic camera has one scale for every depth (zoom = visible height / (2 tan(fov/2) dist)): the same sums with a fixed depth
+        const ortho = !!(c as OrthographicCamera).isOrthographicCamera
+        const q = lookQuat(new Vector3(...dir))
+        const d = new Vector3(...dir).normalize()
+        const right = new Vector3(1, 0, 0).applyQuaternion(q), up = new Vector3(0, 1, 0).applyQuaternion(q)
+        const vis = visibleOf(sizeRef.current)
+        const m = { t: 0, r: 0, b: 0, l: 0, ...margin }
+        const availW = Math.max(60, vis.w - m.l - m.r), availH = Math.max(60, vis.h - m.t - m.b)
+        const tan = Math.tan(MathUtils.degToRad(FOV) / 2)
+        // pixels per world unit at depth z is vis.h / (2 tan z); extents of the projected points at camera distance `dist`
+        const extentOf = (list: Vector3[], dist: number) => {
+          let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
+          for (const p of list) {
+            const v = p.clone().sub(centre)
+            const z = ortho ? dist : dist - v.dot(d)
+            const k = vis.h / (2 * tan * Math.max(z, 1e-3))
+            const x = v.dot(right) * k, y = v.dot(up) * k
+            x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y)
+          }
+          return { w: x1 - x0, h: y1 - y0, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 }
+        }
+        const r = box.getBoundingSphere(new Sphere()).radius
+        const solve = (list: Vector3[], f: number) => {
+          let lo = r * 0.5, hi = r * 40
+          for (let i = 0; i < 40; i++) {
+            const mid = (lo + hi) / 2
+            const x = extentOf(list, mid)
+            if (Math.max(x.w / availW, x.h / availH) > f) lo = mid; else hi = mid
+          }
+          return hi
+        }
+        let dist = solve(pts, fill)
+        // points that must stay inside (the top of the build volume) may ask for more room than the fill leaves
+        const kept = (keep ?? []).map((p) => new Vector3(...p))
+        if (kept.length) dist = Math.max(dist, solve([...pts, ...kept], 1))
+        const extent = (dd: number) => extentOf(kept.length ? [...pts, ...kept] : pts, dd)
+        const e = extent(dist)
+        // the content's middle lands in the middle of the free window: the target moves by the difference (in world units at the target's depth)
+        const wp = (2 * tan * dist) / vis.h
+        const free = { x: (m.l - m.r) / 2, y: (m.b - m.t) / 2 }
+        const target = centre.clone().add(right.clone().multiplyScalar((e.cx - free.x) * wp)).add(up.clone().multiplyScalar((e.cy - free.y) * wp))
+        goTo({ q, dist, target })
+      }),
       viewportBus.on('view', (d) => goTo({ q: lookQuat(DIRS[d]) })),
       viewportBus.on('resetView', () => goTo({ q: lookQuat(HOME_DIR), dist: HOME_DIST, target: HOME_TARGET.clone() })),
       viewportBus.on('viewVec', ([x, y, z]) => goTo({ q: lookQuat(new Vector3(x, y, z)) })),

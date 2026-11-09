@@ -40,14 +40,16 @@ test('slice preview: a 20 mm cube, layer slider, legend, scrubber, pill and Esc'
   await app.open()
   await addBox(app, [20, 20, 20], [0, 0, 0])
   await ready(app)
-  const bodies = await app.bbox()
+  await app.tab('Print')
+  // the parts stand on the printer's bed (the plate placement), and the toolpaths sit where they stand
+  await expect.poll(() => app.ev((c) => c.print.model().list.length)).toBe(1)
+  const bodies = await app.ev((c) => { const p = c.print.model().list[0]; return { min: p.lo, max: p.hi } }) as { min: number[]; max: number[] }
   const r = await sp(app).slice('a1')
   expect(r.layers).toBe(100)
   console.log('slice', JSON.stringify(r))
 
   // no preview before it is asked for; the ribbon button turns it on
   expect(await sp(app).stats()).toBeNull()
-  await app.tab('Print')
   await app.ribbon('Preview').click()
   await previewReady(app)
   const slider = page.getByTestId('layer-slider')

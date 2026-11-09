@@ -3,7 +3,13 @@
 .sp-hud > * { pointer-events: auto; }
 
 /* ---- layer slider (right edge, under the view cube) ---- */
-.sp-slider { position: absolute; right: calc(var(--in-r) + var(--hud)); top: calc(var(--in-t) + var(--hud) + 150px); bottom: calc(var(--in-b) + var(--hud) + 66px); width: 52px; min-height: 160px; padding: 36px 0; border-radius: 32px; box-sizing: border-box; animation: sp-in 380ms var(--ease) both; }
+/* the right edge: the layer slider under the view cube, the result summary below it. --card-h is the summary's height (set from the code). */
+.sp-hud { --card-h: 0px; }
+.sp-right { position: absolute; right: calc(var(--in-r) + var(--hud)); top: calc(var(--in-t) + var(--hud) + 176px); bottom: calc(var(--in-b) + var(--hud) + var(--card-h) + 16px); width: 52px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
+.sp-right > * { pointer-events: auto; }
+.sp-card { position: absolute; right: calc(var(--in-r) + var(--hud)); bottom: calc(var(--in-b) + var(--hud)); width: 304px; max-width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud)); }
+.sp-card .slice-card { width: 100%; box-sizing: border-box; animation: sp-in 380ms var(--ease) both 80ms; }
+.sp-slider { position: relative; flex: 0 1 440px; min-height: 120px; width: 52px; padding: 36px 0; border-radius: 32px; box-sizing: border-box; animation: sp-in 380ms var(--ease) both; }
 .sp-slider-in { position: relative; height: 100%; touch-action: none; cursor: pointer; }
 .sp-rail { position: absolute; right: 26px; top: 0; bottom: 0; width: 4px; margin-right: -2px; border-radius: 2px; background: rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12); }
 .sp-fill { position: absolute; right: 26px; width: 4px; margin-right: -2px; border-radius: 2px; background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #4a8cff)); box-shadow: 0 0 12px var(--accent-dim); }
@@ -20,7 +26,7 @@
 .sp-chip[data-side='lo'] { top: 11px; }
 
 /* ---- move scrubber (bottom center) ---- */
-.sp-scrub { position: absolute; left: calc(var(--in-l) + (100% - var(--in-l) - var(--in-r)) / 2); bottom: calc(var(--in-b) + var(--hud)); transform: translateX(-50%); width: min(520px, calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud) - 160px)); min-width: 280px; height: 46px; padding: 0 14px 0 8px; border-radius: 23px; display: flex; align-items: center; gap: 10px; box-sizing: border-box; animation: sp-in 380ms var(--ease) both; }
+.sp-scrub { position: absolute; left: calc(var(--in-l) + var(--hud)); bottom: calc(var(--in-b) + var(--hud)); width: min(560px, calc(100% - var(--in-l) - var(--in-r) - 3 * var(--hud) - 304px)); min-width: 240px; height: 46px; padding: 0 14px 0 8px; border-radius: 23px; display: flex; align-items: center; gap: 10px; box-sizing: border-box; animation: sp-in 380ms var(--ease) both; }
 .sp-play { width: 32px; height: 32px; border-radius: 50%; border: none; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--accent); color: var(--accent-ink, #04130d); box-shadow: 0 2px 8px var(--accent-dim); transition: transform var(--t-fast) var(--ease), filter var(--t-fast) var(--ease); }
 .sp-play:hover { filter: brightness(1.1); }
 .sp-play:active { transform: scale(0.94); }
@@ -59,7 +65,7 @@
 .sp-ramp-ends { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10.5px; color: var(--text-faint); }
 
 /* ---- out of date pill (top center) ---- */
-.sp-pill { position: absolute; left: calc(var(--in-l) + (100% - var(--in-l) - var(--in-r)) / 2); top: calc(var(--in-t) + var(--hud)); transform: translateX(-50%); height: 32px; padding: 0 14px 0 12px; border: none; border-radius: 16px; display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-weight: 600; font-size: var(--fs-sm); animation: sp-in 380ms var(--ease) both; }
+.sp-pill { position: absolute; left: calc(var(--in-l) + (100% - var(--in-l) - var(--in-r)) / 2); top: calc(var(--in-t) + var(--hud) + 56px); transform: translateX(-50%); height: 32px; padding: 0 14px 0 12px; border: none; border-radius: 16px; display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-weight: 600; font-size: var(--fs-sm); animation: sp-in 380ms var(--ease) both; }
 .sp-pill:hover { background: var(--glass-strong); }
 .sp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 3px var(--accent-2-dim); animation: sp-pulse 2.2s ease-in-out infinite; }
 
@@ -69,8 +75,33 @@
 
 /* phones: the legend folds into a button, the scrubber moves above the toolbar */
 @media (max-width: 720px) {
-  .sp-slider { width: 52px; top: calc(var(--in-t) + var(--hud) + 150px); bottom: calc(var(--in-b) + var(--hud) + 112px); }
-  .sp-scrub { width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud)); min-width: 0; bottom: calc(var(--in-b) + var(--hud) + 52px); }
+  .sp-card { left: calc(var(--in-l) + var(--hud)); width: auto; }
+  .sp-card .slice-card { padding: 8px 10px 10px; }
+  .sp-card .slice-card .sc-fil, .sp-card .slice-card .sc-note, .sp-card .slice-card .sc-line.warn { display: none; }
+  .sp-card .slice-card .sc-stats { grid-template-columns: repeat(4, auto); justify-content: space-between; margin: 0 0 6px; }
+  .sp-card .slice-card .sc-stats b { font-size: var(--fs-md); }
+  .sp-card .slice-card .print-card-head { margin-bottom: 4px; }
+  .sp-card .slice-card .sc-actions .btn[aria-label='Settings'] { display: none; }
+  .sp-right { bottom: calc(var(--in-b) + var(--hud) + var(--card-h) + 12px + 56px); }
+  .sp-scrub { width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud)); min-width: 0; bottom: calc(var(--in-b) + var(--hud) + var(--card-h) + 10px); }
   .sp-scrub-read { min-width: 0; }
   .sp-scrub-read span:first-child { display: none; }
+}
+
+/* desktop: the summary card sits left of the slider column, so the slider keeps the whole height under the view cube */
+@media (min-width: 721px) {
+  .sp-right { top: calc(var(--in-t) + var(--hud) + 156px); bottom: calc(var(--in-b) + var(--hud)); }
+  .sp-slider { flex-basis: 460px; min-height: 200px; padding: 24px 0; }
+  .sp-card { right: calc(var(--in-r) + var(--hud) + 140px); max-width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud) - 140px); }
+  .sp-scrub { width: min(560px, calc(100% - var(--in-l) - var(--in-r) - 3 * var(--hud) - 304px - 140px)); }
+}
+/* short windows: the summary folds to one row */
+@media (max-height: 820px) and (min-width: 721px) {
+  .sp-card .slice-card { padding: 8px 12px 10px; }
+  .sp-card .slice-card .sc-fil, .sp-card .slice-card .sc-note, .sp-card .slice-card .sc-line.warn { display: none; }
+  .sp-card .slice-card .sc-stats { grid-template-columns: repeat(4, auto); justify-content: space-between; margin: 0 0 6px; }
+  .sp-card .slice-card .sc-stats b { font-size: var(--fs-md); }
+  .sp-card .slice-card .print-card-head { margin-bottom: 4px; }
+  .sp-card .slice-card .sc-actions { margin-top: 6px; }
+  .sp-card .slice-card .sc-actions .btn[aria-label='Settings'] { display: none; }
 }

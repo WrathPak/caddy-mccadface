@@ -12,7 +12,7 @@ import './hollow'
 import { startPaint } from './paint'
 import { startSplit } from './split'
 import { startHollow } from './hollow'
-import { startAutoOrient } from './orientTool'
+import { autoOrientParts } from './plate/ops'
 import { openPrintSettings } from './settings'
 import { exportPlate3mf, sendToSlicer } from './slicer'
 import { exportGcode } from './slice/exportGcode'
@@ -42,7 +42,7 @@ registerCommand({ id: 'print.paintFaces', label: 'Paint Faces', tip: 'Paint face
 registerCommand({ id: 'print.overhang', label: 'Overhangs', tip: 'Show the surfaces that overhang more than an angle and need support', icon: Triangle, category: 'Print', run: toggleMap('overhang') })
 registerCommand({ id: 'print.thin', label: 'Thin Walls', tip: 'Show walls thinner than a minimum thickness', icon: Ruler, category: 'Print', run: toggleMap('thin') })
 registerCommand({ id: 'print.small', label: 'Small Features', tip: 'Show features narrower than a minimum size', icon: Bug, category: 'Print', run: toggleMap('small') })
-registerCommand({ id: 'print.orient', label: 'Auto Orient', tip: 'Find the way up that needs the least support and apply it as a Move', icon: ArrowsClockwise, category: 'Print', run: solid(startAutoOrient) })
+registerCommand({ id: 'print.orient', label: 'Auto Orient', tip: 'Find the way up that needs the least support and turn the part that way on the bed (the CAD model is not changed)', icon: ArrowsClockwise, category: 'Print', run: solid(() => void autoOrientParts()) })
 registerCommand({ id: 'print.split', label: 'Split Body', tip: 'Cut bodies into parts with a plane or a sketch, with optional alignment pins or dovetails', icon: SplitVertical, category: 'Print', run: solid(startSplit) })
 registerCommand({ id: 'print.hollow', label: 'Hollow', tip: 'Hollow a body out to a wall thickness, with drain holes you place by clicking', icon: Drop, category: 'Print', run: solid(startHollow) })
 

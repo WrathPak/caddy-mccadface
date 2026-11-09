@@ -1,4 +1,6 @@
 /** Printability overlays: which map is shown, its thresholds and results. Computed from the visible bodies. */
+import { usePlateXf } from '@/viewport/plateXf'
+import { transformPositions } from './plate/model'
 import { create } from 'zustand'
 import { useDoc } from '@/doc/store'
 import type { Body } from '@/kernel/types'
@@ -63,7 +65,9 @@ export async function runMap(): Promise<void> {
   const faces: MapResult['faces'] = []
   let flagged = 0, area = 0, total = 0, thinnest = Infinity
   for (const b of bodies) {
-    const m = asMesh(b)
+    // an overhang depends on the way up: the part is checked as it stands on the bed (its plate placement), not as it was modelled
+    const plate = kind === 'overhang' ? usePlateXf.getState().worlds?.[b.id] : undefined
+    const m = plate ? { ...asMesh(b), positions: transformPositions(b.mesh.positions, plate) } : asMesh(b)
     const info = triInfo(m)
     total += info.area.reduce((s, x) => s + x, 0)
     if (kind === 'overhang') {
