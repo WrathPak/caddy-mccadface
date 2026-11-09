@@ -62,7 +62,7 @@ export function SliceCard({ variant = 'result' }: { variant?: 'result' | 'status
           <div className="sc-fil" data-testid="filament-usage">
             {snap.usage.map((u) => (
               <div key={u.slot}>
-                <span className="sw chip" style={{ background: s.filamentColors[u.slot - 1] }} />
+                <span className="sw fil-dot" style={{ background: s.filamentColors[u.slot - 1] }} />
                 <span>{snap.usage.length > 1 ? `Filament ${u.slot}` : snap.resolved.filamentNames[0]}</span>
                 <b>{(u.mm / 1000).toFixed(2)} m</b><b>{f1(u.g)} g</b>{u.cost > 0 && <b>{u.cost.toFixed(2)}</b>}
               </div>

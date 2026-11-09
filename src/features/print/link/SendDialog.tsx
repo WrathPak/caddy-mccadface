@@ -158,10 +158,10 @@ export function SendDialog() {
                       const wrongType = !!t && !t.empty && !sameType(t.type, n.type)
                       return (
                         <div className="lk-map-r" key={n.slot} data-testid={`map-row-${n.slot}`}>
-                          <div className="lk-map-f"><span className="sw chip" style={{ background: n.color }} /><span>{needs.length > 1 ? `Filament ${n.slot}` : 'Filament'}</span><i>{n.type}</i></div>
+                          <div className="lk-map-f"><span className="sw fil-dot" style={{ background: n.color }} /><span>{needs.length > 1 ? `Filament ${n.slot}` : 'Filament'}</span><i>{n.type}</i></div>
                           {hasAms || trays.length ? (
                             <div className="lk-map-t">
-                              <span className="sw chip" style={{ background: t && !t.empty ? t.color ?? 'var(--text-faint)' : 'transparent' }} />
+                              <span className="sw fil-dot" style={{ background: t && !t.empty ? t.color ?? 'var(--text-faint)' : 'transparent' }} />
                               <select className="sl-input" data-testid={`map-select-${n.slot}`} value={assign[n.slot] ?? -1} disabled={sending || done} onChange={(e) => setAssign({ ...assign, [n.slot]: +e.target.value })}>
                                 <option value={-1}>Choose a tray</option>
                                 {trays.map((x) => <option key={x.id} value={x.id}>{trayLabel(x)}: {x.empty ? 'empty' : `${x.type || 'filament'}${x.remain >= 0 ? `, ${x.remain}%` : ''}`}</option>)}

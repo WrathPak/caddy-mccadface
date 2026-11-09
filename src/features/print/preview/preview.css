@@ -56,7 +56,7 @@
 .sp-row[data-off='true'] .sp-name { text-decoration: line-through; text-decoration-color: var(--text-faint); }
 .sp-eye { display: inline-flex; color: var(--text-dim); }
 .sp-sw { width: 12px; height: 12px; border-radius: 4px; box-sizing: border-box; border: 2px solid transparent; box-shadow: 0 0 0 1px var(--line-strong); }
-.sp-sw.chip { border: none; border-radius: 50%; }
+.sp-sw.fil-dot { border: none; border-radius: 50%; }
 .sp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-val { color: var(--text-faint); font-size: 11px; text-align: right; }
 .sp-pct { text-align: right; color: var(--text-dim); font-size: 11px; }

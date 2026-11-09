@@ -84,7 +84,7 @@ function FilamentLegend() {
     <div className="print-card" data-testid="filament-legend">
       <div className="print-card-head"><span>Filaments</span></div>
       {items.map((i) => (
-        <div className="print-chip" key={i.slot}><span className="sw chip" style={{ background: i.color.hex }} />Filament {i.slot}: {i.color.label}</div>
+        <div className="print-chip" key={i.slot}><span className="sw fil-dot" style={{ background: i.color.hex }} />Filament {i.slot}: {i.color.label}</div>
       ))}
     </div>
   )
