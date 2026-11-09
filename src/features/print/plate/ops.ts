@@ -2,12 +2,11 @@
 import { useDoc } from '@/doc/store'
 import { useUi } from '@/store/ui'
 import { toast } from '@/ui/Modal'
-import { eulerFromMatrix, rotationBetween } from '@/kernel/print-geom'
 import type { Body, Vec3 } from '@/kernel/types'
 import { autoOrient } from '../orient'
 import { currentSettings } from '../settings'
 import { frameBed } from './frame'
-import { arrangeAll, bedCentre, type PlaceEntry, type PlateStore } from './model'
+import { arrangeAll, bedCentre, laidDown, settleEntries, type PlaceEntry, type PlateStore } from './model'
 import { bedFor, commitPlacements, currentPlate, isAssembly, plateBodies, usePlate } from './store'
 
 const round = (n: number) => +n.toFixed(3)
@@ -37,34 +36,14 @@ export async function setPose(id: string, pose: Partial<{ x: number; y: number; 
   commitPlacements({ [id]: e }, label, pl.entries)
 }
 
-/** Turn a part so the model direction `down` faces the bed. */
-const rotationFor = (down: Vec3): Vec3 => {
-  const l = Math.hypot(down[0], down[1], down[2]) || 1
-  const d: Vec3 = [down[0] / l, down[1] / l, down[2] / l]
-  return eulerFromMatrix(rotationBetween(d, [0, 0, -1])).map(round) as Vec3
-}
-
-/** Area-weighted normal of one face of the body (CAD space). */
-function faceNormal(b: Body, face: number): Vec3 | null {
-  const { positions: p, indices: ix, faceIds } = b.mesh
-  const n: Vec3 = [0, 0, 0]
-  for (let t = 0; t < faceIds.length; t++) {
-    if (faceIds[t] !== face) continue
-    const a = ix[t * 3] * 3, c = ix[t * 3 + 1] * 3, d = ix[t * 3 + 2] * 3
-    const ux = p[c] - p[a], uy = p[c + 1] - p[a + 1], uz = p[c + 2] - p[a + 2]
-    const vx = p[d] - p[a], vy = p[d + 1] - p[a + 1], vz = p[d + 2] - p[a + 2]
-    n[0] += uy * vz - uz * vy; n[1] += uz * vx - ux * vz; n[2] += ux * vy - uy * vx
-  }
-  const l = Math.hypot(n[0], n[1], n[2])
-  return l > 1e-12 ? [n[0] / l, n[1] / l, n[2] / l] : null
-}
-
-/** Lay a part on one of its faces: that face becomes the bottom. */
-export async function layOnFace(id: string, face: number) {
-  const b = useDoc.getState().geometry.find((x) => x.id === id)
-  const n = b && faceNormal(b, face)
-  if (!n) return toast('That face has no direction to lay flat on', 'info')
-  await setPose(id, { r: rotationFor(n) }, 'Lay on face')
+/** Lay a part on a face: the face's outward normal (model space) turns to face the bed, by the shortest turn. */
+export async function layOnNormal(id: string, normal: Vec3) {
+  if (isAssembly()) return
+  const pl = await plateNow()
+  const cur = pl.entries[id], body = pl.bodies.find((b) => b.id === id)
+  if (!cur || !body) return
+  const e = laidDown(body, cur, normal, pl.bed)
+  commitPlacements(settleEntries(pl.bodies, { ...pl.entries, [id]: e }, [id], pl.bed), 'Lay on face', pl.entries)
 }
 
 /** Find the way up that needs the least support (the same ranking as the Auto Orient tool) and apply it to the placement. */
@@ -84,7 +63,7 @@ export async function autoOrientParts() {
       const res = autoOrient(b.mesh, { angle, goal: 'support' })
       const best = res.ranked[0]
       const cur = pl.entries[b.id]
-      if (best && cur) change[b.id] = { ...cur, r: rotationFor(best.down) }
+      if (best && cur) change[b.id] = laidDown(b, cur, best.down, pl.bed)
     }
     // the new footprints may overlap their neighbours: with several parts the plate is laid out again, in the same undo step
     commitPlacements(pl.bodies.length > 1 ? arrangeAll(pl.bodies, { ...pl.entries, ...change }, pl.bed) : change, 'Auto orient', pl.entries)

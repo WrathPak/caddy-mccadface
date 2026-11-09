@@ -268,7 +268,8 @@ function BodyView({ inst, mats, colors, index, clip, dimmed, flagged, pickable }
   const sketching = sketchMode && !projecting
   const painting = useHairPaint((s) => s.mode !== 'off')
   const byComponent = filter === 'component' && !!inst.occ
-  const pickFaces = filter !== 'edge' && !sketching && !painting && !snapping && !dragging
+  const ownPick = usePlateXf((s) => !!s.facePick)
+  const pickFaces = filter !== 'edge' && !ownPick && !sketching && !painting && !snapping && !dragging
   // Fillet / Chamfer in the Edge filter: a face stands for its edges
   const onFaceEdges = useFaceEdges((s) => s.onFace)
   const faceEdges = filter === 'edge' && !!onFaceEdges && !sketching && !painting && !snapping && !dragging

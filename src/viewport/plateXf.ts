@@ -12,6 +12,8 @@ export interface PlateXf {
   boxes: Record<string, { lo: Vec3; hi: Vec3 }> | null
   /** parts that do not fit the bed: drawn in the warning color */
   bad: Record<string, true>
+  /** the Print workspace picks faces itself (Lay on face): the bodies neither hover-tint nor select on a click */
+  facePick?: boolean
 }
 
 export const usePlateXf = create<PlateXf>(() => ({ worlds: null, boxes: null, bad: {} }))

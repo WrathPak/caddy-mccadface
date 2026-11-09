@@ -1,5 +1,6 @@
 /** Auto orient: pick the way up that needs the least support. Pure, runs in Node and the browser. */
 import { DoubleSide, Ray, Vector3 } from 'three'
+import { ConvexHull } from 'three/examples/jsm/math/ConvexHull.js'
 import { composeTransform, type Vec3 } from '@/kernel/types'
 import { eulerFromMatrix, rotationBetween } from '@/kernel/print-geom'
 import { buildBvh, heightRange, overhangMap, triInfo, type MeshIn, type TriInfo } from './analysis'
@@ -95,18 +96,92 @@ const better = (goal: OrientGoal) => (a: OrientCandidate, b: OrientCandidate) =>
   return a.height - b.height
 }
 
-/** Rank orientations of a mesh (Z is up now). `angle` is the overhang threshold in degrees from vertical. */
+/** Flat area on the plate for `down`: triangles facing it within half a degree that lie on the lowest plane (mm2). 0 when the part cannot rest flat that way. */
+export function flatContact(m: MeshIn, info: TriInfo, down: Vec3): number {
+  const up: Vec3 = [-down[0], -down[1], -down[2]]
+  const { min } = heightRange(m, up)
+  const cosTol = Math.cos((0.5 * Math.PI) / 180)
+  let area = 0
+  for (let t = 0; t < info.count; t++) {
+    if (dot([info.n[t * 3], info.n[t * 3 + 1], info.n[t * 3 + 2]], down) < cosTol) continue
+    if (info.c[t * 3] * up[0] + info.c[t * 3 + 1] * up[1] + info.c[t * 3 + 2] * up[2] - min > 0.02) continue
+    area += info.area[t]
+  }
+  return area
+}
+
+/** The normals of the biggest planar areas (triangle normals grouped within a degree), the exact area-weighted direction of each. */
+function planarNormals(info: TriInfo, max = 30): Vec3[] {
+  const order = Array.from({ length: info.count }, (_, i) => i).filter((t) => info.area[t] > 1e-9).sort((a, b) => info.area[b] - info.area[a])
+  const taken = new Uint8Array(info.count)
+  const cos1 = Math.cos((1 * Math.PI) / 180)
+  const out: Vec3[] = []
+  for (const s of order) {
+    if (taken[s]) continue
+    const sn: Vec3 = [info.n[s * 3], info.n[s * 3 + 1], info.n[s * 3 + 2]]
+    let x = 0, y = 0, z = 0
+    for (const t of order) {
+      if (taken[t]) continue
+      const tn: Vec3 = [info.n[t * 3], info.n[t * 3 + 1], info.n[t * 3 + 2]]
+      if (dot(sn, tn) < cos1) continue
+      taken[t] = 1
+      x += tn[0] * info.area[t]; y += tn[1] * info.area[t]; z += tn[2] * info.area[t]
+    }
+    out.push(norm([x, y, z]))
+    if (out.length >= max) break
+  }
+  return out
+}
+
+/** Facet normals of the convex hull (a part with no flat face of its own still rests on a hull facet): the biggest ones. */
+function hullNormals(m: MeshIn, max = 24): Vec3[] {
+  const p = m.positions
+  const n = p.length / 3
+  const stride = Math.max(1, Math.ceil(n / 20000))
+  const pts: Vector3[] = []
+  for (let i = 0; i < n; i += stride) pts.push(new Vector3(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]))
+  if (pts.length < 4) return []
+  let hull: ConvexHull
+  try { hull = new ConvexHull().setFromPoints(pts) } catch { return [] }
+  const bins: { n: Vec3; area: number }[] = []
+  const cos2 = Math.cos((2 * Math.PI) / 180)
+  for (const f of hull.faces) {
+    const e0 = f.edge, pa = e0.head().point, pb = e0.next.head().point, pc = e0.next.next.head().point
+    const a = new Vector3().subVectors(pb, pa).cross(new Vector3().subVectors(pc, pa)).length() / 2, fn: Vec3 = [f.normal.x, f.normal.y, f.normal.z]
+    const b = bins.find((q) => dot(q.n, fn) > cos2)
+    if (b) { b.area += a; b.n = norm([b.n[0] * (b.area - a) + fn[0] * a, b.n[1] * (b.area - a) + fn[1] * a, b.n[2] * (b.area - a) + fn[2] * a]) }
+    else bins.push({ n: fn, area: a })
+  }
+  return bins.sort((a, b) => b.area - a.area).slice(0, max).map((b) => b.n)
+}
+
+/**
+ * Orientations that rest on the plate: a real flat face of the part lying exactly on it (it has to be on the underside of the
+ * part, so a recessed face does not count); a part without any flat face rests on convex-hull facets.
+ */
+export function flatDirections(m: MeshIn, info: TriInfo): { down: Vec3; contact: number }[] {
+  const minContact = Math.max(0.05, 1e-4 * info.area.reduce((s, a) => s + a, 0))
+  const flat: { down: Vec3; contact: number }[] = []
+  for (const down of planarNormals(info)) {
+    const contact = flatContact(m, info, down)
+    if (contact >= minContact && !flat.some((f) => dot(f.down, down) > Math.cos((0.5 * Math.PI) / 180))) flat.push({ down, contact })
+  }
+  if (flat.length) return flat
+  return hullNormals(m).map((down) => ({ down, contact: flatContact(m, info, down) }))
+}
+
+/** Rank the orientations that rest flat on the plate (Z is up now). `angle` is the overhang threshold in degrees from vertical. */
 export function autoOrient(m: MeshIn, opts: { angle: number; goal: OrientGoal }): OrientResult {
   const info = triInfo(m)
   const bvh = buildBvh(m)
   const cmp = better(opts.goal)
   const current = evaluate(m, info, bvh, [0, 0, -1], opts.angle, true)
-  // cheap pass over every direction, then the volume estimate for the most promising few
-  const dirs = candidateDirections(info)
-  const pre = dirs.map((d) => evaluate(m, info, bvh, d, opts.angle, false))
+  const withContact = (c: OrientCandidate, contact: number): OrientCandidate => ({ ...c, contactArea: contact })
+  // cheap pass over every flat-resting direction, then the volume estimate for the most promising few
+  const dirs = flatDirections(m, info)
+  const pre = dirs.map((d) => withContact(evaluate(m, info, bvh, d.down, opts.angle, false), d.contact))
   pre.sort((a, b) => a.overhangArea - b.overhangArea || b.contactArea - a.contactArea)
-  const finalists = pre.slice(0, 10).map((c) => evaluate(m, info, bvh, c.down, opts.angle, true))
-  if (!finalists.some((f) => dot(f.down, current.down) > 0.9999)) finalists.push(current)
+  const finalists = pre.slice(0, 10).map((c) => withContact(evaluate(m, info, bvh, c.down, opts.angle, true), c.contactArea))
   finalists.sort(cmp)
   return { current, ranked: finalists }
 }

@@ -4,6 +4,7 @@
  * on the bed (lowest point at z = 0) with the centre of its footprint at (x, y). Bodies with no stored placement are auto-arranged.
  */
 import { composeTransform, type Body, type Vec3 } from '@/kernel/types'
+import { eulerFromMatrix, rotationBetween } from '@/kernel/print-geom'
 
 export type Vec2 = [number, number]
 
@@ -289,4 +290,32 @@ export function mul3(a: number[], b: number[]): number[] {
   const o = new Array<number>(9)
   for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) o[i * 3 + j] = a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j]
   return o
+}
+
+/**
+ * The rotation that lays a part down on the direction `down` (a model-space direction, e.g. a face's outward normal), keeping the
+ * current rotation `r`: the shortest turn that takes the part's current world direction of `down` to straight down, composed with
+ * `r`. No yaw is added beyond what that turn needs. Returns Euler degrees (Move convention).
+ */
+export function layDirectionDown(r: Vec3, down: Vec3): Vec3 {
+  const l = Math.hypot(down[0], down[1], down[2]) || 1
+  const d = [down[0] / l, down[1] / l, down[2] / l]
+  const R = eulerMatrix(r)
+  const w: Vec3 = [R[0] * d[0] + R[1] * d[1] + R[2] * d[2], R[3] * d[0] + R[4] * d[1] + R[5] * d[2], R[6] * d[0] + R[7] * d[1] + R[8] * d[2]]
+  const Q = rotationBetween(w, [0, 0, -1])
+  return eulerFromMatrix(mul3(Q, R)).map((v) => +v.toFixed(4)) as Vec3
+}
+
+/** Move a footprint centre the least that puts the (w x d) box inside the bed's bounding box (centred when it is bigger). */
+export function clampToBed(bed: BedShape, w: number, d: number, x: number, y: number): Vec2 {
+  const c = (v: number, lo: number, hi: number, size: number) => (hi - lo < size ? (lo + hi) / 2 : Math.min(hi - size / 2, Math.max(lo + size / 2, v)))
+  return [+c(x, bed.lo[0], bed.hi[0], w).toFixed(3), +c(y, bed.lo[1], bed.hi[1], d).toFixed(3)]
+}
+
+/** The entry after laying `body` down on its model direction `down`: shortest turn, same footprint centre (kept on the bed). */
+export function laidDown(body: Body, entry: PlaceEntry, down: Vec3, bed: BedShape): PlaceEntry {
+  const r = layDirectionDown(entry.r, down)
+  const { lo, hi } = rotatedBox(body, r)
+  const [x, y] = clampToBed(bed, hi[0] - lo[0], hi[1] - lo[1], entry.x, entry.y)
+  return { r, x, y }
 }
