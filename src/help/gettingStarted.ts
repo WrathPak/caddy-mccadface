@@ -77,6 +77,6 @@ export const ABOUT: InfoSection[] = [
   },
   {
     title: 'License',
-    paragraphs: ['MIT licensed. The source and the plugin guide are in the project repository (docs/plugins.md).'],
+    paragraphs: ['AGPL-3.0 licensed. The source and the plugin guide are in the project repository (docs/plugins.md).'],
   },
 ]

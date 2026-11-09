@@ -194,7 +194,7 @@ test('Help: Getting started, workspace guides and About, from the ? menu and F1'
   await expect(page.getByTestId('start-page')).toBeVisible()
   await expect(page.getByTestId('start-page')).toContainText('Coming from Fusion 360')
   const dlg = page.getByTestId('help-dialog')
-  for (const [nav, text] of [['guide:hair', 'sacrificial wall'], ['guide:surface', 'Stitch'], ['guide:print', 'Auto Orient'], ['guide:solid', 'Fillet'], ['about', 'MIT licensed']] as const) {
+  for (const [nav, text] of [['guide:hair', 'sacrificial wall'], ['guide:surface', 'Stitch'], ['guide:print', 'Auto Orient'], ['guide:solid', 'Fillet'], ['about', 'AGPL-3.0 licensed']] as const) {
     await dlg.getByTestId('help-dialog-nav-' + nav).click()
     await expect(dlg.getByTestId('help-dialog-pane')).toContainText(text)
   }

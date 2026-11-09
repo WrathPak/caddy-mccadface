@@ -54,4 +54,4 @@ tests: `pnpm test` (unit) and `pnpm exec playwright test` (browser). see CONTRIB
 
 opencascade (via replicad) for solids, manifold-3d for meshes, planegcs for the sketch solver, three.js for the viewport.
 
-MIT licensed
+AGPL-3.0 licensed, see LICENSE
