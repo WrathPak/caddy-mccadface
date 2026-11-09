@@ -24,7 +24,7 @@ describe('.gcode.3mf assembly', () => {
     {
       machine: { printer_model: 'Bambu Lab A1', nozzle_diameter: ['0.4'], type: 'machine' }, process: { layer_height: '0.28', type: 'process' },
       filaments: [{ filament_type: ['PLA'], filament_colour: ['#F2754E'], filament_id: 'GFA00' }], processName: '0.28mm Extra Draft @BBL A1', filamentNames: ['Bambu PLA Basic @BBL A1'],
-      base: { machine: {}, process: {}, filaments: [{}] },
+      base: { machine: {}, process: {}, filaments: [{}] }, plate: null,
     },
     { ...legacyProfile({}), overrides: { machine: {}, process: { layer_height: '0.28' }, filaments: [{}] } },
   )

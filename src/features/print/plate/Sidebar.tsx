@@ -8,8 +8,9 @@ import { Tip } from '@/ui/Tooltip'
 import { FILAMENT_COLORS, SLOT_COUNT } from '../palette'
 import { currentSettings, updatePrintSettings, writeProfile } from '../settings'
 import { loadUserPresets, refOf } from '../slice/userPresets'
-import { profileNow, setFilament, setPrinter, setProcess, slotCount, syncResolvedFromDoc } from '../slice/controller'
+import { profileNow, setBedType, setFilament, setPrinter, setProcess, slotCount, syncResolvedFromDoc } from '../slice/controller'
 import { PresetPicker, PrinterPicker, usePresetNames } from '../slice/Pickers'
+import { PlatePicker } from '../slice/PlatePicker'
 import { QuickTab } from '../slice/QuickTab'
 import { useSlicer } from '../slice/store'
 import { withSlots } from '../slice/profile'
@@ -49,10 +50,12 @@ function Section({ id, title, icon, aside, children }: { id: string; title: stri
 function PrinterCard() {
   const profile = profileNow()
   const bed = useBed()
+  const resolved = useSlicer((s) => s.resolved)
   const w = bed.hi[0] - bed.lo[0], d = bed.hi[1] - bed.lo[1]
   return (
     <div className="ws-card">
       <PrinterPicker machine={profile.machine} onPick={(m) => void setPrinter(m)} />
+      {resolved?.plate && <PlatePicker plate={resolved.plate} filaments={resolved.filaments} names={resolved.filamentNames} onPick={(id) => void setBedType(id)} />}
       <div className="ws-facts" data-testid="plate-size">
         <span><b>{+w.toFixed(0)} x {+d.toFixed(0)}</b> mm plate</span>
         <span><b>{+bed.height.toFixed(0)}</b> mm high</span>

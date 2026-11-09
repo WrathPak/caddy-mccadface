@@ -22,6 +22,8 @@ export interface SliceProfile {
   filaments: string[]
   user: { machine?: UserRef; process?: UserRef; filaments: (UserRef | null)[] }
   overrides: { machine: ConfigPatch; process: ConfigPatch; filaments: ConfigPatch[] }
+  /** build plate (Orca's curr_bed_type, "Textured PEI Plate"); empty = the printer's default */
+  bedType: string
   /** per-object overrides by plate object id */
   objects: Record<string, ConfigPatch>
   /** cached from the machine preset for code that needs it without loading presets */
@@ -34,7 +36,7 @@ export const DEFAULT_MACHINE = 'Bambu Lab A1 0.4 nozzle'
 
 export const emptyProfile = (): SliceProfile => ({
   v: 1, vendor: 'BBL', machine: DEFAULT_MACHINE, process: '', filaments: [''], user: { filaments: [] },
-  overrides: { machine: {}, process: {}, filaments: [{}] }, objects: {}, bed: [256, 256], height: 256, nozzle: 0.4,
+  overrides: { machine: {}, process: {}, filaments: [{}] }, bedType: '', objects: {}, bed: [256, 256], height: 256, nozzle: 0.4,
 })
 
 /** The printers older documents named by a short id, with their beds. */
@@ -82,6 +84,7 @@ export function parseProfile(raw: unknown): SliceProfile | null {
         machine: patchOf(ov.machine), process: patchOf(ov.process),
         filaments: filaments.map((_, i) => patchOf(Array.isArray(ov.filaments) ? ov.filaments[i] : undefined)),
       },
+      bedType: typeof j.bedType === 'string' ? j.bedType : '',
       objects: Object.fromEntries(Object.entries(j.objects ?? {}).map(([k, v]) => [k, patchOf(v)])),
       bed: Array.isArray(j.bed) && j.bed.length === 2 ? [Number(j.bed[0]) || 256, Number(j.bed[1]) || 256] : base.bed,
       height: Number(j.height) || base.height,

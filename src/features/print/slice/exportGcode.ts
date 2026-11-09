@@ -8,6 +8,7 @@ import { toast } from '@/ui/Modal'
 import { useSlice } from '../engine/sliceStore'
 import { writeBambu3mf, type GcodeExtras, type SliceInfo } from '../threemf'
 import { md5Hex } from './md5'
+import { plateFileName } from './plates'
 import { flatProjectConfig } from './projectConfig'
 import { type SliceSnapshot } from './run'
 import { insertThumbnails, pngBytes, renderPlate, scaleImage, thumbnailSection } from './thumbnail'
@@ -51,7 +52,7 @@ export async function buildExport(snap: SliceSnapshot, gcodeBytes: Uint8Array): 
       })),
       layerCount: stats?.layers ?? 0,
       layerHeight: parseFloat(first(resolved.process.layer_height)) || 0.2,
-      bedType: 'cool_plate',
+      bedType: plateFileName(resolved.plate?.current ?? 'Cool Plate'),
     }
     const extras: GcodeExtras = {
       gcode: gcodeBytes,

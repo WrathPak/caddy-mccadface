@@ -3,6 +3,7 @@ import {
   flattenPreset, type Config, type PresetScope, type ProfileIndex, type ProfileIndexVendor, type VendorBundle,
 } from '@muon3d/slicer-engine-protocol'
 import { compatiblePresets, type PresetListing } from '../slice/compat'
+import { effectivePlate, modelPlates, type ModelPlates } from '../slice/plates'
 import { applyPatch, type SliceProfile, type UserRef } from '../slice/profile'
 import type { EnginePresets } from './types'
 
@@ -103,6 +104,8 @@ export interface Resolved extends EnginePresets {
   filamentNames: string[]
   /** the unmodified presets (user preset applied, no overrides): what "modified" is measured against */
   base: { machine: Config; process: Config; filaments: Config[] }
+  /** the build plates of the printer model and the one in effect; null when the printer has no plate data */
+  plate: (ModelPlates & { current: string }) | null
 }
 
 const withUser = (c: Config, u?: UserRef | null): Config => (u ? applyPatch(c, u.keys) : c)
@@ -134,9 +137,12 @@ export async function resolveProfile(p: SliceProfile, colours: string[]): Promis
   const filamentNames = p.filaments.map((n) => n || defaultFilament)
   const baseFilaments = filamentNames.map((n, i) => withUser(flattenPreset('filament', n, src), p.user.filaments[i]))
   const machine = applyPatch(baseMachine, p.overrides.machine)
-  const process = applyPatch(baseProcess, p.overrides.process)
+  const mp = modelPlates(src.vendor.models[String(baseMachine.printer_model)] as Record<string, unknown> | undefined)
+  const plate = mp ? { ...mp, current: effectivePlate(p.bedType, mp) } : null
+  // curr_bed_type is a project setting; the engine reads it from the presets it is given
+  const process = { ...applyPatch(baseProcess, p.overrides.process), ...(plate ? { curr_bed_type: plate.current } : {}) }
   const filaments = baseFilaments.map((f, i) => ({ ...applyPatch(f, p.overrides.filaments[i] ?? {}), filament_colour: [colours[i] ?? '#FFFFFF'] }))
-  return { machine, process, filaments, processName, filamentNames, base: { machine: baseMachine, process: baseProcess, filaments: baseFilaments } }
+  return { machine, process, filaments, processName, filamentNames, plate, base: { machine: baseMachine, process: baseProcess, filaments: baseFilaments } }
 }
 
 /** One flattened preset (for the settings service). */

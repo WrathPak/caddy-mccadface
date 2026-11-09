@@ -69,6 +69,24 @@
 .ws-card { padding: 10px; margin-bottom: 6px; border-radius: var(--radius-lg); background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--line); }
 .ws-card .sl-picker { margin: 0; }
 .ws-card .sl-trigger { width: 100%; }
+/* build plate: a compact dropdown under the printer, with an inline warning when a filament can't print on it */
+.ws-plate { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.ws-plate-trigger { width: 100%; height: 32px; padding: 0 10px; gap: 8px; border-radius: 10px; font-size: var(--fs-md); }
+.ws-plate-trigger[data-readonly='true'] { cursor: default; color: var(--text-dim); }
+.ws-plate-icon { display: inline-flex; color: var(--accent); flex: none; }
+.ws-plate-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-weight: 500; }
+.ws-plate-warnicon { color: var(--warn); flex: none; }
+.ws-plate[data-bad='true'] .ws-plate-trigger { box-shadow: inset 0 0 0 1px var(--warn); }
+.sl-pop.ws-plate-pop { width: min(320px, 92vw); padding: 6px; }
+.ws-plate-item { padding: 0 10px; gap: 9px; justify-content: flex-start; }
+.ws-plate-itemname { flex: 1; display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-plate-itemname em { font-style: normal; font-size: var(--fs-xs); color: var(--text-faint); }
+.ws-plate-item[data-dim='true'] .ws-plate-itemname, .ws-plate-item[data-dim='true'] .ws-plate-icon { opacity: 0.5; }
+.ws-plate-why { flex: none; margin-left: auto; font-size: var(--fs-xs); color: var(--warn); white-space: nowrap; }
+.ws-plate-warn { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--warn) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 35%, transparent); font-size: var(--fs-sm); line-height: 1.35; }
+.ws-plate-warn > svg { color: var(--warn); flex: none; }
+.ws-plate-warn > span { flex: 1 1 140px; min-width: 0; }
+.ws-plate-warn .ws-link { margin-left: 22px; color: var(--accent); font-weight: 600; }
 .ws-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; color: var(--text-faint); font-size: var(--fs-xs); }
 .ws-facts b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .ws-fils { display: flex; flex-direction: column; gap: 4px; padding: 6px; }
