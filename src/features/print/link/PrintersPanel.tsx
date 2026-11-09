@@ -94,7 +94,7 @@ const deg = (t: Temp | null) => (t ? `${Math.round(t.cur)}${t.target > 0 ? ` / $
 function Chip({ t, active, label }: { t: Tray; active: boolean; label?: string }) {
   return (
     <div className="lk-chip" data-empty={t.empty} data-active={active} data-testid={`ams-slot-${t.id}`} title={t.name || undefined}>
-      <span className="sw chip" style={{ background: t.empty ? 'transparent' : t.color ?? 'var(--text-faint)' }} />
+      <span className="sw fil-dot" style={{ background: t.empty ? 'transparent' : t.color ?? 'var(--text-faint)' }} />
       <b>{label ?? (t.empty ? 'Empty' : t.type || '?')}</b>
       <i>{t.empty ? '' : t.remain >= 0 ? `${t.remain}%` : ''}</i>
     </div>

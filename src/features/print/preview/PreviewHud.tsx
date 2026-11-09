@@ -213,7 +213,7 @@ function Legend() {
               return (
                 <button key={i} type="button" className="sp-row" data-off={off} aria-pressed={!off} data-testid={`legend-filament-${i}`} onClick={() => toggleFilament(i)}>
                   <span className="sp-eye">{off ? <EyeSlash size={14} /> : <Eye size={14} />}</span>
-                  <span className="sp-sw chip" style={{ background: colors[i] ?? '#cccccc' }} />
+                  <span className="sp-sw fil-dot" style={{ background: colors[i] ?? '#cccccc' }} />
                   <span className="sp-name">Filament {i + 1}</span>
                   <span className="sp-val num">{f.mm !== null ? `${(f.mm / 1000).toFixed(2)} m` : ''}</span>
                   <span className="sp-pct num">{f.grams !== null ? `${f.grams.toFixed(1)} g` : ''}</span>

@@ -24,7 +24,7 @@
 .print-result { color: var(--text-dim); line-height: 1.35; }
 .print-chip { display: flex; align-items: center; gap: 6px; margin: 2px 0; color: var(--text-dim); }
 /* a filament color chip: round, with an inner ring that reads on the panel for white and for black alike */
-.chip { width: 12px; height: 12px; border-radius: 50%; flex: none; display: inline-block; box-sizing: border-box; box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 42%, transparent), inset 0 0 0 1px rgba(128, 128, 128, 0.5), inset 0 1px 1.5px rgba(255, 255, 255, 0.25); }
+.fil-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; display: inline-block; box-sizing: border-box; box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 42%, transparent), inset 0 0 0 1px rgba(128, 128, 128, 0.5), inset 0 1px 1.5px rgba(255, 255, 255, 0.25); }
 .print-drain-bar { position: absolute; left: calc(var(--in-l) + (100% - var(--in-l) - var(--in-r)) / 2); top: calc(var(--in-t) + var(--hud) + 56px); transform: translateX(-50%); z-index: 6; }
 .print-count { padding: 0 6px; color: var(--text-dim); font-size: var(--fs-sm); }
 .print-drain-bar .vp-bar button:disabled { opacity: 0.4; }

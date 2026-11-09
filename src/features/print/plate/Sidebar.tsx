@@ -84,7 +84,7 @@ function Filaments() {
         return (
           <div key={i} className="ws-fil" data-open={edit === i}>
             <button type="button" className="ws-chip" data-testid={`filament-chip-${i}`} aria-expanded={edit === i} onClick={() => setEdit(edit === i ? null : i)}>
-              <span className="chip" style={{ background: hex, width: 16, height: 16 }} />
+              <span className="fil-dot" style={{ background: hex, width: 16, height: 16 }} />
               <span className="ws-chip-slot">{i + 1}</span>
               <span className="ws-chip-name">{name}</span>
               <CaretDown size={10} className="ws-caret" />
