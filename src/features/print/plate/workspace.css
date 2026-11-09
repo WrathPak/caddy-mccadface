@@ -1,0 +1,140 @@
+/* Print workspace: the stage switch and Slice button, the object toolbar, the part readout, the setup sidebar and the phone sheet.
+   Frosted glass from the shared tokens (see tokens.css and global.css .glass). */
+.ws-hud { position: absolute; inset: 0; z-index: 7; pointer-events: none; font-size: var(--fs-sm); color: var(--text); user-select: none; -webkit-user-select: none; }
+.ws-hud > * { pointer-events: auto; }
+.ws-top, .ws-tools, .ws-warn-pill, .ws-read { position: absolute; left: calc(var(--in-l) + (100% - var(--in-l) - var(--in-r)) / 2); transform: translateX(-50%); animation: ws-in 360ms var(--ease) both; }
+@keyframes ws-in { from { opacity: 0; filter: blur(6px); translate: 0 -6px; } to { opacity: 1; filter: none; translate: 0 0; } }
+
+/* ---- top bar: Prepare | Preview and the Slice button ---- */
+.ws-top { top: calc(var(--in-t) + var(--hud)); display: flex; align-items: center; gap: 8px; padding: 5px; border-radius: 20px; max-width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud)); box-sizing: border-box; }
+.ws-stage { --thumb-y: 2px; width: 196px; height: 34px; flex: none; border-radius: 15px; }
+.ws-stage::before { border-radius: 13px; }
+.ws-stage button { font-size: var(--fs-md); font-weight: 600; letter-spacing: -0.01em; border-radius: 13px; }
+.ws-stage button[data-ready='false'] { opacity: 0.5; }
+.ws-slice { position: relative; height: 34px; padding: 0 18px 0 14px; flex: none; display: inline-flex; align-items: center; gap: 8px; border: none; border-radius: 15px; background: var(--accent); color: var(--text-on-accent); font-size: var(--fs-md); font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; cursor: default; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 4px 14px var(--accent-dim); transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease), box-shadow var(--t-med) var(--ease), filter var(--t-fast) var(--ease); }
+.ws-slice:hover { background: var(--accent-hover); }
+.ws-slice:active { transform: scale(0.97); }
+.ws-slice[aria-disabled='true'] { opacity: 0.45; }
+.ws-slice[data-busy='true'] { background: linear-gradient(90deg, var(--accent) var(--p, 4%), color-mix(in srgb, var(--accent) 38%, transparent) var(--p, 4%)); color: var(--text); min-width: 138px; }
+.ws-slice[data-bad='true'] { background: var(--warn); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 4px 14px var(--accent-2-dim); }
+.ws-slice[data-stale='true'] { animation: ws-glow 2.4s ease-in-out infinite; }
+@keyframes ws-glow { 50% { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 0 0 5px var(--accent-dim); } }
+.ws-spin { animation: ws-rot 0.9s linear infinite; }
+@keyframes ws-rot { to { transform: rotate(360deg); } }
+
+/* ---- object toolbar ---- */
+.ws-tools { top: calc(var(--in-t) + var(--hud) + 56px); display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 18px; max-width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud)); box-sizing: border-box; overflow-x: auto; scrollbar-width: none; animation-delay: 60ms; }
+.ws-tools::-webkit-scrollbar { display: none; }
+.ws-tool-wrap { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.ws-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--line-strong); flex: none; }
+.ws-tool { width: 38px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 13px; background: transparent; color: var(--text-dim); cursor: default; transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease); }
+.ws-tool:hover { background: var(--bg-hover); color: var(--text); }
+.ws-tool:active { transform: scale(0.92); }
+.ws-tool[data-active='true'] { background: var(--accent-dim); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.ws-tool:disabled { opacity: 0.35; }
+
+.ws-warn-pill { top: calc(var(--in-t) + var(--hud) + 108px); display: flex; align-items: center; gap: 8px; padding: 8px 14px 8px 12px; border-radius: 16px; max-width: min(620px, calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud))); box-sizing: border-box; line-height: 1.35; font-weight: 500; animation-delay: 100ms; }
+.ws-warn-pill svg { color: var(--warn); flex: none; }
+.ws-warn-pill em { font-style: normal; color: var(--text-dim); white-space: nowrap; }
+
+/* ---- the selected part ---- */
+.ws-read { bottom: calc(var(--in-b) + var(--hud)); display: flex; flex-direction: column; gap: 8px; padding: 10px 14px 12px; border-radius: 18px; max-width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud)); box-sizing: border-box; animation-name: ws-up; }
+@keyframes ws-up { from { opacity: 0; filter: blur(6px); translate: 0 6px; } to { opacity: 1; filter: none; translate: 0 0; } }
+.ws-read[data-status='tall'], .ws-read[data-status='outside'] { box-shadow: var(--shadow-panel), inset 0 0 0 1px var(--accent-2-dim); }
+.ws-read-name { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.ws-read-name b { font-size: var(--fs-md); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-read-name span { color: var(--text-faint); font-size: var(--fs-xs); white-space: nowrap; }
+.ws-read-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.ws-read-group { display: inline-flex; gap: 6px; }
+.ws-num { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px 0 9px; border-radius: 9px; background: var(--bg-input); border: 1px solid transparent; transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
+.ws-num:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.ws-num span { color: var(--text-faint); font-size: var(--fs-xs); font-weight: 650; min-width: 14px; }
+.ws-num input { width: 52px; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font: inherit; font-size: var(--fs-md); font-weight: 550; font-variant-numeric: tabular-nums; text-align: right; }
+.ws-num i { font-style: normal; color: var(--text-faint); font-size: var(--fs-xs); }
+
+/* ---- sidebar ---- */
+.ws-side { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.ws-side-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 10px 16px; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; overscroll-behavior: contain; }
+.ws-sec { margin-bottom: 4px; }
+.ws-sec-head { display: flex; align-items: center; }
+.ws-sec-toggle { flex: 1; min-width: 0; height: 32px; padding: 0 6px 0 4px; display: flex; align-items: center; gap: 8px; border: none; border-radius: 10px; background: transparent; color: var(--text); text-align: left; cursor: default; transition: background var(--t-fast) var(--ease); }
+.ws-sec-toggle:hover { background: var(--bg-hover); }
+.ws-sec-icon { display: inline-flex; color: var(--accent); }
+.ws-sec-title { flex: 1; font-size: var(--fs-sm); font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-dim); }
+.ws-caret { color: var(--text-faint); transition: transform 260ms var(--ease); }
+.ws-sec[data-open='false'] .ws-caret { transform: rotate(-90deg); }
+.ws-sec-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 280ms var(--ease), opacity 200ms var(--ease); }
+.ws-sec-in { min-height: 0; overflow: hidden; padding: 2px 0 0; }
+.ws-sec[data-open='false'] .ws-sec-body { grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows 280ms var(--ease), opacity 160ms var(--ease), visibility 0s linear 280ms; }
+.ws-card { padding: 10px; margin-bottom: 6px; border-radius: var(--radius-lg); background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--line); }
+.ws-card .sl-picker { margin: 0; }
+.ws-card .sl-trigger { width: 100%; }
+.ws-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; color: var(--text-faint); font-size: var(--fs-xs); }
+.ws-facts b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ws-fils { display: flex; flex-direction: column; gap: 4px; padding: 6px; }
+.ws-fil { border-radius: 10px; transition: background var(--t-fast) var(--ease); }
+.ws-fil[data-open='true'] { background: var(--bg-hover); }
+.ws-chip { width: 100%; height: 34px; padding: 0 8px; display: flex; align-items: center; gap: 9px; border: none; border-radius: 10px; background: transparent; color: var(--text); text-align: left; cursor: default; }
+.ws-chip:hover { background: var(--bg-hover); }
+.ws-chip-slot { min-width: 16px; height: 16px; padding: 0 4px; display: inline-grid; place-items: center; border-radius: 8px; background: var(--bg-active); color: var(--text-dim); font-size: 10px; font-weight: 700; }
+.ws-chip-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-md); font-weight: 500; }
+.ws-fil[data-open='true'] .ws-caret { transform: rotate(180deg); }
+.ws-fil-edit { display: flex; flex-direction: column; gap: 8px; padding: 2px 8px 10px; animation: ws-in 220ms var(--ease) both; }
+.ws-colorrow .sel { width: 100%; }
+.ws-fil-actions { display: flex; gap: 14px; padding: 2px 6px 2px; }
+.ws-link { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 6px; border: none; border-radius: 8px; background: transparent; color: var(--accent); font-size: var(--fs-sm); font-weight: 600; cursor: default; }
+.ws-link:hover { background: var(--accent-dim); }
+.ws-link:disabled { opacity: 0.4; }
+.ws-process .sl-quick { flex: none; overflow: visible; padding: 0; scrollbar-gutter: auto; }
+.ws-process .sl-group { margin: 4px 0 8px; }
+.ws-process .sl-group h4 { margin: 8px 0 2px; padding-bottom: 5px; font-size: var(--fs-xs); }
+.ws-process .sl-row { grid-template-columns: 14px minmax(0, 1fr) minmax(0, 1.25fr); column-gap: 6px; min-height: 34px; }
+.ws-process .sl-label { font-size: var(--fs-sm); }
+.ws-process .sl-cells { gap: 6px; flex-wrap: nowrap; }
+.ws-process .sl-cells .seg { height: 28px; }
+.ws-process .sl-cells .seg button { padding: 0 4px; font-size: var(--fs-xs); }
+.ws-process .sl-cells input, .ws-process .sl-cells .sel { min-width: 0; max-width: 100%; }
+.ws-all { width: 100%; margin-top: 4px; height: 32px; }
+.ws-objs { padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.ws-obj { display: flex; align-items: center; gap: 2px; border-radius: 10px; transition: background var(--t-fast) var(--ease); }
+.ws-obj:hover { background: var(--bg-hover); }
+.ws-obj[data-active='true'] { background: var(--accent-dim); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.ws-obj-main { flex: 1; min-width: 0; height: 34px; padding: 0 8px; display: flex; align-items: center; gap: 8px; border: none; background: transparent; color: var(--text); font-size: var(--fs-md); text-align: left; cursor: default; }
+.ws-obj-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-obj-size { color: var(--text-faint); font-size: var(--fs-xs); white-space: nowrap; }
+.ws-warn { color: var(--warn); }
+.ws-obj[data-status='tall'] .ws-obj-name, .ws-obj[data-status='outside'] .ws-obj-name { color: var(--warn); }
+.ws-obj-set { position: relative; width: 30px; height: 30px; margin-right: 2px; display: grid; place-items: center; border: none; border-radius: 8px; background: transparent; color: var(--text-dim); cursor: default; }
+.ws-obj-set:hover { background: var(--bg-active); color: var(--text); }
+.ws-badge { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; display: grid; place-items: center; border-radius: 7px; background: var(--accent); color: var(--text-on-accent); font-size: 9px; font-weight: 700; }
+
+/* ---- phone: the sidebar is a bottom sheet ---- */
+.ws-sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 9; height: calc(54px + var(--safe-b, 0px)); display: flex; flex-direction: column; background: var(--glass-strong); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); border-radius: 22px 22px 0 0; box-shadow: var(--shadow-float); overflow: hidden; transition: height 320ms var(--ease); pointer-events: auto; }
+.ws-sheet[data-open='true'] { height: min(66dvh, 560px); }
+.ws-sheet-grip { flex: none; height: 54px; padding: 0 16px; display: grid; grid-template-columns: 1fr auto; grid-template-rows: 14px 1fr; align-items: center; border: none; background: transparent; color: var(--text); text-align: left; cursor: default; }
+.ws-grip { grid-column: 1 / -1; justify-self: center; width: 38px; height: 4px; margin-top: 6px; border-radius: 2px; background: var(--line-strong); }
+.ws-sheet-sum { font-size: var(--fs-md); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-sheet[data-open='true'] .ws-caret { transform: rotate(180deg); }
+.ws-sheet-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ws-sheet-body .ws-side { flex: 1; }
+/* narrow windows: the bars sit at the left of the view so they never reach the view cube */
+@media (max-width: 1180px) {
+  .ws-top, .ws-tools, .ws-warn-pill { left: calc(var(--in-l) + var(--hud)); transform: none; max-width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud) - 160px); }
+}
+/* the phone layout has its own selection bar (frame, delete): under the print sheet it is only in the way */
+.m-vp:has(.ws-sheet) [data-testid='m-selbar'] { display: none; }
+@media (max-width: 800px) {
+  .ws-tools { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); }
+  .ws-tool { width: 36px; }
+  /* the view cube keeps the top right corner: the bars sit to its left */
+  .ws-top, .ws-tools, .ws-warn-pill { left: calc(var(--in-l) + var(--hud)); transform: none; max-width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud) - 132px); }
+  .ws-warn-pill { max-width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud)); top: calc(var(--in-t) + var(--hud) + 108px); }
+  .ws-top { padding: 4px; gap: 6px; }
+  .ws-stage { width: 152px; }
+  .ws-slice { padding: 0 12px 0 10px; }
+  .ws-slice[data-busy='true'] { min-width: 0; }
+  .ws-read { bottom: calc(var(--hud) + 62px); }
+  .ws-read-row { gap: 6px 10px; }
+  .ws-num input { width: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .ws-top, .ws-tools, .ws-warn-pill, .ws-read, .ws-fil-edit { animation: none; } .ws-sec-body, .ws-sheet { transition: none; } .ws-slice[data-stale='true'] { animation: none; } }

@@ -7,6 +7,7 @@ import { resolveProfile, type Resolved } from '../engine/profiles'
 import { useSlice } from '../engine/sliceStore'
 import type { EngineObject, EngineWarning } from '../engine/types'
 import { colorById } from '../palette'
+import { showPreview } from '../preview/command'
 import { buildPlate, type BuiltPlate } from '../plate'
 import { bedOriginOf } from './bedOrigin'
 import { withSlots, type SliceProfile } from './profile'
@@ -62,6 +63,8 @@ export async function runSlice(): Promise<void> {
   set({ status: 'loading', progress: 0, message: 'Preparing the plate', download: null })
   try {
     const plate = await buildPlate()
+    // a part off the bed would only make the engine fail later, with a less clear message
+    if (plate.problems.length) throw new Error(plate.problems.join(' '))
     const profile = withSlots(plate.settings.profile, plate.colors)
     const colours = Array.from({ length: Math.max(plate.colors, profile.filaments.length) }, (_, i) => colorById(plate.settings.slotColors[i] ?? 'white').hex.toUpperCase())
     const resolved = await resolveProfile(profile, colours)
@@ -78,9 +81,14 @@ export async function runSlice(): Promise<void> {
     }
     set({ status: 'done', progress: 100, message: '', result: out, filamentColors: colours, bed: profile.bed, bedOrigin: bedOriginOf(plate.plan.objects, placed), stale: false, snapshot })
     trackStale()
+    // a finished slice opens on its layers
+    if (out.toolpaths?.extrusions.count) showPreview()
   } catch (e) {
     if (mine !== token) return
-    const msg = e instanceof SliceError || e instanceof Error ? e.message : String(e)
+    const raw = e instanceof SliceError || e instanceof Error ? e.message : String(e)
+    // Orca's path-conflict message, in words about the plate
+    const clash = /conflicts? between object (.+?) and (.+?) \(/.exec(raw)
+    const msg = clash ? `${clash[1]} and ${clash[2]} overlap on the plate. Move them apart, or press Arrange.` : raw
     set({ status: 'error', message: msg })
   } finally {
     if (mine === token) running = false

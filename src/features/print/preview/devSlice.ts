@@ -26,12 +26,12 @@ export async function devSlice(opts: { bedOrigin?: boolean } = {}, processPatch:
   const conn = (engine as unknown as { conn: Conn }).conn
   const r = await conn.request('slice', { configs: { machine: presets.machine, process: presets.process, filaments: presets.filaments }, objects: toProtocolObjects(objects) }, { transfer: 'auto' })
   const ms = performance.now() - t
-  const off = plate.plan.placements[0].offset
   useSlice.setState({
     status: 'done', progress: 100, message: '',
     result: r as never,
     filamentColors: hex, bed: profile.bed, stale: false, preview: false,
-    bedOrigin: opts.bedOrigin ? [-off[0], -off[1], -off[2]] : null,
+    // the parts are sliced where they stand on the bed, so the bed origin is the world origin
+    bedOrigin: [0, 0, 0],
   } as never)
   return { ms, layers: (r.toolpaths as { layerCount: number }).layerCount, segments: (r.toolpaths as { extrusions: { count: number } }).extrusions.count }
 }

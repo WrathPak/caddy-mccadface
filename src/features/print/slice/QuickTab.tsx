@@ -1,5 +1,6 @@
 /** The Quick tab: printer, process and filament presets, then the settings people change most, written to Orca's own keys. */
 import { useMemo } from 'react'
+import { useDoc } from '@/doc/store'
 import { Segmented } from '@/ui/Segmented'
 import { Select } from '@/ui/Select'
 import { Tip } from '@/ui/Tooltip'
@@ -33,7 +34,10 @@ function QRow({ label, help, keys, profile, children }: { label: string; help: s
   )
 }
 
-export function QuickTab({ profile }: { profile: SliceProfile }) {
+/** `settings`: only the quality, strength and support groups (the Print sidebar has its own printer and filament sections). */
+export function QuickTab({ profile, parts = 'all' }: { profile: SliceProfile; parts?: 'all' | 'settings' }) {
+  const all = parts === 'all'
+  const assembly = useDoc((s) => s.assembly.occurrences.length > 0)
   const resolved = useSlicer((s) => s.resolved)
   const p = resolved?.process
   const set = (key: string) => (t: string) => void editSetting('process', key, t)
@@ -52,8 +56,8 @@ export function QuickTab({ profile }: { profile: SliceProfile }) {
   const setSupport = (m: string, st: string) => void applyValues('process', m === 'off' ? { enable_support: '0' } : { enable_support: '1', support_type: `${st}(${m === 'manual' ? 'manual' : 'auto'})` })
   const brim = val('brim_type') === 'no_brim' ? 'none' : val('brim_type') === 'outer_only' ? 'outer' : val('brim_type') === 'auto_brim' ? 'auto' : val('brim_type')
   return (
-    <div className="sl-quick" data-testid="quick-tab">
-      <section className="sl-group">
+    <div className={all ? 'sl-quick' : 'sl-quick sl-quick-side'} data-testid="quick-tab">
+      {all && <section className="sl-group">
         <h4>Printer and materials</h4>
         <div className="sl-presets">
           <div><span className="sl-fieldlabel">Printer</span><PrinterPicker machine={profile.machine} onPick={(m) => void setPrinter(m)} /></div>
@@ -75,7 +79,7 @@ export function QuickTab({ profile }: { profile: SliceProfile }) {
           ))}
         </div>
         {slots === 1 && <p className="sl-hint">Paint a body or a face with Filament 2 or more to print in several colors; each filament gets its own preset here.</p>}
-      </section>
+      </section>}
       <section className="sl-group">
         <h4>Quality and strength</h4>
         <QRow label="Layer height" keys={['layer_height']} profile={profile} help="Thickness of each printed layer in mm. Thinner layers look smoother and print slower.">{cell('layer_height', num('mm'))}</QRow>
@@ -103,7 +107,7 @@ export function QuickTab({ profile }: { profile: SliceProfile }) {
           <Segmented value={brim} onChange={(b) => set('brim_type')(b === 'none' ? 'no_brim' : b === 'outer' ? 'outer_only' : 'auto_brim')} options={[{ value: 'none', label: 'None' }, { value: 'auto', label: 'Auto' }, { value: 'outer', label: 'Outer' }]} />
         </QRow>
       </section>
-      <section className="sl-group">
+      {all && assembly && <section className="sl-group">
         <h4>Plate</h4>
         <div className="sl-row sl-qrow">
           <span className="sl-mark" aria-hidden />
@@ -112,7 +116,7 @@ export function QuickTab({ profile }: { profile: SliceProfile }) {
             <Segmented value={settings.placement} onChange={(v) => updatePrintSettings(() => ({ placement: v }), 'Plate layout')} options={[{ value: 'arrange', label: 'Arrange' }, { value: 'keep', label: 'Keep' }]} />
           </div>
         </div>
-      </section>
+      </section>}
     </div>
   )
 }

@@ -13,6 +13,8 @@ import type { KindPaint } from './engine/types'
 import { colorById } from './palette'
 import { settingsOf, type PrintSettings } from './settings'
 import { withSlots } from './slice/profile'
+import { bedFor, currentPlate, plateProblems } from './plate/store'
+import { placeMesh, rotatedBox } from './plate/model'
 import { arrangeOnPlate, slotsNeeded, writeBambu3mf, type PlateObject, type Placement } from './threemf'
 
 /** Filament slot per print-mesh triangle, from the slots the viewport shows (null when the body is unpainted). */
@@ -32,7 +34,8 @@ export function exportSlots(body: Body, paint: Uint8Array | undefined, mesh: Exp
   return out
 }
 
-export interface PlateItem { id?: string; name: string; mesh: ExportMesh; slots: Uint8Array | null; paint?: KindPaint }
+/** `placed`: the mesh is already where it stands on the bed (the document's plate placement), so nothing moves it */
+export interface PlateItem { id?: string; name: string; mesh: ExportMesh; slots: Uint8Array | null; paint?: KindPaint; placed?: boolean }
 
 const bboxOf = (p: Float32Array) => {
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]
@@ -46,7 +49,9 @@ export function planPlate(items: PlateItem[], settings: PrintSettings): { object
   const plate = settings.printer.bed
   let placements: Placement[]
   let fits = true
-  if (settings.placement === 'arrange') {
+  if (items.length && items.every((it) => it.placed)) {
+    placements = items.map(() => ({ offset: [0, 0, 0] as [number, number, number] }))
+  } else if (settings.placement === 'arrange') {
     const arr = arrangeOnPlate(boxes.map((b) => ({ w: b.hi[0] - b.lo[0], d: b.hi[1] - b.lo[1] })), plate)
     fits = arr.fits
     placements = boxes.map((b, i) => ({
@@ -77,6 +82,8 @@ export interface BuiltPlate {
   bytes: Uint8Array; fileName: string; count: number; fits: boolean; colors: number; settings: PrintSettings
   /** the objects and where each sits on the plate: what the 3MF was written from, for a slicer engine to take directly */
   plan: { objects: PlateObject[]; placements: Placement[] }
+  /** parts that do not fit the bed (outside it, or taller than it), in words */
+  problems: string[]
 }
 
 /** The visible bodies as a Bambu / Orca 3MF. Throws a readable error when there is nothing to print. */
@@ -127,6 +134,7 @@ export async function buildPlate(): Promise<BuiltPlate> {
   const hidden = useUi.getState().hiddenIds
   const settings = settingsOf(d.features, d.rollback)
   let items: PlateItem[]
+  let problems: string[] = []
   if (d.assembly.occurrences.length) items = await assemblyItems()
   else {
     const bodies = d.geometry.filter((b) => !hidden[b.id] && !b.surface)
@@ -143,6 +151,17 @@ export async function buildPlate(): Promise<BuiltPlate> {
       }
       return { id: b.id, name: names[i], mesh: meshes[i], slots: exportSlots(b, paint.get(b.id), meshes[i]), paint: Object.keys(kp).length ? kp : undefined }
     })
+    // the parts stand where the plate placement puts them (a rotation and a spot on the bed), not where the CAD model is
+    const bed = await bedFor(settings.profile)
+    const plate = currentPlate(bed)
+    const at = new Map(plate.list.map((p) => [p.id, p]))
+    const bodyOf = new Map(plate.bodies.map((b) => [b.id, b]))
+    items = items.map((it) => {
+      const p = at.get(it.id ?? ''), b = bodyOf.get(it.id ?? '')
+      if (!p || !b) return it
+      return { ...it, mesh: { ...it.mesh, positions: placeMesh(it.mesh.positions, rotatedBox(b, p.entry.r).rot, p.entry.x, p.entry.y) }, placed: true }
+    })
+    problems = plateProblems(plate.list, Object.fromEntries(items.map((it) => [it.id ?? '', it.name])), bed)
   }
   const plan = planPlate(items, settings)
   for (const o of plan.objects) if (o.id && Object.keys(settings.profile.objects[o.id] ?? {}).length) o.config = settings.profile.objects[o.id]
@@ -156,5 +175,5 @@ export async function buildPlate(): Promise<BuiltPlate> {
   } catch { /* no engine files: the 3MF carries the short settings only */ }
   const bytes = writeBambu3mf(plan.objects, plan.placements, settings, undefined, undefined, full)
   const safe = (d.name || 'Untitled').replace(/[\\/:*?"<>|]+/g, '_')
-  return { bytes, fileName: `${safe}.3mf`, count: items.length, fits: plan.fits, colors: slotsNeeded(plan.objects), settings, plan }
+  return { bytes, fileName: `${safe}.3mf`, count: items.length, fits: plan.fits && !problems.length, colors: slotsNeeded(plan.objects), settings, plan, problems }
 }

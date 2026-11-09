@@ -1,7 +1,6 @@
 /** The sliced toolpaths in the 3D canvas: replaces the bodies while previewing, sitting where the bodies were. */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useThree } from '@react-three/fiber'
-import { BufferGeometry, Float32BufferAttribute, LineBasicMaterial, LineLoop, Mesh, MeshBasicMaterial, PlaneGeometry, DoubleSide } from 'three'
 import { transfer, wrap } from 'comlink'
 import { useDoc } from '@/doc/store'
 import { useUi } from '@/store/ui'
@@ -51,35 +50,6 @@ async function scanGcode(r: SliceOutput): Promise<GcodeScan | null> {
   }
 }
 
-function Bed({ w, d, origin }: { w: number; d: number; origin: [number, number, number] }) {
-  const size = useMemo(() => [w, d] as const, [w, d])
-  const outline = useMemo(() => {
-    const g = new BufferGeometry()
-    g.setAttribute('position', new Float32BufferAttribute([0, 0, 0, w, 0, 0, w, d, 0, 0, d, 0], 3))
-    return g
-  }, [w, d])
-  const line = useMemo(() => {
-    const l = new LineLoop(outline, new LineBasicMaterial({ color: '#9fb4be', transparent: true, opacity: 0.55 }))
-    l.raycast = () => null
-    l.userData.noAo = true
-    return l
-  }, [outline])
-  const plane = useMemo(() => {
-    const m = new Mesh(new PlaneGeometry(size[0], size[1]), new MeshBasicMaterial({ color: '#9fb4be', transparent: true, opacity: 0.07, side: DoubleSide, depthWrite: false }))
-    m.position.set(size[0] / 2, size[1] / 2, -0.02)
-    m.raycast = () => null
-    m.userData.noAo = true
-    return m
-  }, [size])
-  useEffect(() => () => { outline.dispose(); line.material.dispose(); plane.geometry.dispose(); (plane.material as MeshBasicMaterial).dispose() }, [outline, line, plane])
-  return (
-    <group name="slice-bed" position={origin}>
-      <primitive object={line} />
-      <primitive object={plane} />
-    </group>
-  )
-}
-
 export function SlicePreviewLayer() {
   const preview = useSlice((s) => s.preview)
   const result = useSlice((s) => s.result)
@@ -88,7 +58,6 @@ export function SlicePreviewLayer() {
   const scene = useThree((s) => s.scene)
   const invalidate = useThree((s) => s.invalidate)
   const [renderer, setRenderer] = useState<ToolpathRenderer | null>(null)
-  const [origin, setOrigin] = useState<[number, number, number]>([0, 0, 0])
   const tp = result?.toolpaths ?? null
   const active = preview && !!tp && tp.extrusions.count > 0
   const lo = usePreview((s) => s.lo)
@@ -99,14 +68,12 @@ export function SlicePreviewLayer() {
   const filOff = usePreview((s) => s.filOff)
   const travel = usePreview((s) => s.travel)
   const playing = usePreview((s) => s.playing)
-  const bedSize = bed ?? [256, 256]
 
   // build on entering preview or on a new result, free on leaving
   useEffect(() => {
     if (!active || !result || !tp) return
     const extras = extrasOf(result)
     const org = originOf(bed)
-    setOrigin(org)
     const stats = roleStats(tp, extras)
     resetPreview({
       layerCount: tp.layerCount, layerZ: Array.from(tp.layerZ), hasExtras: !!extras, roles: stats, filaments: null, range: null, segments: tp.extrusions.count,
@@ -238,7 +205,6 @@ export function SlicePreviewLayer() {
   return (
     <>
       {renderer && <primitive object={renderer.group} />}
-      <Bed w={bedSize[0]} d={bedSize[1]} origin={origin} />
     </>
   )
 }

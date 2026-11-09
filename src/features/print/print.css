@@ -1,11 +1,12 @@
 .print-cards { position: absolute; left: calc(var(--in-l) + var(--hud)); bottom: calc(var(--in-b) + 64px); z-index: 6; display: flex; flex-direction: column; gap: 6px; max-width: 280px; pointer-events: none; }
-.print-cards[data-previewing='true'] { z-index: 8; top: calc(var(--in-t) + var(--hud)); bottom: calc(var(--in-b) + 80px); width: 262px; gap: 8px; }
+.print-cards[data-previewing='true'] { z-index: 8; top: calc(var(--in-t) + var(--hud) + 68px); bottom: calc(var(--in-b) + 80px); width: 240px; gap: 8px; }
 .print-cards[data-previewing='true'] > * { flex: none; }
 .print-cards[data-previewing='true'] .slice-card { width: 100%; max-width: none; box-sizing: border-box; }
 /* phones: the column keeps clear of the view cube (top right) and the layer slider; an opened legend may reach over them */
 @media (max-width: 720px) {
+  .print-cards[data-previewing='true'] { top: calc(var(--in-t) + var(--hud) + 68px); }
   .print-cards[data-previewing='true'] { width: calc(100% - var(--in-l) - var(--in-r) - 2 * var(--hud) - 148px); }
-  .print-cards[data-previewing='true'] .sp-legend { width: min(262px, calc(100vw - 24px)); }
+  .print-cards[data-previewing='true'] .sp-legend { width: min(240px, calc(100vw - 24px)); }
   .print-cards[data-previewing='true'] .sc-compact .btn[data-testid='export-gcode'] { display: none; }
 }
 .print-cards[data-previewing='true'] > .sp-legend { flex: 0 1 auto; min-height: 0; }
@@ -24,6 +25,6 @@
 .print-chip { display: flex; align-items: center; gap: 6px; margin: 2px 0; color: var(--text-dim); }
 /* a filament color chip: round, with an inner ring that reads on the panel for white and for black alike */
 .chip { width: 12px; height: 12px; border-radius: 50%; flex: none; display: inline-block; box-sizing: border-box; box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 42%, transparent), inset 0 0 0 1px rgba(128, 128, 128, 0.5), inset 0 1px 1.5px rgba(255, 255, 255, 0.25); }
-.print-drain-bar { position: absolute; left: calc(var(--in-l) + (100% - var(--in-l) - var(--in-r)) / 2); top: calc(var(--in-t) + var(--hud)); transform: translateX(-50%); z-index: 6; }
+.print-drain-bar { position: absolute; left: calc(var(--in-l) + (100% - var(--in-l) - var(--in-r)) / 2); top: calc(var(--in-t) + var(--hud) + 56px); transform: translateX(-50%); z-index: 6; }
 .print-count { padding: 0 6px; color: var(--text-dim); font-size: var(--fs-sm); }
 .print-drain-bar .vp-bar button:disabled { opacity: 0.4; }

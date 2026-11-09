@@ -26,6 +26,7 @@ import { instanceDimmed, instanceHidden, instancePickable, useInstances } from '
 import { within, type Instance } from '@/assembly/instances'
 import { isIdentity, invert, point } from '@/assembly/matrix'
 import { useAssemblyRuntime } from '@/assembly/runtime'
+import { usePlateXf } from './plateXf'
 import { nearestSnaps } from '@/assembly/snapPick'
 import { beginDrag } from '@/assembly/dragController'
 import { snapPoints, snapSpec } from '@/assembly/snaps'
@@ -147,6 +148,8 @@ export function Bodies() {
   const assembly = useDoc((s) => s.assembly)
   const overlap = useAssemblyRuntime((s) => s.interference)
   const flagged = useMemo(() => new Set((overlap?.hits ?? []).flatMap((h) => [`${h.a.occ}|${h.a.body}`, `${h.b.occ}|${h.b.body}`])), [overlap])
+  // parts that do not fit the print bed take the warning color too
+  const offBed = usePlateXf((s) => s.bad)
 
   useEffect(() => {
     const tris = instances.filter((i) => !instanceHidden(i, hidden)).reduce((n, i) => n + i.body.mesh.indices.length / 3, 0)
@@ -191,7 +194,7 @@ export function Bodies() {
           <BodyView
             key={i.key + '|' + i.body.key} inst={i} mats={mats} colors={colors} index={n} clip={clip[0]}
             dimmed={previewDim.includes(i.body.id) || instanceDimmed(i, active)}
-            flagged={flagged.has(i.key)}
+            flagged={flagged.has(i.key) || !!offBed[i.body.id]}
             pickable={instancePickable(i, { activeOcc: active, assembly })}
           />
         )))}

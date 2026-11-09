@@ -1,10 +1,11 @@
 /** Viewport side of the hair face selection: pointer handling, cyan overlay and the floating toolbar. */
 import { useEffect, useMemo } from 'react'
 import { useThree } from '@react-three/fiber'
-import { BufferAttribute, BufferGeometry, DoubleSide, Raycaster, Vector2, type Mesh } from 'three'
+import { BufferAttribute, BufferGeometry, DoubleSide, Matrix4, Raycaster, Vector2, type Mesh } from 'three'
 import { Cursor, HandPointing, PaintBrush, PaintBucket, SelectionPlus, SelectionSlash, Trash } from '@phosphor-icons/react'
 import { growSelection, shrinkSelection } from '@/features/mesh/select'
 import { useDoc } from '@/doc/store'
+import { usePlateXf } from '@/viewport/plateXf'
 import { Tip } from '@/ui/Tooltip'
 import { applyTris, brushTris, clearSelection, commitSelection, floodTris, selectedIndices, setPaint, useHairPaint, type PaintMode } from './paint'
 import './hair.css'
@@ -43,7 +44,7 @@ export function HairPaintTool() {
       if (!hit) return null
       const arr = (hit.object as Mesh).geometry.getAttribute('position').array
       const body = useDoc.getState().geometry.find((b) => b.mesh.positions === arr)
-      return body ? { body, hit, mx, my, w: r.width, h: r.height } : null
+      return body ? { body, hit, mx, my, w: r.width, h: r.height, local: (hit.object as Mesh).worldToLocal(hit.point.clone()), world: (hit.object as Mesh).matrixWorld } : null
     }
     const act = (e: PointerEvent) => {
       const p = pick(e)
@@ -51,7 +52,7 @@ export function HairPaintTool() {
       const st = useHairPaint.getState()
       const tri = p.hit.faceIndex!
       let tris = [tri]
-      if (mode === 'brush') tris = [tri, ...brushTris(p.body, p.hit.point, camera, p.w, p.h, p.mx, p.my, st.radius)]
+      if (mode === 'brush') tris = [tri, ...brushTris(p.body, p.local, camera, p.w, p.h, p.mx, p.my, st.radius, p.world)]
       else if (mode === 'flood') tris = floodTris(p.body, tri, st.angle, p.body.kind === 'brep')
       applyTris(p.body, tris, e.shiftKey)
       invalidate()
@@ -101,6 +102,8 @@ export function HairRegionOverlay() {
   const { bodyId, sel, rev } = useHairPaint()
   const geometry = useDoc((s) => s.geometry)
   const { invalidate } = useThree()
+  const plate = usePlateXf((s) => (bodyId ? s.worlds?.[bodyId] : undefined))
+  const matrix = useMemo(() => (plate ? new Matrix4().fromArray(plate) : null), [plate])
   const geo = useMemo(() => {
     const body = geometry.find((b) => b.id === bodyId)
     if (!body || !sel.size) return null
@@ -112,7 +115,7 @@ export function HairRegionOverlay() {
   useEffect(() => { invalidate(); return () => geo?.dispose() }, [geo, invalidate])
   if (!geo) return null
   return (
-    <mesh geometry={geo} renderOrder={5} raycast={() => null}>
+    <mesh geometry={geo} renderOrder={5} raycast={() => null} matrixAutoUpdate={matrix === null} matrix={matrix ?? undefined}>
       <meshBasicMaterial color="#27d3e6" transparent opacity={0.55} side={DoubleSide} depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
     </mesh>
   )

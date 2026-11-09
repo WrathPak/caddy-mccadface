@@ -34,8 +34,9 @@ test('PRINT tab: ribbon groups and the Slice settings panel', async ({ app, page
   await expect(page.locator('.ribbon-body').getByRole('button', { name: 'Slice', exact: true })).toBeVisible()
   await app.ribbon('Print Settings').click()
   await expect(page.getByTestId('slice-sheet')).toBeVisible()
-  await expect(page.getByTestId('preset-process')).toContainText('0.20mm Standard', { timeout: 30_000 })
-  const quick = (key: string) => page.getByTestId(`quick-${key}`).locator('input').first()
+  const sheet = page.getByTestId('slice-sheet')
+  await expect(sheet.getByTestId('preset-process')).toContainText('0.20mm Standard', { timeout: 30_000 })
+  const quick = (key: string) => sheet.getByTestId(`quick-${key}`).locator('input').first()
   await quick('layer_height').fill('0.16')
   await quick('layer_height').press('Enter')
   await quick('wall_loops').fill('4')
@@ -48,7 +49,7 @@ test('PRINT tab: ribbon groups and the Slice settings panel', async ({ app, page
   await page.getByTestId('slice-close').click()
   // opening it again edits the same feature
   await app.ribbon('Print Settings').click()
-  await expect(page.getByTestId('quick-layer_height').locator('input').first()).toHaveValue('0.16')
+  await expect(page.getByTestId('slice-sheet').getByTestId('quick-layer_height').locator('input').first()).toHaveValue('0.16')
   await page.getByTestId('slice-close').click()
   expect((await app.features()).filter((x) => x.type === 'printSettings')).toHaveLength(1)
 })
@@ -175,34 +176,24 @@ test('overhang, thin wall and small feature maps with legends', async ({ app, pa
   expect(await app.ev((c) => c.three.scene.getObjectByName('print-analysis').children.length)).toBe(0)
 })
 
-test('auto orient turns a T the right way up and applies a Move', async ({ app, page }) => {
+test('auto orient turns a T the right way up on the bed and leaves the CAD model alone', async ({ app, page }) => {
   await app.open()
-  // a plate hanging over a 20 mm post
+  // a plate hanging over a 20 mm post: as modelled it needs support
   await addBox(app, [10, 10, 20], [0, 0, 0])
   await addBox(app, [60, 60, 4], [0, 0, 20])
   await app.ev((c) => c.doc.getState().addFeature('combine', { target: ['f1'], tools: ['f2'], operation: 'join', keepTools: false }))
   await app.idle()
-  // tip it over so the best answer is not the one it has
-  await app.ev((c) => c.doc.getState().addFeature('move', { bodyIds: ['f1'], gizmo: 'rotate', translate: [0, 0, 40], rotate: [180, 0, 0], scale: 1 }))
-  await app.idle()
   await frame(app)
   await app.tab('Print')
+  await expect.poll(() => app.ev((c) => c.print.model().list.length)).toBe(1)
   await app.ribbon('Auto Orient').click()
-  await expect(app.inspector().locator('.panel-title')).toHaveText('Auto orient')
-  await expect(app.page.getByTestId('info-report')).toContainText('Option 1')
-  const report = await app.page.getByTestId('info-report').innerText()
-  expect(report).toMatch(/Now: [\d.]+ mm3 of support/)
-  // the preview is on the bodies
-  expect(await app.ev((c) => c.doc.getState().features.length)).toBe(4)
-  await app.shot('print-auto-orient')
-  await app.ok()
-  const feats = await states(app)
-  const mv = feats[feats.length - 1]
-  expect(mv.type).toBe('move')
-  expect(mv.name).toBe('Orient for printing')
+  // the placement turns the part (rotation about X or Y), the model does not change: no Move feature
+  await expect.poll(() => app.ev((c) => c.print.model().list[0].entry.r.some((v: number) => Math.abs(v) > 1))).toBe(true)
+  expect((await states(app)).some((x) => x.type === 'move')).toBe(false)
   const bb = await app.bbox('f1')
-  expect(bb.min[2]).toBeCloseTo(0, 2)
-  // no overhang is left
+  expect(bb.max[2]).toBeCloseTo(24, 2)
+  await app.shot('print-auto-orient')
+  // no overhang is left on the bed
   await app.ribbon('Overhangs').click()
   await expect.poll(() => app.ev((c) => c.print.view.getState().result?.kind ?? null)).toBe('overhang')
   await expect(page.getByTestId('map-result')).toContainText('prints without support')

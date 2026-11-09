@@ -76,6 +76,8 @@ export function Scene() {
   const showOrigin = useUi((s) => s.showOrigin)
   const showGrid = useUi((s) => s.showGrid)
   const sketching = useUi((s) => s.sketchMode)
+  // the Print workspace draws the printer's own bed instead of the CAD grid and origin
+  const printing = useUi((s) => s.workspace === 'print')
   const colors = useVpColors()
 
   return (
@@ -95,9 +97,9 @@ export function Scene() {
       <directionalLight position={[-120, 80, 40]} intensity={0.45} />
       <directionalLight position={[20, 140, 60]} intensity={0.35} />
       <ContactShadow />
-      {showGrid && !sketching && <InfiniteGrid />}
-      {showOrigin && !sketching && <Origin />}
-      {showOrigin && !sketching && <ConstructionPlanes />}
+      {showGrid && !sketching && !printing && <InfiniteGrid />}
+      {showOrigin && !sketching && !printing && <Origin />}
+      {showOrigin && !sketching && !printing && <ConstructionPlanes />}
       <Bodies />
       <SelectionOutline />
       <AssemblyLayer />

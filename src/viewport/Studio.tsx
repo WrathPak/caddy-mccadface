@@ -14,6 +14,7 @@ import { useDoc } from '@/doc/store'
 import { useUi } from '@/store/ui'
 import { richGraphics } from '@/app/glass'
 import { useVpColors } from './colors'
+import { usePlateXf } from './plateXf'
 
 /** An image-based light (a small neutral room) so the bodies get a faint specular sheen instead of reading as flat clay. */
 export function StudioEnv() {
@@ -134,6 +135,7 @@ export function ContactShadow() {
   const invalidate = useThree((s) => s.invalidate)
   const geometry = useDoc((s) => s.geometry)
   const hidden = useUi((s) => s.hiddenIds)
+  const plateBoxes = usePlateXf((s) => s.boxes)
   const sketching = useUi((s) => s.sketchMode)
   const theme = useUi((s) => s.theme)
   const rich = richGraphics()
@@ -144,6 +146,12 @@ export function ContactShadow() {
     let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity, heavy = false
     for (const b of geometry) {
       if (hidden[b.id]) continue
+      // standing on the print bed: the part's box there
+      const pb = plateBoxes?.[b.id]
+      if (pb) {
+        x0 = Math.min(x0, pb.lo[0]); x1 = Math.max(x1, pb.hi[0]); y0 = Math.min(y0, pb.lo[1]); y1 = Math.max(y1, pb.hi[1]); z0 = Math.min(z0, pb.lo[2]); z1 = Math.max(z1, pb.hi[2])
+        continue
+      }
       if (b.mesh.lod || b.mesh.indices.length > 450_000) { heavy = true; continue }
       const p = b.mesh.positions
       for (let i = 0; i < p.length; i += 3) {
@@ -153,7 +161,7 @@ export function ContactShadow() {
       }
     }
     return x0 === Infinity || heavy ? null : { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, hx: Math.max((x1 - x0) / 2, 0.5), hy: Math.max((y1 - y0) / 2, 0.5), z0, z1 }
-  }, [geometry, hidden])
+  }, [geometry, hidden, plateBoxes])
 
   // the light gradient on the bodies follows the same box
   useEffect(() => {

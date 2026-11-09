@@ -1,6 +1,6 @@
 /** Hair face-selection state and algorithms: click, screen-space brush, angle-bounded flood fill. */
 import { visH } from '@/viewport/visible'
-import { Vector3, type Camera } from 'three'
+import { Vector3, type Camera, type Matrix4 } from 'three'
 import { create } from 'zustand'
 import type { Body } from '@/kernel/types'
 import { encodeRegion } from './region'
@@ -133,19 +133,23 @@ function nearTris(t: Topo, p: Vector3, r: number): number[] {
 }
 
 /** Triangles under a screen-space brush (front-facing, within the pixel radius of the cursor). */
-export function brushTris(body: Body, hit: Vector3, camera: Camera, w: number, h: number, mx: number, my: number, radiusPx: number): number[] {
+export function brushTris(body: Body, hit: Vector3, camera: Camera, w: number, h: number, mx: number, my: number, radiusPx: number, toWorld?: Matrix4): number[] {
+  // `hit` and the triangles are in the body's own space; `toWorld` is where the body is drawn (a part standing on the print bed)
+  const worldHit = toWorld ? hit.clone().applyMatrix4(toWorld) : hit
   const t = topoOf(body)
   const cam = camera as Camera & { isOrthographicCamera?: boolean; zoom: number; top: number; bottom: number; fov: number }
-  const dist = camera.position.distanceTo(hit)
+  const dist = camera.position.distanceTo(worldHit)
   // (world per pixel: the camera spreads its field of view over the visible window, not over the whole canvas)
   const vh = visH({ width: w, height: h })
   const perPx = cam.isOrthographicCamera ? (cam.top - cam.bottom) / cam.zoom / vh : (2 * dist * Math.tan((cam.fov * Math.PI) / 360)) / vh
   const rw = radiusPx * perPx * 1.6
   const out: number[] = []
-  const v = new Vector3()
+  const v = new Vector3(), n = new Vector3()
   for (const tri of nearTris(t, hit, rw)) {
     v.set(t.cen[tri * 3], t.cen[tri * 3 + 1], t.cen[tri * 3 + 2])
-    const facing = (camera.position.x - v.x) * t.nrm[tri * 3] + (camera.position.y - v.y) * t.nrm[tri * 3 + 1] + (camera.position.z - v.z) * t.nrm[tri * 3 + 2]
+    n.set(t.nrm[tri * 3], t.nrm[tri * 3 + 1], t.nrm[tri * 3 + 2])
+    if (toWorld) { v.applyMatrix4(toWorld); n.transformDirection(toWorld) }
+    const facing = (camera.position.x - v.x) * n.x + (camera.position.y - v.y) * n.y + (camera.position.z - v.z) * n.z
     if (facing <= 0) continue
     v.project(camera)
     const sx = (v.x * 0.5 + 0.5) * w, sy = (-v.y * 0.5 + 0.5) * h
