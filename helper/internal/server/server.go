@@ -21,6 +21,7 @@ import (
 
 	"github.com/wrathpak/caddy-mccadface/helper/internal/bambu"
 	"github.com/wrathpak/caddy-mccadface/helper/internal/config"
+	"github.com/wrathpak/caddy-mccadface/helper/internal/lan"
 )
 
 // DefaultOrigins are the web pages allowed to talk to the helper.
@@ -29,8 +30,8 @@ var DefaultOrigins = []string{"https://wrathpak.github.io", "http://localhost:*"
 // Options configure a Server.
 type Options struct {
 	Version  string
-	Origins  []string // allowed origins; DefaultOrigins plus --allow-origin
-	Mock     *bambu.Found
+	Origins  []string      // allowed origins; DefaultOrigins plus --allow-origin
+	Mocks    []bambu.Found // the simulated printers (--mock), listed by discover
 	Logf     func(format string, a ...any)
 	Discover time.Duration // how long a discover listens, 4s by default
 }
@@ -64,6 +65,20 @@ func New(store *config.Store, opt Options) *Server {
 	s.mgr.OnStatus = func(st bambu.Status) { s.broadcast(map[string]any{"type": "status", "status": st}) }
 	s.mgr.Run()
 	return s
+}
+
+// isMock says whether an add request names one of the simulated printers.
+func (s *Server) isMock(r addReq) bool {
+	for _, f := range s.opt.Mocks {
+		if f.Kind == "bambu" || f.Kind == "" {
+			if strings.EqualFold(r.Serial, f.Serial) && r.Serial != "" {
+				return true
+			}
+		} else if f.Kind == r.Kind && f.Port == r.Port && r.Port != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // Close stops the printers' connections.
@@ -220,7 +235,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		c.dropJob()
 		ws.CloseNow()
 	}()
-	c.write(marshal(helloMsg{Type: "hello", Version: ProtocolVersion, Helper: s.opt.Version, Capabilities: []string{"bambu"}, Mock: s.opt.Mock != nil}))
+	c.write(marshal(helloMsg{Type: "hello", Version: ProtocolVersion, Helper: s.opt.Version, Capabilities: []string{"bambu", "prusa", "klipper", "octoprint", "proxy", "trust"}, Mock: len(s.opt.Mocks) > 0}))
 	for {
 		typ, data, err := ws.Read(r.Context())
 		if err != nil {
@@ -284,13 +299,15 @@ func (c *conn) handle(env envelope, data []byte) {
 		c.reply(env.ID, map[string]any{"printers": s.mgr.Infos()})
 	case "printers.discover":
 		go func() {
-			found := bambu.Discover(s.opt.Discover)
-			if s.opt.Mock != nil {
-				found = append(found, *s.opt.Mock)
-			}
-			if found == nil {
-				found = []bambu.Found{}
-			}
+			var wg sync.WaitGroup
+			var bam, web []bambu.Found
+			wg.Add(2)
+			go func() { defer wg.Done(); bam = bambu.Discover(s.opt.Discover) }()
+			go func() { defer wg.Done(); web = lan.Discover(s.opt.Discover) }()
+			wg.Wait()
+			found := append([]bambu.Found{}, bam...)
+			found = append(found, web...)
+			found = append(found, s.opt.Mocks...)
 			c.reply(env.ID, map[string]any{"found": found})
 		}()
 	case "printers.add":
@@ -300,7 +317,7 @@ func (c *conn) handle(env envelope, data []byte) {
 			return
 		}
 		go func() {
-			mock := s.opt.Mock != nil && strings.EqualFold(r.Serial, s.opt.Mock.Serial)
+			mock := s.isMock(r)
 			p, err := s.mgr.Add(r, mock)
 			if err != nil {
 				c.failErr(env.ID, err)
@@ -318,26 +335,46 @@ func (c *conn) handle(env envelope, data []byte) {
 		}
 		c.reply(env.ID, nil)
 		s.broadcast(map[string]any{"type": "printers", "printers": s.mgr.Infos()})
+	case "printers.trust":
+		var r trustReq
+		_ = json.Unmarshal(data, &r)
+		go func() {
+			if err := s.mgr.Trust(r.PrinterID, r.Which, r.Fingerprint); err != nil {
+				c.failErr(env.ID, err)
+				return
+			}
+			c.reply(env.ID, nil)
+		}()
+	case "http.request":
+		go c.proxy(env.ID, data)
 	case "printer.pause", "printer.resume", "printer.stop", "printer.light", "printer.speed":
 		var r printerReq
 		_ = json.Unmarshal(data, &r)
-		cl := s.mgr.Client(r.PrinterID)
-		if cl == nil {
+		ctl := s.mgr.Controller(r.PrinterID)
+		if ctl == nil {
 			c.fail(env.ID, ErrNotFound, "No such printer.")
 			return
 		}
 		var err error
 		switch env.Type {
 		case "printer.pause":
-			err = cl.Pause()
+			err = ctl.Pause()
 		case "printer.resume":
-			err = cl.Resume()
+			err = ctl.Resume()
 		case "printer.stop":
-			err = cl.Cancel()
-		case "printer.light":
-			err = cl.Light(r.On)
-		case "printer.speed":
-			err = cl.Speed(r.Level)
+			err = ctl.Cancel()
+		default:
+			// the light and the speed levels are Bambu features
+			cl := s.mgr.Client(r.PrinterID)
+			if cl == nil {
+				c.fail(env.ID, ErrBadRequest, "This printer has no such control.")
+				return
+			}
+			if env.Type == "printer.light" {
+				err = cl.Light(r.On)
+			} else {
+				err = cl.Speed(r.Level)
+			}
 		}
 		if err != nil {
 			c.failErr(env.ID, err)
@@ -349,7 +386,10 @@ func (c *conn) handle(env envelope, data []byte) {
 	case "send.cancel":
 		var r cancelReq
 		_ = json.Unmarshal(data, &r)
-		c.cancelJob(r.JobID)
+		if err := c.cancelJob(r.JobID); err != nil {
+			c.failErr(env.ID, err)
+			return
+		}
 		c.reply(env.ID, nil)
 	default:
 		c.fail(env.ID, ErrBadRequest, "Unknown request "+env.Type+".")

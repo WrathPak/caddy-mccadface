@@ -1,6 +1,6 @@
-// caddy-link is a small helper that lets the CADdy McCADFace web app talk to Bambu Lab printers on your network.
-// Browsers cannot open the raw TLS connections the printers use (MQTT on 8883, FTPS on 990), so this program does it
-// for them and offers the app a WebSocket on 127.0.0.1. It never contacts the internet or Bambu Cloud.
+// caddy-link is a small helper that lets the CADdy McCADFace web app talk to printers on your network (Bambu Lab, Prusa, Klipper, OctoPrint).
+// Browsers cannot open the raw TLS connections Bambu printers use (MQTT on 8883, FTPS on 990), and PrusaLink sends no CORS
+// headers, so this program does the talking and offers the app a WebSocket on 127.0.0.1. It never contacts the internet or Bambu Cloud.
 package main
 
 import (
@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wrathpak/caddy-mccadface/helper/internal/bambu"
 	"github.com/wrathpak/caddy-mccadface/helper/internal/config"
 	"github.com/wrathpak/caddy-mccadface/helper/internal/mock"
 	"github.com/wrathpak/caddy-mccadface/helper/internal/server"
@@ -60,14 +61,19 @@ func main() {
 
 	opt := server.Options{Version: version, Origins: append(append([]string{}, server.DefaultOrigins...), extra...), Logf: logf}
 	var fake *mock.Printer
+	var web *mock.Web
 	if *useMock {
 		fake, err = mock.Start(mock.Options{Speed: *speed})
 		if err != nil {
 			fatal("Could not start the fake printer: %v", err)
 		}
 		defer fake.Close()
-		f := fake.Found()
-		opt.Mock = &f
+		web, err = mock.StartWeb(*speed)
+		if err != nil {
+			fatal("Could not start the fake web printers: %v", err)
+		}
+		defer web.Close()
+		opt.Mocks = append([]bambu.Found{fake.Found()}, web.Found()...)
 	}
 
 	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(*port)))
@@ -78,7 +84,7 @@ func main() {
 	defer srv.Close()
 
 	fmt.Printf("CADdy Link %s\n", version)
-	fmt.Println("Lets CADdy McCADFace send prints to your Bambu Lab printers and show their status.")
+	fmt.Println("Lets CADdy McCADFace send prints to your printers (Bambu Lab, Prusa, Klipper, OctoPrint) and show their status.")
 	fmt.Println("It only talks to this computer and to printers on your own network, never to the internet.")
 	fmt.Println()
 	fmt.Printf("Listening on ws://127.0.0.1:%d (this computer only)\n", *port)
@@ -87,6 +93,9 @@ func main() {
 	if fake != nil {
 		f := fake.Found()
 		fmt.Printf("Mock printer: %s (%s) with an AMS of 4 trays, access code 12345678, MQTT %d, FTPS %d\n", f.Name, f.Serial, f.MQTTPort, f.FTPPort)
+		for _, w := range web.Found() {
+			fmt.Printf("Mock %s: %s at 127.0.0.1 port %d\n", w.ModelNm, w.Name, w.Port)
+		}
 	}
 	ps := store.Printers()
 	if len(ps) == 0 {

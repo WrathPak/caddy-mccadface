@@ -53,7 +53,7 @@ export function SliceCard({ compact = false }: { compact?: boolean }) {
             <b>{r.stats.filamentG ? `${f1(r.stats.filamentG)} g` : '-'}</b>
           </div>
           <Tip label="Export G-code" side="top"><button type="button" className="btn" data-testid="export-gcode" aria-label="Export G-code" onClick={() => void exportGcode()}><DownloadSimple size={14} /></button></Tip>
-          {snap.profile.vendor === 'BBL' && <Tip label="Send to printer" side="top"><button type="button" className="btn" data-testid="send-to-printer" aria-label="Send to printer" onClick={() => setSendOpen(true)}><PaperPlaneTilt size={14} /></button></Tip>}
+          <Tip label="Send to printer" side="top"><button type="button" className="btn" data-testid="send-to-printer" aria-label="Send to printer" onClick={() => setSendOpen(true)}><PaperPlaneTilt size={14} /></button></Tip>
           {s.stale && <Tip label="Slice again" side="top"><button type="button" className="btn" data-testid="reslice" aria-label="Slice again" onClick={() => void runSlice()}><ArrowClockwise size={14} /></button></Tip>}
         </div>
       )}
@@ -79,7 +79,7 @@ export function SliceCard({ compact = false }: { compact?: boolean }) {
           {r.warnings.map((w, i) => <div key={i} className="sc-line warn" data-testid="slice-warning"><WarningCircle size={14} weight="fill" /><span>{plainWarning(w)}</span></div>)}
           <div className="sc-actions">
             <button type="button" className="btn primary" data-testid="export-gcode" onClick={() => void exportGcode()}><DownloadSimple size={14} /> Export G-code</button>
-            {snap.profile.vendor === 'BBL' && <button type="button" className="btn" data-testid="send-to-printer" onClick={() => setSendOpen(true)}><PaperPlaneTilt size={14} /> Send to printer</button>}
+            <button type="button" className="btn" data-testid="send-to-printer" onClick={() => setSendOpen(true)}><PaperPlaneTilt size={14} /> Send to printer</button>
             <Tip label={s.stale ? 'Slice again' : 'Settings'} side="top">
               {s.stale
                 ? <button type="button" className="btn" data-testid="reslice" aria-label="Slice again" onClick={() => void runSlice()}><ArrowClockwise size={14} /></button>

@@ -3,7 +3,8 @@
  * (so the browser's local network prompt never shows up for someone who does not use printers). Reconnects with a backoff while wanted.
  */
 import { toast } from '@/ui/Modal'
-import { LINK_PORT, LINK_VERSION, type AddPrinter, type Discovered, type ErrorMsg, type FromHelper, type PrinterInfo, type RequestMap, type RequestType, type SendBegin } from './protocol'
+import { cancelDirectUpload, directControl, directUpload, stopDirect, syncDirect } from './direct'
+import { LINK_PORT, LINK_VERSION, type AddPrinter, type Discovered, type ErrorMsg, type FromHelper, type HttpReply, type PrinterInfo, type RequestMap, type RequestType, type SendBegin } from './protocol'
 import { useLink, type LinkConn } from './store'
 
 const TOKEN_KEY = 'caddy.link.token'
@@ -98,13 +99,17 @@ function onMessage(raw: string) {
     case 'printers': {
       const ids = new Set(m.printers.map((p) => p.id))
       useLink.setState({ printers: m.printers, statuses: Object.fromEntries(Object.entries(s.statuses).filter(([k]) => ids.has(k))) })
+      syncDirect(m.printers)
       return
     }
-    case 'status': useLink.setState({ statuses: { ...s.statuses, [m.status.printerId]: m.status } }); return
+    case 'status':
+      // a Klipper printer the browser reaches directly reports to it; the helper's picture of it would only flicker over that one
+      if (!s.direct[m.status.printerId]) useLink.setState({ statuses: { ...s.statuses, [m.status.printerId]: m.status } })
+      return
     case 'send': {
       const cur = s.send
       if (cur && cur.jobId !== m.jobId && cur.jobId !== '') return
-      useLink.setState({ send: { jobId: m.jobId, printerId: m.printerId, fileName: cur?.fileName ?? '', stage: m.stage, sent: m.sent, total: m.total, code: m.code, message: m.message } })
+      useLink.setState({ send: { jobId: m.jobId, printerId: m.printerId, fileName: cur?.fileName ?? '', stage: m.stage, sent: m.sent, total: m.total, code: m.code, message: m.message, oldFingerprint: m.oldFingerprint, newFingerprint: m.newFingerprint } })
       return
     }
   }
@@ -136,6 +141,7 @@ function open() {
   sock.onclose = () => {
     if (ws !== sock) return
     ws = null
+    stopDirect()
     failAll('The connection to CADdy Link closed')
     const was = opened
     void (async () => {
@@ -164,6 +170,7 @@ export function releaseLink() {
   if (retry) { clearTimeout(retry); retry = null }
   ws?.close()
   ws = null
+  stopDirect()
   failAll('closed')
   setConn('off')
 }
@@ -178,10 +185,12 @@ export function retryLink() {
 }
 
 export function setPanel(open: boolean) {
-  useLink.setState({ panelOpen: open })
+  useLink.setState({ panelOpen: open, ...(open ? {} : { addOpen: false }) })
   if (open) wantLink(); else releaseLink()
 }
 export const togglePrinters = () => setPanel(!useLink.getState().panelOpen)
+
+export const setAddOpen = (addOpen: boolean) => useLink.setState({ addOpen })
 
 export function setSendOpen(open: boolean) {
   useLink.setState({ sendOpen: open })
@@ -221,24 +230,49 @@ export async function addPrinter(p: AddPrinter): Promise<PrinterInfo> {
 
 export const removePrinter = (printerId: string) => request('printers.remove', { printerId })
 
-/** Run a control command and say so plainly when the printer refuses it. */
+const say = (e: unknown) => toast(e instanceof Error ? e.message : String(e), 'error')
+
+/** Run a control command and say so plainly when the printer refuses it. A Klipper printer reached directly gets it straight from the browser. */
 export async function control(type: 'printer.pause' | 'printer.resume' | 'printer.stop', printerId: string) {
-  try { await request(type, { printerId }) } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') }
+  try {
+    const p = useLink.getState().printers.find((x) => x.id === printerId)
+    if (p && (await directControl(p, type === 'printer.pause' ? 'pause' : type === 'printer.resume' ? 'resume' : 'cancel'))) return
+    await request(type, { printerId })
+  } catch (e) { say(e) }
 }
 export async function setLight(printerId: string, on: boolean) {
-  try { await request('printer.light', { printerId, on }) } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') }
+  try { await request('printer.light', { printerId, on }) } catch (e) { say(e) }
 }
 
 export async function setSpeed(printerId: string, level: 1 | 2 | 3 | 4) {
-  try { await request('printer.speed', { printerId, level }) } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') }
+  try { await request('printer.speed', { printerId, level }) } catch (e) { say(e) }
+}
+
+/** Trust the certificate the printer shows now, after the person looked at its fingerprint. */
+export const trustCertificate = (printerId: string, fingerprint: string, which: 'mqtt' | 'ftp' | 'http' = 'mqtt') => request('printers.trust', { printerId, fingerprint, which }, 20000)
+
+/** One request to a printer's own web API through the helper, which adds the login. */
+export async function printerHttp(printerId: string, path: string, method = 'GET'): Promise<HttpReply> {
+  return request('http.request', { printerId, method, path, headers: { Accept: 'application/json' } }, 25000)
 }
 
 /** Send a file to a printer: tell the helper, then stream the bytes in frames. Progress arrives as `send` events into the store. */
 export async function sendFile(begin: Omit<SendBegin, 'size'>, bytes: Uint8Array): Promise<void> {
   useLink.setState({ send: { jobId: '', printerId: begin.printerId, fileName: begin.fileName, stage: 'receiving', sent: 0, total: bytes.length } })
+  const set = (p: Partial<NonNullable<ReturnType<typeof useLink.getState>['send']>>) => { const cur = useLink.getState().send; if (cur) useLink.setState({ send: { ...cur, ...p } }) }
+  // a Klipper printer the browser reaches directly takes the file from the browser; when it cannot, the helper sends it
+  const direct = useLink.getState().printers.find((x) => x.id === begin.printerId)
+  if (direct && useLink.getState().direct[direct.id]) {
+    set({ jobId: 'direct', stage: 'uploading' })
+    const r = await directUpload(direct, begin.fileName, bytes, (sent) => set({ sent }))
+    if (r === 'done') return set({ stage: 'done', sent: bytes.length })
+    if (r === 'cancelled') return set({ stage: 'cancelled' })
+    if (typeof r === 'object') return set({ stage: 'error', code: 'print_rejected', message: r.error })
+    set({ jobId: '', stage: 'receiving', sent: 0 })
+  }
   try {
     const { jobId } = await request('send.begin', { ...begin, size: bytes.length })
-    useLink.setState({ send: { ...useLink.getState().send!, jobId } })
+    set({ jobId })
     for (let at = 0; at < bytes.length; at += CHUNK) {
       const sock = ws
       if (!sock || sock.readyState !== WebSocket.OPEN) throw new LinkError('closed', 'The connection to CADdy Link closed while sending')
@@ -247,13 +281,15 @@ export async function sendFile(begin: Omit<SendBegin, 'size'>, bytes: Uint8Array
     }
   } catch (e) {
     const code = e instanceof LinkError ? e.code : 'internal'
-    useLink.setState({ send: { ...useLink.getState().send!, stage: 'error', code: code as never, message: e instanceof Error ? e.message : String(e) } })
+    set({ stage: 'error', code: code as never, message: e instanceof Error ? e.message : String(e) })
   }
 }
 
+/** Cancel the send: while the file is arriving, and also while it uploads to the printer (the helper aborts it and removes a partial file). */
 export async function cancelSend() {
+  if (cancelDirectUpload()) return
   const j = useLink.getState().send
-  if (j?.jobId) try { await request('send.cancel', { jobId: j.jobId }) } catch { /* already over */ }
+  if (j?.jobId) try { await request('send.cancel', { jobId: j.jobId }) } catch (e) { say(e) }
 }
 
 export const clearSend = () => { useLink.setState({ send: null }); releaseLink() }

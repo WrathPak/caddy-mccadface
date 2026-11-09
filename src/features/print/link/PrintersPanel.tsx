@@ -1,13 +1,14 @@
-/** The Printers panel: CADdy Link status, pairing, one live card per printer, and adding a printer. */
+/** The Printers panel: CADdy Link status, pairing, one live card per printer (any kind), and adding a printer. */
 import { useEffect, useRef, useState } from 'react'
 import {
-  ArrowSquareOut, CircleNotch, DownloadSimple, Drop, Fan, Lightbulb, MagnifyingGlass, Pause, Play, Plugs, Plus, Printer, Stop, Thermometer, Trash, Warning, WifiHigh, X,
+  ArrowSquareOut, CircleNotch, DownloadSimple, Drop, Fan, Lightbulb, MagnifyingGlass, Pause, Play, Plugs, Plus, Printer, ShieldWarning, Stop, Thermometer, Trash, Warning, WifiHigh, X,
 } from '@phosphor-icons/react'
 import { Segmented } from '@/ui/Segmented'
+import { Checkbox } from '@/ui/Toggle'
 import { Tip } from '@/ui/Tooltip'
-import { addPrinter, control, discover, pair, removePrinter, retryLink, setLight, setPanel, setSpeed } from './client'
-import { durationText, etaText, HUMIDITY, isActive, plainLinkError, STATE_LABEL } from './logic'
-import type { AmsUnit, Discovered, PrinterInfo, PrinterStatus, Temp, Tray } from './protocol'
+import { addPrinter, control, setAddOpen, discover, pair, removePrinter, retryLink, setLight, setPanel, setSpeed, trustCertificate } from './client'
+import { durationText, etaText, HUMIDITY, isActive, plainLinkError, prettyFingerprint, printerModel, STATE_LABEL } from './logic'
+import type { AmsUnit, Discovered, PrinterInfo, PrinterKind, PrinterStatus, Temp, Tray } from './protocol'
 import { useLink } from './store'
 import './link.css'
 
@@ -30,7 +31,7 @@ function NotRunning({ blocked, versionError }: { blocked: boolean; versionError:
       ) : (
         <>
           <h3>CADdy Link isn't running</h3>
-          <p>A small program on this computer that lets the app talk to your Bambu Lab printer on your own network. Nothing goes through the internet.</p>
+          <p>A small program on this computer that lets the app talk to your printers (Bambu Lab, Prusa, Klipper, OctoPrint) on your own network. Nothing goes through the internet.</p>
           <ol className="lk-steps">
             <li>Download CADdy Link for your system.</li>
             <li>Run it. It prints a 6 digit pairing code in its window.</li>
@@ -110,19 +111,57 @@ function AmsRow({ u, active }: { u: AmsUnit; active: number | null }) {
   )
 }
 
+/** The printer shows another security certificate than the one saved. Both fingerprints are shown, and nothing is trusted before the person confirms. */
+function CertChanged({ p, s }: { p: PrinterInfo; s: PrinterStatus }) {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const prob = s.problem!
+  const now = prob.newFingerprint
+  const trust = async () => {
+    if (!now) return
+    setBusy(true); setErr('')
+    try { await trustCertificate(p.id, now, p.kind === 'bambu' ? 'mqtt' : 'http') } catch (e) { setErr(e instanceof Error ? e.message : String(e)) }
+    setBusy(false)
+  }
+  return (
+    <div className="lk-cert" data-testid="cert-changed">
+      <div className="lk-err"><ShieldWarning size={14} weight="fill" /><span>{prob.message || plainLinkError('cert_changed', '')}</span></div>
+      {now && !open && <button type="button" className="btn" data-testid="cert-trust" onClick={() => setOpen(true)}>Trust the new certificate</button>}
+      {now && open && (
+        <div className="lk-confirm lk-cert-box" data-testid="cert-confirm">
+          <div className="lk-fp"><span>Saved when you added it</span><code data-testid="cert-old">{prob.oldFingerprint ? prettyFingerprint(prob.oldFingerprint) : 'not known'}</code></div>
+          <div className="lk-fp"><span>Showing now</span><code data-testid="cert-new">{prettyFingerprint(now)}</code></div>
+          <p>Trust it only if you reset, updated or reinstalled this printer. If nothing changed, someone on your network may be pretending to be the printer.</p>
+          {err && <div className="lk-err"><Warning size={13} weight="fill" /> {err}</div>}
+          <div className="lk-row end">
+            <button type="button" className="btn" onClick={() => setOpen(false)}>Do not trust</button>
+            <button type="button" className="btn danger" data-testid="cert-yes" disabled={busy} onClick={() => void trust()}>{busy && <CircleNotch size={13} className="sc-spin" />} Trust this certificate</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const SPEEDS = ['', 'Silent', 'Standard', 'Sport', 'Ludicrous']
+
 function Card({ p }: { p: PrinterInfo }) {
   const s = useLink((x) => x.statuses[p.id]) as PrinterStatus | undefined
+  const direct = useLink((x) => !!x.direct[p.id])
   const [askStop, setAskStop] = useState(false)
   const [askRemove, setAskRemove] = useState(false)
   const busy = s ? isActive(s.state) : false
   const tone = !s || !s.online ? 'off' : s.problem ? 'bad' : s.state
   const eta = s && s.remainingMin > 0 && busy ? etaText(s.remainingMin) : ''
+  const bambu = p.kind === 'bambu'
+  const showJob = busy || s?.state === 'finish' || s?.state === 'stopped' || s?.state === 'failed'
   return (
-    <section className="lk-card" data-testid="printer-card" data-printer={p.id} data-state={s?.state ?? 'unknown'} data-online={s?.online ?? false} data-percent={s?.percent ?? 0} data-layer={s?.layer ?? 0}>
+    <section className="lk-card" data-testid="printer-card" data-printer={p.id} data-kind={p.kind} data-state={s?.state ?? 'unknown'} data-online={s?.online ?? false} data-percent={s?.percent ?? 0} data-layer={s?.layer ?? 0}>
       <header className="lk-card-h">
         <div className="lk-card-t">
           <b data-testid="printer-name">{p.name}</b>
-          <span>{p.modelLabel.replace('Bambu Lab ', '')}{p.mock ? ' (simulated)' : ''}</span>
+          <span>{printerModel(p)}{bambu ? '' : ` at ${p.ip}`}{p.mock ? ' (simulated)' : ''}{direct && <em className="lk-direct" data-testid="printer-direct" title="This browser talks to Moonraker directly">direct</em>}</span>
         </div>
         <span className="lk-pill" data-tone={tone} data-testid="printer-state">{!s ? 'Connecting' : !s.online ? 'Offline' : s.problem ? 'Problem' : STATE_LABEL[s.state]}</span>
         <Tip label="Remove printer" side="top"><button type="button" className="lk-x" aria-label="Remove printer" data-testid="printer-remove" onClick={() => setAskRemove(true)}><Trash size={13} /></button></Tip>
@@ -134,14 +173,16 @@ function Card({ p }: { p: PrinterInfo }) {
           <button type="button" className="btn danger" data-testid="remove-yes" onClick={() => void removePrinter(p.id)}>Remove</button>
         </div>
       )}
-      {s?.problem && <div className="lk-err" data-testid="printer-problem"><Warning size={13} weight="fill" /> {plainLinkError(s.problem.code, s.problem.message)}</div>}
+      {s?.problem?.code === 'cert_changed'
+        ? <CertChanged p={p} s={s} />
+        : s?.problem && <div className="lk-err" data-testid="printer-problem"><Warning size={13} weight="fill" /> <span>{plainLinkError(s.problem.code, s.problem.message)}</span></div>}
       {s && s.online && !s.problem && (
         <>
           <div className="lk-job">
             <Ring pct={s.percent} state={s.state} />
             <div className="lk-job-t">
-              <b className="lk-file" data-testid="printer-file">{busy || s.state === 'finish' ? s.file || 'Print' : 'No print running'}</b>
-              <span data-testid="printer-layer">{busy || s.state === 'finish' ? `Layer ${s.layer} / ${s.totalLayers}` : s.state === 'idle' ? 'Waiting for a job' : ''}</span>
+              <b className="lk-file" data-testid="printer-file">{showJob ? s.file || 'Print' : 'No print running'}</b>
+              <span data-testid="printer-layer">{showJob && (bambu || s.totalLayers > 0) ? `Layer ${s.layer} / ${s.totalLayers}` : !showJob && s.state === 'idle' ? 'Waiting for a job' : ''}</span>
               <span data-testid="printer-eta">{eta ? `${durationText(s.remainingMin)} left, done ${eta}` : ''}</span>
             </div>
           </div>
@@ -150,11 +191,13 @@ function Card({ p }: { p: PrinterInfo }) {
             <div><Thermometer size={12} /><span>Bed</span><b>{deg(s.bed)}</b></div>
             {s.chamber && <div><Thermometer size={12} /><span>Chamber</span><b>{deg(s.chamber)}</b></div>}
           </div>
-          <div className="lk-fans">
-            <span><Fan size={12} /> Part <b>{s.fans.part}%</b></span>
-            <span>Aux <b>{s.fans.aux}%</b></span>
-            <span>Chamber <b>{s.fans.chamber}%</b></span>
-            <span>Speed <b>{['', 'Silent', 'Standard', 'Sport', 'Ludicrous'][s.speedLevel] || '-'}</b></span>
+          <div className="lk-fans" data-testid="printer-extras">
+            {s.fans && <span><Fan size={12} /> Part <b>{s.fans.part}%</b></span>}
+            {s.fans && bambu && <span>Aux <b>{s.fans.aux}%</b></span>}
+            {s.fans && bambu && <span>Chamber <b>{s.fans.chamber}%</b></span>}
+            {bambu && <span>Speed <b>{SPEEDS[s.speedLevel] || '-'}</b></span>}
+            {!bambu && s.speedPct != null && <span>Speed <b>{s.speedPct}%</b></span>}
+            {s.readouts.map((r) => <span key={r.label}>{r.label} <b>{r.value}</b></span>)}
             {s.wifi != null && <span className="lk-wifi" title="Wi-Fi signal"><WifiHigh size={12} /> {s.wifi} dBm</span>}
           </div>
           {(s.ams.units.length > 0 || s.ams.external) && (
@@ -170,11 +213,23 @@ function Card({ p }: { p: PrinterInfo }) {
           )}
           {s.hms.length > 0 && (
             <div className="lk-hms" data-testid="printer-hms">
-              {s.hms.map((h) => <div key={h.code} data-sev={h.severity}><Warning size={13} weight="fill" /><span>{h.text}</span></div>)}
+              {s.hms.map((h) => (
+                <div key={h.code} data-sev={h.severity} data-known={h.known}>
+                  <Warning size={13} weight="fill" />
+                  <span>{h.text}<span className="lk-code-line"><code>HMS {h.code}</code>{h.url && <a href={h.url} target="_blank" rel="noreferrer" data-testid="hms-link">What does this mean? <ArrowSquareOut size={10} /></a>}</span></span>
+                </div>
+              ))}
             </div>
           )}
-          {s.printErrorText && <div className="lk-hms" data-testid="printer-error"><div data-sev="error"><Warning size={13} weight="fill" /><span>{s.printErrorText}</span></div></div>}
-          {busy && (
+          {s.printErrorText && (
+            <div className="lk-hms" data-testid="printer-error">
+              <div data-sev="error">
+                <Warning size={13} weight="fill" />
+                <span>{s.printErrorText}{s.printError && <span className="lk-code-line"><code>{s.printError}</code>{s.printErrorUrl && <a href={s.printErrorUrl} target="_blank" rel="noreferrer">What does this mean? <ArrowSquareOut size={10} /></a>}</span>}</span>
+              </div>
+            </div>
+          )}
+          {busy && bambu && (
             <div className="lk-speed" data-testid="printer-speed">
               <Segmented value={String(s.speedLevel)} onChange={(v) => void setSpeed(p.id, +v as 1 | 2 | 3 | 4)} options={[{ value: '1', label: 'Silent' }, { value: '2', label: 'Standard' }, { value: '3', label: 'Sport' }, { value: '4', label: 'Ludicrous' }]} />
             </div>
@@ -205,21 +260,48 @@ function Card({ p }: { p: PrinterInfo }) {
   )
 }
 
+const KINDS: { value: PrinterKind; label: string }[] = [{ value: 'bambu', label: 'Bambu Lab' }, { value: 'prusa', label: 'Prusa' }, { value: 'klipper', label: 'Klipper' }, { value: 'octoprint', label: 'OctoPrint' }]
+
+const HINTS: Record<PrinterKind, string> = {
+  bambu: 'On the printer, turn on LAN Only mode and Developer Mode. The IP address and the access code are on its screen under Settings, WLAN (or Network). The serial number is on the label and in the printer\'s About page. The access code is kept by CADdy Link on this computer and never comes back to the browser.',
+  prusa: 'PrusaLink: the password is on the printer\'s screen under Settings, Network, PrusaLink (the user is maker), and in PrusaLink\'s own Settings page, where you can also make an API key. The login is kept by CADdy Link on this computer and never comes back to the browser.',
+  klipper: 'Moonraker listens on port 7125. If this computer is a trusted client in moonraker.conf you need no key; otherwise enter an API key. To let this page talk to the printer directly, add its address to cors_domains in moonraker.conf (optional: without it CADdy Link carries everything).',
+  octoprint: 'Make an API key in OctoPrint under Settings, Application Keys, and paste it here. OctoPrint listens on port 5000, or on 80 when it runs on OctoPi. The key is kept by CADdy Link on this computer and never comes back to the browser.',
+}
+
+const PORT_HINT: Record<PrinterKind, string> = { bambu: '', prusa: '80', klipper: '7125', octoprint: '5000' }
+
 function AddPrinterForm({ onDone }: { onDone: () => void }) {
   const found = useLink((s) => s.discovered)
   const searching = useLink((s) => s.discovering)
   const known = useLink((s) => s.printers)
-  const [f, setF] = useState({ name: '', ip: '', serial: '', accessCode: '', mqttPort: undefined as number | undefined, ftpPort: undefined as number | undefined, model: '' })
+  const [kind, setKind] = useState<PrinterKind>('bambu')
+  const [auth, setAuth] = useState<'password' | 'key'>('password')
+  const [tls, setTls] = useState(false)
+  const [f, setF] = useState({ name: '', ip: '', port: '', serial: '', accessCode: '', username: '', password: '', apiKey: '', mqttPort: undefined as number | undefined, ftpPort: undefined as number | undefined, model: '' })
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const find = async () => { setErr(''); try { await discover() } catch (e) { setErr(e instanceof Error ? e.message : String(e)) } }
   useEffect(() => { void find() }, [])
-  const use = (d: Discovered) => setF({ name: d.name, ip: d.ip, serial: d.serial, accessCode: d.accessCode ?? f.accessCode, mqttPort: d.mqttPort, ftpPort: d.ftpPort, model: d.model })
-  const ok = f.ip.trim() && f.serial.trim() && f.accessCode.trim()
+  const use = (d: Discovered) => {
+    const k = d.kind ?? 'bambu'
+    setKind(k)
+    setF({
+      ...f, name: d.name, ip: d.ip, serial: d.serial ?? '', port: d.port ? String(d.port) : '', mqttPort: d.mqttPort, ftpPort: d.ftpPort, model: d.model ?? '',
+      accessCode: k === 'bambu' ? d.accessCode ?? f.accessCode : f.accessCode,
+      password: k === 'prusa' ? d.accessCode ?? '' : '', apiKey: k === 'octoprint' ? d.accessCode ?? '' : '',
+    })
+    if (k === 'prusa') setAuth('password')
+  }
+  const ok = !!f.ip.trim() && (kind === 'bambu' ? !!f.serial.trim() && !!f.accessCode.trim() : kind === 'prusa' ? (auth === 'password' ? !!f.password.trim() : !!f.apiKey.trim()) : kind === 'octoprint' ? !!f.apiKey.trim() : true)
   const submit = async () => {
     setBusy(true); setErr('')
     try {
-      await addPrinter({ name: f.name.trim() || undefined, ip: f.ip.trim(), serial: f.serial.trim(), accessCode: f.accessCode.trim(), mqttPort: f.mqttPort, ftpPort: f.ftpPort, model: f.model || undefined })
+      const port = f.port.trim() ? Number(f.port) : undefined
+      if (port !== undefined && !(Number.isInteger(port) && port > 0 && port < 65536)) throw new Error('That port number is not valid.')
+      await addPrinter(kind === 'bambu'
+        ? { kind, name: f.name.trim() || undefined, ip: f.ip.trim(), serial: f.serial.trim(), accessCode: f.accessCode.trim(), mqttPort: f.mqttPort, ftpPort: f.ftpPort, model: f.model || undefined }
+        : { kind, name: f.name.trim() || undefined, ip: f.ip.trim(), port, tls, ...(kind === 'prusa' && auth === 'password' ? { username: f.username.trim() || undefined, password: f.password.trim() } : { apiKey: f.apiKey.trim() || undefined }) })
       onDone()
     } catch (e) {
       const code = (e as { code?: string }).code ?? ''
@@ -227,9 +309,9 @@ function AddPrinterForm({ onDone }: { onDone: () => void }) {
     }
     setBusy(false)
   }
-  const list = (found ?? []).filter((d) => !known.some((k) => k.serial === d.serial))
+  const list = (found ?? []).filter((d) => !known.some((k) => (d.kind ?? 'bambu') === k.kind && (k.kind === 'bambu' ? k.serial === d.serial : k.ip === d.ip && k.port === d.port)))
   return (
-    <div className="lk-add" data-testid="add-form">
+    <div className="lk-add" data-testid="add-form" data-kind={kind}>
       <div className="lk-add-h">
         <b>Add a printer</b>
         <button type="button" className="btn" data-testid="discover-go" disabled={searching} onClick={() => void find()}>
@@ -239,20 +321,49 @@ function AddPrinterForm({ onDone }: { onDone: () => void }) {
       {list.length > 0 && (
         <div className="lk-found" data-testid="found-list">
           {list.map((d) => (
-            <button type="button" key={d.serial} className="lk-found-i" data-testid="found-printer" data-serial={d.serial} data-on={f.serial === d.serial} onClick={() => use(d)}>
-              <Printer size={16} weight="duotone" /><span><b>{d.name || d.serial}</b><i>{d.modelLabel.replace('Bambu Lab ', '')} at {d.ip}</i></span>
+            <button type="button" key={`${d.kind}${d.serial}${d.ip}${d.port ?? ''}`} className="lk-found-i" data-testid="found-printer" data-kind={d.kind} data-serial={d.serial} data-name={d.name} data-on={f.ip === d.ip && f.port === (d.port ? String(d.port) : '') && f.serial === (d.serial ?? '')} onClick={() => use(d)}>
+              <Printer size={16} weight="duotone" /><span><b>{d.name || d.serial}</b><i>{d.kind === 'bambu' || !d.kind ? d.modelLabel.replace('Bambu Lab ', '') : d.modelName} at {d.ip}{d.port && d.kind !== 'bambu' ? `:${d.port}` : ''}</i></span>
             </button>
           ))}
         </div>
       )}
       {!searching && found && list.length === 0 && <p className="lk-hint">No new printers found on your network. Enter one by hand below.</p>}
+      <div className="lk-kind" data-testid="add-kind">
+        <Segmented value={kind} onChange={(v) => { setKind(v as PrinterKind); setErr('') }} options={KINDS} />
+      </div>
       <div className="lk-fields">
         <label><span>Name</span><input className="sl-input" data-testid="add-name" placeholder="Optional" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
         <label><span>IP address</span><input className="sl-input" data-testid="add-ip" placeholder="192.168.1.50" inputMode="decimal" value={f.ip} onChange={(e) => setF({ ...f, ip: e.target.value })} /></label>
-        <label><span>Serial number</span><input className="sl-input" data-testid="add-serial" value={f.serial} onChange={(e) => setF({ ...f, serial: e.target.value })} /></label>
-        <label><span>Access code</span><input className="sl-input" data-testid="add-code" autoComplete="off" value={f.accessCode} onChange={(e) => setF({ ...f, accessCode: e.target.value })} /></label>
+        {kind === 'bambu' && (
+          <>
+            <label><span>Serial number</span><input className="sl-input" data-testid="add-serial" value={f.serial} onChange={(e) => setF({ ...f, serial: e.target.value })} /></label>
+            <label><span>Access code</span><input className="sl-input" data-testid="add-code" autoComplete="off" value={f.accessCode} onChange={(e) => setF({ ...f, accessCode: e.target.value })} /></label>
+          </>
+        )}
+        {kind !== 'bambu' && (
+          <>
+            <label><span>Port</span><input className="sl-input" data-testid="add-port" placeholder={PORT_HINT[kind]} inputMode="numeric" value={f.port} onChange={(e) => setF({ ...f, port: e.target.value.replace(/\D/g, '') })} /></label>
+            <div className="lk-fld lk-wide" data-testid="add-tls"><Checkbox checked={tls} onChange={setTls} label="Use HTTPS" help="Turn on when the printer's web page opens with https://. CADdy Link accepts its own certificate the first time and warns if it changes." /></div>
+          </>
+        )}
+        {kind === 'prusa' && (
+          <>
+            <div className="lk-fld lk-wide"><span>Sign in with</span><Segmented value={auth} onChange={(v) => setAuth(v as 'password' | 'key')} options={[{ value: 'password', label: 'Password' }, { value: 'key', label: 'API key' }]} /></div>
+            {auth === 'password'
+              ? (
+                <>
+                  <label><span>User</span><input className="sl-input" data-testid="add-user" placeholder="maker" autoComplete="off" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} /></label>
+                  <label><span>Password</span><input className="sl-input" type="password" data-testid="add-password" autoComplete="off" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
+                </>
+              )
+              : <label className="lk-wide"><span>API key</span><input className="sl-input" type="password" data-testid="add-key" autoComplete="off" value={f.apiKey} onChange={(e) => setF({ ...f, apiKey: e.target.value })} /></label>}
+          </>
+        )}
+        {(kind === 'klipper' || kind === 'octoprint') && (
+          <label className="lk-wide"><span>API key{kind === 'klipper' ? ' (only if Moonraker asks for one)' : ''}</span><input className="sl-input" type="password" data-testid="add-key" autoComplete="off" value={f.apiKey} onChange={(e) => setF({ ...f, apiKey: e.target.value })} /></label>
+        )}
       </div>
-      <p className="lk-hint">On the printer, turn on LAN Only mode and Developer Mode. The IP address and the access code are on its screen under Settings, WLAN (or Network). The serial number is on the label and in the printer's About page. The access code is kept by CADdy Link on this computer and never comes back to the browser.</p>
+      <p className="lk-hint">{HINTS[kind]}</p>
       <div className="lk-err" data-testid="add-error" hidden={!err}><Warning size={13} weight="fill" /> {err}</div>
       <div className="lk-row end">
         <button type="button" className="btn" onClick={onDone}>Cancel</button>
@@ -263,8 +374,8 @@ function AddPrinterForm({ onDone }: { onDone: () => void }) {
 }
 
 export function PrintersPanel() {
-  const { panelOpen, conn, printers, mock, versionError } = useLink()
-  const [adding, setAdding] = useState(false)
+  const { panelOpen, conn, printers, mock, versionError, addOpen: adding } = useLink()
+  const setAdding = setAddOpen
   useEffect(() => {
     if (!panelOpen) return
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement)) setPanel(false) }
@@ -291,7 +402,7 @@ export function PrintersPanel() {
               <div className="lk-empty" data-testid="printers-empty">
                 <div className="lk-hero"><Printer size={30} weight="duotone" /></div>
                 <h3>No printers yet</h3>
-                <p>Add a Bambu Lab printer on your network to see it live and send prints to it.</p>
+                <p>Add a printer on your network (Bambu Lab, Prusa, Klipper or OctoPrint) to see it live and send prints to it.</p>
                 <button type="button" className="btn primary" data-testid="printers-add-first" onClick={() => setAdding(true)}><Plus size={14} /> Add a printer</button>
               </div>
             )

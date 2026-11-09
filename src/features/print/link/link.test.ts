@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { autoMap, defaultPrinter, etaText, mappingArray, modelMatches, sameType, type Need } from './logic'
+import { klipperStatus, mergeStatus } from './direct'
+import { autoMap, defaultPrinter, etaText, hasPresetFor, kindsForVendor, mappingArray, modelMatches, printersForVendor, sameType, type Need } from './logic'
 import type { PrinterInfo, Tray } from './protocol'
 
 const tray = (id: number, type: string, color: string | null, empty = false): Tray => ({ id, slot: id % 4, type, color, remain: 80, name: '', empty })
-const printer = (id: string, modelLabel: string): PrinterInfo => ({ id, name: id, model: '', modelName: '', modelLabel, serial: '', ip: '', pinned: true, storage: false, mock: false })
+const printer = (id: string, modelLabel: string, kind: PrinterInfo['kind'] = 'bambu'): PrinterInfo => ({ id, name: id, kind, model: '', modelName: '', modelLabel, serial: '', ip: '', port: 0, tls: false, secret: false, pinned: true, storage: false, mock: false })
 
 describe('printer link logic', () => {
   it('matches the machine preset to the model without mixing A1 and A1 mini', () => {
@@ -31,5 +32,30 @@ describe('printer link logic', () => {
   it('gives an end time', () => {
     expect(etaText(0)).toBe('')
     expect(etaText(30, 0)).not.toBe('')
+  })
+  it('sends a slice to the kind of printer its machine belongs to', () => {
+    const list = [printer('b', 'Bambu Lab P1S'), printer('p', '', 'prusa'), printer('k', '', 'klipper'), printer('o', '', 'octoprint')]
+    expect(kindsForVendor('Prusa')).toEqual(['prusa'])
+    expect(printersForVendor(list, 'Prusa').map((x) => x.id)).toEqual(['p'])
+    expect(printersForVendor(list, 'Creality').map((x) => x.id)).toEqual(['k', 'o'])
+    expect(defaultPrinter(list, 'Bambu Lab P1S 0.4 nozzle', 'BBL')?.id).toBe('b')
+    expect(defaultPrinter(list, 'Prusa MK4S 0.4 nozzle', 'Prusa')?.id).toBe('p')
+    expect(defaultPrinter([printer('b', 'Bambu Lab P1S')], 'Prusa MK4S 0.4 nozzle', 'Prusa')).toBeNull()
+  })
+  it('knows which Bambu models have a machine preset', () => {
+    const machines = ['Bambu Lab X2D 0.4 nozzle', 'Bambu Lab X1 Carbon 0.4 nozzle', 'Bambu Lab X1E 0.4 nozzle', 'Bambu Lab A1 mini 0.4 nozzle']
+    expect(hasPresetFor('Bambu Lab X2D', machines)).toBe(true)
+    expect(hasPresetFor('Bambu Lab X1 Carbon', machines)).toBe(true)
+    expect(hasPresetFor('Bambu Lab X1', machines)).toBe(false) // X1 is not X1 Carbon or X1E
+    expect(hasPresetFor('Bambu Lab H2S', machines)).toBe(false)
+  })
+  it('turns Moonraker objects into a printer status', () => {
+    const raw = mergeStatus({}, { print_stats: { state: 'printing', filename: 'a.gcode', print_duration: 60, info: { current_layer: 4, total_layer: 20 } }, display_status: { progress: 0.25 }, extruder: { temperature: 214.6, target: 215 }, fan: { speed: 0.5 }, toolhead: { position: [1, 2, 3.2, 0] } })
+    mergeStatus(raw, { print_stats: { state: 'paused' } })
+    const s = klipperStatus('x', raw)
+    expect(s).toMatchObject({ state: 'pause', percent: 25, layer: 4, totalLayers: 20, file: 'a.gcode', nozzle: { cur: 214.6, target: 215 }, fans: { part: 50 }, problem: null })
+    expect(s.readouts).toEqual([{ label: 'Height', value: '3.20 mm' }])
+    expect(klipperStatus('x', { print_stats: { state: 'printing', print_duration: 60 }, display_status: { progress: 0.25 } }).remainingMin).toBe(3)
+    expect(klipperStatus('x', raw, 'shutdown').problem?.code).toBe('not_ready')
   })
 })

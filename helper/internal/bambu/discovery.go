@@ -10,6 +10,9 @@ import (
 
 // Found is a printer that announced itself.
 type Found struct {
+	// Kind is "bambu", or another kind the app can add ("prusa", "klipper", "octoprint", found over mDNS)
+	Kind     string `json:"kind"`
+	Port     int    `json:"port,omitempty"`
 	Serial   string `json:"serial"`
 	Name     string `json:"name"`
 	Model    string `json:"model"`
@@ -38,6 +41,7 @@ func ParseAnnouncement(msg, from string) (f Found, ok bool) {
 	for _, m := range hdr.FindAllStringSubmatch(msg, -1) {
 		h[strings.ToLower(m[1])] = m[2]
 	}
+	f.Kind = "bambu"
 	f.Serial = strings.TrimPrefix(h["usn"], "uuid:")
 	if f.Serial == "" {
 		return f, false

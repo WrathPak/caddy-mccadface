@@ -108,7 +108,7 @@
 .lk-add-h { display: flex; align-items: center; justify-content: space-between; }
 .lk-add-h b { font-size: var(--fs-title); font-weight: 650; }
 .lk-add-h .btn { height: 28px; }
-.lk-found { display: flex; flex-direction: column; gap: 6px; }
+.lk-found { display: flex; flex-direction: column; gap: 6px; max-height: 176px; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
 .lk-found-i { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: none; border-radius: 12px; background: var(--bg-input); color: var(--text); text-align: left; cursor: default; box-shadow: inset 0 0 0 1px transparent; transition: background var(--t-fast) var(--ease); }
 .lk-found-i:hover { background: var(--bg-hover); }
 .lk-found-i[data-on='true'] { background: var(--accent-dim); box-shadow: inset 0 0 0 1px var(--accent-line); }
@@ -157,3 +157,36 @@
 
 .lk-speed .seg { height: 28px; }
 .lk-steps li { margin: 3px 0; padding-left: 2px; }
+
+/* kinds, direct badge, certificate check, hms links */
+.lk-kind { display: flex; }
+.lk-kind .seg { width: 100%; }
+.lk-kind .seg button { flex: 1 1 0; min-width: 0; padding-inline: 6px; }
+.lk-wide { grid-column: 1 / -1; }
+.lk-direct { font-style: normal; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 650; color: var(--accent); background: var(--accent-dim); }
+.lk-pill[data-tone='stopped'] { background: var(--bg-active); color: var(--text-dim); }
+.lk-ring[data-state='stopped'] .lk-ring-fg { stroke: var(--text-faint); }
+
+.lk-cert { display: flex; flex-direction: column; gap: 8px; }
+.lk-cert > .btn { align-self: flex-start; height: 30px; }
+.lk-cert .lk-err { margin: 0; }
+.lk-cert-box { flex-direction: column; align-items: stretch; gap: 8px; }
+.lk-cert-box p { margin: 0; flex: none; color: var(--text-dim); line-height: 1.45; }
+.lk-cert-box .lk-row { margin: 2px 0 0; }
+.lk-fp { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lk-fp span { font-size: var(--fs-xs); font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); flex: none; }
+.lk-fp code { font-family: var(--font-mono); font-size: 11px; line-height: 1.5; color: var(--text); overflow-wrap: break-word; padding: 5px 8px; border-radius: 8px; background: var(--bg-input); }
+
+.lk-code-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 3px; }
+.lk-code-line code { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+.lk-code-line a { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-xs); font-weight: 600; color: var(--accent); text-decoration: none; }
+.lk-code-line a:hover { text-decoration: underline; }
+
+@media (max-width: 720px) {
+  .lk-kind .seg button { font-size: 12px; padding-inline: 4px; }
+}
+
+/* phone: the send dialog is a sheet that grows from the bottom to the height it needs, not a full screen with empty space */
+@media (max-width: 760px) {
+  .lk-send { align-self: end; justify-self: stretch; width: 100%; max-height: 92dvh; border-radius: 24px 24px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+}

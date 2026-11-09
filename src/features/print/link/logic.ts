@@ -1,5 +1,5 @@
 /** Pure helpers for the printer panel and the send dialog: model match, filament to tray matching, the AMS mapping array, time text. */
-import type { PrinterInfo, PrinterStatus, PrintState, Tray } from './protocol'
+import type { PrinterInfo, PrinterKind, PrinterStatus, PrintState, Tray } from './protocol'
 
 /** The printer whose model matches the sliced machine preset ("Bambu Lab A1 0.4 nozzle" matches "Bambu Lab A1", not "Bambu Lab A1 mini"). */
 export function modelMatches(p: Pick<PrinterInfo, 'modelLabel'>, machine: string): boolean {
@@ -8,8 +8,28 @@ export function modelMatches(p: Pick<PrinterInfo, 'modelLabel'>, machine: string
   return new RegExp(`^${esc} \\d`, 'i').test(machine)
 }
 
-export function defaultPrinter(printers: PrinterInfo[], machine: string): PrinterInfo | null {
-  return printers.find((p) => modelMatches(p, machine)) ?? printers[0] ?? null
+/** The kinds of printer a slice made for this vendor's machine can go to: Prusa machines to PrusaLink, Bambu to Bambu, everything else to Klipper or OctoPrint. */
+export function kindsForVendor(vendor: string): PrinterKind[] {
+  return vendor === 'BBL' ? ['bambu'] : vendor === 'Prusa' ? ['prusa'] : ['klipper', 'octoprint']
+}
+
+export const printersForVendor = (printers: PrinterInfo[], vendor: string) => printers.filter((p) => kindsForVendor(vendor).includes(p.kind))
+
+export const KIND_NAME: Record<PrinterKind, string> = { bambu: 'Bambu Lab', prusa: 'Prusa (PrusaLink)', klipper: 'Klipper (Moonraker)', octoprint: 'OctoPrint' }
+
+/** A printer's model as the card and the picker show it ("P1S", "PrusaLink"). */
+export const printerModel = (p: Pick<PrinterInfo, 'kind' | 'modelLabel' | 'modelName'>) => (p.kind === 'bambu' ? p.modelLabel.replace('Bambu Lab ', '') || p.modelName : p.modelName)
+
+/** The printer that matches the sliced machine: the same Bambu model, else the first of a kind this vendor can use. */
+export function defaultPrinter(printers: PrinterInfo[], machine: string, vendor = 'BBL'): PrinterInfo | null {
+  const list = printersForVendor(printers, vendor)
+  return list.find((p) => p.kind === 'bambu' && modelMatches(p, machine)) ?? list[0] ?? null
+}
+
+/** Does the profile set have a machine preset for this Bambu model ("Bambu Lab X2D" has "Bambu Lab X2D 0.4 nozzle")? */
+export function hasPresetFor(label: string, machines: string[]): boolean {
+  if (!label) return true
+  return machines.some((m) => modelMatches({ modelLabel: label }, m))
 }
 
 const rgb = (hex: string): [number, number, number] => {
@@ -94,7 +114,7 @@ export function etaText(min: number, now = Date.now()): string {
   return new Date(now + min * 60000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-export const STATE_LABEL: Record<PrintState, string> = { idle: 'Ready', prepare: 'Preparing', running: 'Printing', pause: 'Paused', finish: 'Finished', failed: 'Failed', unknown: 'Unknown' }
+export const STATE_LABEL: Record<PrintState, string> = { idle: 'Ready', prepare: 'Preparing', running: 'Printing', pause: 'Paused', finish: 'Finished', failed: 'Failed', stopped: 'Stopped', unknown: 'Unknown' }
 
 /** A job is in progress (Pause and Stop make sense). */
 export const isActive = (s: PrintState) => s === 'running' || s === 'prepare' || s === 'pause'
@@ -105,12 +125,17 @@ export const HUMIDITY: Record<number, string> = { 1: 'Very humid', 2: 'Humid', 3
 export function plainLinkError(code: string, message: string): string {
   switch (code) {
     case 'bad_access_code': return 'The access code was not accepted. Check it on the printer screen.'
-    case 'unreachable': return 'The printer could not be reached. Check the IP address and that it is on the same network.'
-    case 'cert_changed': return 'The printer presented a different security certificate than before. Remove it and add it again if you trust the change.'
+    case 'bad_login': return 'The printer did not accept the login. Check the password or API key in the printer settings.'
+    case 'unreachable': return message || 'The printer could not be reached. Check the IP address and that it is on the same network.'
+    case 'cert_changed': return 'The printer shows a different security certificate than the one saved when it was added.'
     case 'dev_mode': return 'The printer refused the command. Turn on Developer Mode (under LAN Only mode) on the printer.'
-    case 'sd_missing': return 'The printer has no storage card to hold the file. Insert an SD card.'
-    case 'busy': return 'The printer is busy with another job.'
+    case 'sd_missing': return message || 'The printer has no storage card to hold the file. Insert an SD card.'
+    case 'busy': return message || 'The printer is busy with another job.'
     case 'offline': return 'The printer is offline.'
+    case 'not_connected': return message || 'The printer is not connected to its host.'
     default: return message
   }
 }
+
+/** A fingerprint in groups, so two of them can be compared by eye. */
+export const prettyFingerprint = (fp: string) => (fp.match(/.{1,4}/g) ?? []).join(' ').toUpperCase()

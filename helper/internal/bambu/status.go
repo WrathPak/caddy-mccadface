@@ -10,7 +10,9 @@ import (
 
 // Status is what the app sees of a printer. The JSON names match src/features/print/link/protocol.ts.
 type Status struct {
-	PrinterID   string   `json:"printerId"`
+	PrinterID string `json:"printerId"`
+	// Kind is the sort of printer: "bambu", "prusa", "klipper" or "octoprint"
+	Kind        string   `json:"kind"`
 	Online      bool     `json:"online"`
 	Problem     *Problem `json:"problem"`
 	State       string   `json:"state"`
@@ -23,22 +25,37 @@ type Status struct {
 	Nozzle      Temp     `json:"nozzle"`
 	Bed         Temp     `json:"bed"`
 	Chamber     *Temp    `json:"chamber"`
-	Fans        Fans     `json:"fans"`
-	SpeedLevel  int      `json:"speedLevel"`
-	Light       *bool    `json:"light"`
-	AMS         AMS      `json:"ams"`
-	HMS         []HMS    `json:"hms"`
-	PrintError  string   `json:"printError"`
-	PrintErrTxt string   `json:"printErrorText"`
-	Wifi        *int     `json:"wifi"`
-	SDCard      *bool    `json:"sdcard"`
-	UpdatedAt   int64    `json:"updatedAt"`
+	// Fans is nil when the printer reports no part fan percent
+	Fans       *Fans `json:"fans"`
+	SpeedLevel int   `json:"speedLevel"`
+	// SpeedPct is the speed factor in percent for printers that report one (not Bambu)
+	SpeedPct *int `json:"speedPct"`
+	// Readouts are extra numbers a kind reports, as ready text: fan rpm, flow, height
+	Readouts    []Readout `json:"readouts"`
+	Light       *bool     `json:"light"`
+	AMS         AMS       `json:"ams"`
+	HMS         []HMS     `json:"hms"`
+	PrintError  string    `json:"printError"`
+	PrintErrTxt string    `json:"printErrorText"`
+	PrintErrURL string    `json:"printErrorUrl"`
+	Wifi        *int      `json:"wifi"`
+	SDCard      *bool     `json:"sdcard"`
+	UpdatedAt   int64     `json:"updatedAt"`
 }
 
 // Problem is a reason the live numbers are not shown.
 type Problem struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// Old and New are the pinned and the presented certificate fingerprints, for a certificate that changed
+	Old string `json:"oldFingerprint,omitempty"`
+	New string `json:"newFingerprint,omitempty"`
+}
+
+// Readout is one extra number on a printer card.
+type Readout struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 type Temp struct {
@@ -80,6 +97,9 @@ type HMS struct {
 	Code     string `json:"code"`
 	Severity string `json:"severity"`
 	Text     string `json:"text"`
+	// Known is false when the text is only the generic line, so the app can show the code and the wiki link
+	Known bool   `json:"known"`
+	URL   string `json:"url"`
 }
 
 // Merge folds a report into the full state. P1 and A1 printers send only what changed, so objects merge key by key,
@@ -220,8 +240,8 @@ func tray(m map[string]any, unit, id int, ht bool) Tray {
 }
 
 // Normalize turns the merged raw state of a printer into a Status.
-func Normalize(printerID string, online bool, raw map[string]any) Status {
-	s := Status{PrinterID: printerID, Online: online, State: "unknown", HMS: []HMS{}, AMS: AMS{Units: []Unit{}}, UpdatedAt: time.Now().UnixMilli()}
+func Normalize(printerID string, online bool, raw map[string]any, m Model) Status {
+	s := Status{PrinterID: printerID, Kind: "bambu", Online: online, State: "unknown", HMS: []HMS{}, Readouts: []Readout{}, AMS: AMS{Units: []Unit{}}, UpdatedAt: time.Now().UnixMilli()}
 	s.GcodeState = str(raw["gcode_state"])
 	s.State = states(s.GcodeState)
 	s.Percent = int(numOr(raw["mc_percent"], 0))
@@ -238,7 +258,7 @@ func Normalize(printerID string, online bool, raw map[string]any) Status {
 	if _, ok := num(raw["chamber_temper"]); ok {
 		s.Chamber = &Temp{numOr(raw["chamber_temper"], 0), numOr(raw["ctt"], 0)}
 	}
-	s.Fans = Fans{Part: gear(raw["cooling_fan_speed"]), Aux: gear(raw["big_fan1_speed"]), Chamber: gear(raw["big_fan2_speed"])}
+	s.Fans = &Fans{Part: gear(raw["cooling_fan_speed"]), Aux: gear(raw["big_fan1_speed"]), Chamber: gear(raw["big_fan2_speed"])}
 	s.SpeedLevel = int(numOr(raw["spd_lvl"], 2))
 	if l, ok := raw["lights_report"].([]any); ok {
 		for _, e := range l {
@@ -306,11 +326,11 @@ func Normalize(printerID string, online bool, raw map[string]any) Status {
 		if !ok {
 			continue
 		}
-		s.HMS = append(s.HMS, hmsOf(uint32(numOr(hm["attr"], 0)), uint32(numOr(hm["code"], 0))))
+		s.HMS = append(s.HMS, hmsOf(uint32(numOr(hm["attr"], 0)), uint32(numOr(hm["code"], 0)), devType(m)))
 	}
 	if pe := uint32(numOr(raw["print_error"], 0)); pe != 0 {
 		s.PrintError = fmt.Sprintf("%04X_%04X", pe>>16, pe&0xFFFF)
-		s.PrintErrTxt = printErrorText(s.PrintError)
+		s.PrintErrTxt, s.PrintErrURL = printErrorText(s.PrintError, devType(m))
 	}
 	return s
 }
@@ -322,21 +342,16 @@ func anyList(v any) []any {
 
 var modules = map[uint32]string{0x03: "motion controller", 0x05: "main board", 0x07: "AMS", 0x08: "toolhead", 0x0C: "camera", 0x12: "AMS"}
 
-// plain words for the codes seen most often; the rest get a line that names the part
-var known = map[string]string{
-	"0300_400C": "The print was canceled.",
-	"0500_4004": "The printer is busy and cannot start a new print.",
-	"07FF_8012": "The printer could not get the AMS filament mapping. Check which spools are loaded and send again.",
-}
-
-func printErrorText(code string) string {
-	if t, ok := known[code]; ok {
-		return t
+// printErrorText is the words for a print error ("0300_400C") and the page to read more.
+func printErrorText(code, dev string) (string, string) {
+	key := strings.ReplaceAll(code, "_", "")
+	if t := errorText(key, dev); t != "" {
+		return t, WikiHome
 	}
-	return "The printer stopped with error " + code + ". Check the printer's screen for what to do."
+	return "The printer stopped with error " + code + ". Check the printer's screen for what to do.", WikiHome
 }
 
-func hmsOf(attr, code uint32) HMS {
+func hmsOf(attr, code uint32, dev string) HMS {
 	sev := "info"
 	switch code >> 16 {
 	case 1:
@@ -347,16 +362,16 @@ func hmsOf(attr, code uint32) HMS {
 		sev = "warn"
 	}
 	label := fmt.Sprintf("%04X_%04X_%04X_%04X", attr>>16, attr&0xFFFF, code>>16, code&0xFFFF)
-	part := modules[attr>>24]
+	key := strings.ReplaceAll(label, "_", "")
+	h := HMS{Code: strings.ReplaceAll(label, "_", "-"), Severity: sev, URL: WikiURL(key, dev)}
+	if t := hmsText(key, dev); t != "" {
+		h.Text, h.Known = t, true
+		return h
+	}
 	text := "The printer reported a problem"
-	if part != "" {
+	if part := modules[attr>>24]; part != "" {
 		text = "The " + part + " reported a problem"
 	}
-	short := fmt.Sprintf("%04X_%04X", attr>>16, code&0xFFFF)
-	if t, ok := known[short]; ok {
-		text = t
-	} else {
-		text += " (HMS " + strings.ReplaceAll(label, "_", "-") + "). Check the printer's screen for what to do."
-	}
-	return HMS{Code: strings.ReplaceAll(label, "_", "-"), Severity: sev, Text: text}
+	h.Text = text + " (HMS " + h.Code + "). Check the printer's screen for what to do."
+	return h
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/wrathpak/caddy-mccadface/helper/internal/bambu"
 	"github.com/wrathpak/caddy-mccadface/helper/internal/config"
 	"github.com/wrathpak/caddy-mccadface/helper/internal/mock"
 	"github.com/wrathpak/caddy-mccadface/helper/internal/server"
@@ -119,7 +120,7 @@ func threeMF(t *testing.T) []byte {
 }
 
 func TestMockPrinterThroughTheHelper(t *testing.T) {
-	fake, err := mock.Start(mock.Options{Speed: 20})
+	fake, err := mock.Start(mock.Options{Speed: 20, SlowWrites: 4 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +130,7 @@ func TestMockPrinterThroughTheHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := server.New(store, server.Options{Version: "test", Mock: &found, Discover: 300 * time.Millisecond})
+	srv := server.New(store, server.Options{Version: "test", Mocks: []bambu.Found{found}, Discover: 300 * time.Millisecond})
 	defer srv.Close()
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -224,6 +225,36 @@ func TestMockPrinterThroughTheHelper(t *testing.T) {
 	}
 	if st["state"] != "idle" {
 		t.Fatalf("state: %v", st["state"])
+	}
+
+	// a send canceled while it uploads stops, and the partial file is deleted from the printer
+	{
+		big := bytes.Repeat([]byte("0123456789abcdef"), 256*1024) // 4 MB, slow enough on the mock to be caught under way
+		begin := c.call("send.begin", msg{"printerId": id, "fileName": "cancel me.gcode.3mf", "size": len(big), "useAms": false, "amsMapping": []int{}})
+		job, _ := begin["jobId"].(string)
+		if job == "" {
+			t.Fatalf("send.begin: %v", begin)
+		}
+		for off := 0; off < len(big); off += 256 * 1024 {
+			if err := c.ws.Write(context.Background(), websocket.MessageBinary, big[off:off+256*1024]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		c.wait(10*time.Second, func(m msg) bool { return m["type"] == "send" && m["jobId"] == job && m["stage"] == "uploading" })
+		if r := c.call("send.cancel", msg{"jobId": job}); r["type"] != "reply" {
+			t.Fatalf("cancel: %v", r)
+		}
+		e := c.wait(20*time.Second, func(m msg) bool {
+			return m["type"] == "send" && m["jobId"] == job && (m["stage"] == "cancelled" || m["stage"] == "done" || m["stage"] == "error")
+		})
+		if e["stage"] != "cancelled" {
+			t.Fatalf("an upload under way was not canceled: %v", e)
+		}
+		for _, f := range fake.Received() {
+			if strings.Contains(f, "cancel_me") {
+				t.Fatalf("the partial file is still on the printer: %v", fake.Received())
+			}
+		}
 	}
 
 	// send a file: a wrong mapping is refused by the printer, a right one starts the print

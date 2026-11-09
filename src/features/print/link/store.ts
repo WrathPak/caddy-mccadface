@@ -13,6 +13,8 @@ export interface SendJob {
   total: number
   code?: ErrorCode
   message?: string
+  oldFingerprint?: string
+  newFingerprint?: string
 }
 
 export interface LinkState {
@@ -23,11 +25,15 @@ export interface LinkState {
   helper: string
   printers: PrinterInfo[]
   statuses: Record<string, PrinterStatus>
+  /** Klipper printers the browser talks to directly (Moonraker allows this page); their status comes from there, not from the helper */
+  direct: Record<string, boolean>
   discovered: Discovered[] | null
   discovering: boolean
   send: SendJob | null
   panelOpen: boolean
   sendOpen: boolean
+  /** the add a printer form is open (kept here, so a reconnect cannot close it) */
+  addOpen: boolean
   /** the pairing code was wrong */
   pairError: string | null
   set: (p: Partial<LinkState>) => void
@@ -40,11 +46,13 @@ export const useLink = create<LinkState>((set) => ({
   helper: '',
   printers: [],
   statuses: {},
+  direct: {},
   discovered: null,
   discovering: false,
   send: null,
   panelOpen: false,
   sendOpen: false,
+  addOpen: false,
   pairError: null,
   set: (p) => set(p),
 }))

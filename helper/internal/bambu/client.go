@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,12 +29,15 @@ const (
 	CodeSDMissing   = "sd_missing"
 	CodeUpload      = "upload_failed"
 	CodeRejected    = "print_rejected"
+	CodeCancelled   = "cancelled"
 )
 
 // Error is a failure with a code the app can show in plain words.
 type Error struct {
 	Code string
 	Msg  string
+	// Old and New are the pinned and the presented certificate fingerprints when Code is cert_changed
+	Old, New string
 }
 
 func (e *Error) Error() string { return e.Msg }
@@ -94,7 +98,7 @@ func tlsConfig(serverName, pinned string, seen func(string)) *tls.Config {
 			}
 			fp := Fingerprint(cert)
 			if pinned != "" && fp != pinned {
-				return errors.New("certificate fingerprint changed")
+				return fmt.Errorf("certificate fingerprint changed old=%s new=%s", pinned, fp)
 			}
 			if seen != nil {
 				seen(fp)
@@ -142,7 +146,7 @@ func mqttOptions(t Target, retry bool, seen func(string)) *mqtt.ClientOptions {
 	o.SetCleanSession(true)
 	o.SetTLSConfig(tlsConfig(t.Serial, t.Fingerprint, seen))
 	o.SetAutoReconnect(retry)
-	o.SetConnectRetry(retry)
+	o.SetConnectRetry(false) // Start tries again itself, so a refused login or a changed certificate shows up as a problem
 	o.SetConnectRetryInterval(5 * time.Second)
 	o.SetMaxReconnectInterval(30 * time.Second)
 	return o
@@ -154,12 +158,37 @@ func explain(err error) *Error {
 	l := strings.ToLower(m)
 	switch {
 	case strings.Contains(l, "fingerprint changed"):
-		return fail(CodeCertChanged, "The printer's security certificate changed since you added it. If you did not reset the printer, someone may be on your network. Remove the printer and add it again to trust the new one.")
+		e := fail(CodeCertChanged, "The printer's security certificate is not the one that was saved when you added it. A printer that was reset or updated gets a new one. If you did not do that, someone on your network may be pretending to be the printer.")
+		if m := changedRe.FindStringSubmatch(l); m != nil {
+			e.Old, e.New = m[1], m[2]
+		}
+		return e
 	case strings.Contains(l, "bad user name") || strings.Contains(l, "not authorized") || strings.Contains(l, "not authorised"):
 		return fail(CodeBadAccess, "The printer refused the access code. Check it on the printer's screen (Settings, WLAN or Network). Turning Developer Mode on or off changes it.")
 	}
 	return fail(CodeUnreachable, "Could not reach the printer. Check that it is on, on the same network, and in LAN Only mode (%s).", shorten(m))
 }
+
+var changedRe = regexp.MustCompile(`old=([0-9a-f]{64}) new=([0-9a-f]{64})`)
+
+// CertOf reads the certificate a printer presents on an address (a TLS handshake, nothing is sent), for trusting a new one.
+func CertOf(addr, serverName string) (string, error) {
+	d := &net.Dialer{Timeout: 8 * time.Second}
+	c, err := tls.DialWithDialer(d, "tcp", addr, &tls.Config{InsecureSkipVerify: true, ServerName: serverName})
+	if err != nil {
+		return "", err
+	}
+	defer c.Close()
+	certs := c.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		return "", errors.New("the printer sent no certificate")
+	}
+	return Fingerprint(certs[0]), nil
+}
+
+// MQTTCert and FTPCert read the certificate of the printer's message and file servers.
+func (t Target) MQTTCert() (string, error) { return CertOf(t.mqttAddr(), t.Serial) }
+func (t Target) FTPCert() (string, error)  { return CertOf(t.ftpAddr(), t.Serial) }
 
 func shorten(s string) string {
 	s = strings.ReplaceAll(s, "\n", " ")
@@ -212,14 +241,27 @@ func (c *Client) Start() {
 	o.SetReconnectingHandler(func(_ mqtt.Client, _ *mqtt.ClientOptions) {})
 	c.conn = mqtt.NewClient(o)
 	go func() {
-		tok := c.conn.Connect()
-		tok.Wait()
-		if err := tok.Error(); err != nil {
+		delay := 3 * time.Second
+		for {
+			tok := c.conn.Connect()
+			tok.Wait()
+			err := tok.Error()
+			if err == nil {
+				return
+			}
 			e := explain(err)
 			c.mu.Lock()
-			c.online, c.problem = false, &Problem{Code: e.Code, Message: e.Msg}
+			c.online, c.problem = false, &Problem{Code: e.Code, Message: e.Msg, Old: e.Old, New: e.New}
 			c.mu.Unlock()
 			c.emit()
+			select {
+			case <-c.stop:
+				return
+			case <-time.After(delay):
+			}
+			if delay < 30*time.Second {
+				delay *= 2
+			}
 		}
 	}()
 	// P1 printers only send what changed; ask for everything now and then (not under 5 minutes, it lags the P1P)
@@ -274,7 +316,7 @@ func (c *Client) onMessage(_ mqtt.Client, m mqtt.Message) {
 func (c *Client) Status() Status {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	s := Normalize(c.t.ID, c.online, c.raw)
+	s := Normalize(c.t.ID, c.online, c.raw, c.model)
 	s.Problem = c.problem
 	return s
 }
@@ -431,7 +473,7 @@ func (c *Client) StartPrint(o StartOptions) error {
 	body := map[string]any{
 		"command":                  "project_file",
 		"param":                    fmt.Sprintf("Metadata/plate_%d.gcode", o.Plate),
-		"url":                      "ftp://" + o.File,
+		"url":                      c.model.jobURL(o.File),
 		"file":                     o.File,
 		"md5":                      "",
 		"bed_type":                 "auto",

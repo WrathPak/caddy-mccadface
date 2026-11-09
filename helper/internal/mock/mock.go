@@ -47,6 +47,8 @@ type Options struct {
 	FTPPort    int
 	// Speed multiplies the simulation: 1 prints a plate in about a minute
 	Speed float64
+	// SlowWrites pauses the file server for this long on every write, so a test can cancel an upload that is under way
+	SlowWrites time.Duration
 }
 
 // Printer is a running mock printer.
@@ -210,7 +212,7 @@ func Start(o Options) (*Printer, error) {
 // Found is how the mock printer announces itself to the helper's discovery.
 func (p *Printer) Found() bambu.Found {
 	code, m := bambu.ModelOf(p.opt.Model, p.opt.Serial)
-	return bambu.Found{Serial: p.opt.Serial, Name: p.opt.Name, Model: code, ModelNm: m.Name, Label: m.Label, IP: "127.0.0.1",
+	return bambu.Found{Kind: "bambu", Serial: p.opt.Serial, Name: p.opt.Name, Model: code, ModelNm: m.Name, Label: m.Label, IP: "127.0.0.1",
 		MQTTPort: p.opt.MQTTPort, FTPPort: p.opt.FTPPort, Mock: true, AccessCode: p.opt.AccessCode}
 }
 
@@ -462,5 +464,37 @@ func (d *ftpDriver) AuthUser(_ ftpserver.ClientContext, user, pass string) (ftps
 	if user != "bblp" || pass != d.p.opt.AccessCode {
 		return nil, errors.New("bad login")
 	}
+	if d.p.opt.SlowWrites > 0 {
+		return slowFs{Fs: d.p.fs, d: d.p.opt.SlowWrites}, nil
+	}
 	return d.p.fs, nil
+}
+
+// slowFs makes every write take a while (see Options.SlowWrites).
+type slowFs struct {
+	afero.Fs
+	d time.Duration
+}
+
+type slowFile struct {
+	afero.File
+	d time.Duration
+}
+
+func (f slowFile) Write(b []byte) (int, error) { time.Sleep(f.d); return f.File.Write(b) }
+
+func (s slowFs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
+	f, err := s.Fs.OpenFile(name, flag, perm)
+	if err != nil {
+		return nil, err
+	}
+	return slowFile{File: f, d: s.d}, nil
+}
+
+func (s slowFs) Create(name string) (afero.File, error) {
+	f, err := s.Fs.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	return slowFile{File: f, d: s.d}, nil
 }

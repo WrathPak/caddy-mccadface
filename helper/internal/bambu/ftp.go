@@ -2,6 +2,7 @@ package bambu
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -37,18 +38,63 @@ func (c *countReader) Read(p []byte) (int, error) {
 // The data channel resumes the control channel's TLS session, which Bambu's server requires. The A1 family sometimes
 // hangs on a TLS data channel, so after a failure it is tried once more with a plain one (what Bambuddy does).
 // pin is the pinned file server certificate (empty: trust on first use); seen gets the fingerprint that was used.
-func Upload(t Target, m Model, name string, data []byte, progress func(sent int64), pin string, seen func(string)) error {
-	err := upload(t, m, name, data, progress, pin, seen, true)
+// Canceling ctx closes the connections, which ends the transfer; the error then has the code "cancelled".
+func Upload(ctx context.Context, t Target, m Model, name string, data []byte, progress func(sent int64), pin string, seen func(string)) error {
+	err := upload(ctx, t, m, name, data, progress, pin, seen, true)
 	var e *Error
-	if err != nil && m.PlainData && !(errors.As(err, &e) && (e.Code == CodeBadAccess || e.Code == CodeCertChanged || e.Code == CodeSDMissing)) {
-		if err2 := upload(t, m, name, data, progress, pin, seen, false); err2 == nil {
+	if err != nil && ctx.Err() == nil && m.PlainData && !(errors.As(err, &e) && (e.Code == CodeBadAccess || e.Code == CodeCertChanged || e.Code == CodeSDMissing)) {
+		if err2 := upload(ctx, t, m, name, data, progress, pin, seen, false); err2 == nil {
 			return nil
 		}
+	}
+	if ctx.Err() != nil {
+		return fail(CodeCancelled, "Cancelled.")
 	}
 	return err
 }
 
-func upload(t Target, m Model, name string, data []byte, progress func(sent int64), pin string, seen func(string), dataTLS bool) error {
+// RemoveFile deletes a file from the printer's storage (the partial file of an upload that was cancelled). It tries a few
+// times, because the printer may still be closing the transfer. A file that is not there is not an error.
+func RemoveFile(t Target, name, pin string) error {
+	cfg := tlsConfig(t.Serial, pin, nil)
+	cfg.MaxVersion = tls.VersionTLS12
+	dial := func(network, addr string) (net.Conn, error) {
+		raw, err := (&net.Dialer{Timeout: 10 * time.Second}).Dial(network, addr)
+		if err != nil {
+			return nil, err
+		}
+		tc := tls.Client(raw, cfg)
+		if err := tc.Handshake(); err != nil {
+			raw.Close()
+			return nil, err
+		}
+		return tc, nil
+	}
+	var last error
+	for try := 0; try < 3; try++ {
+		if try > 0 {
+			time.Sleep(700 * time.Millisecond)
+		}
+		c, err := ftp.Dial(t.ftpAddr(), ftp.DialWithDialFunc(dial), ftp.DialWithTimeout(10*time.Second))
+		if err != nil {
+			last = err
+			continue
+		}
+		if err = c.Login("bblp", t.AccessCode); err == nil {
+			err = c.Delete(name)
+			var te *textproto.Error
+			if err == nil || (errors.As(err, &te) && te.Code == 550) {
+				c.Quit()
+				return nil
+			}
+		}
+		last = err
+		c.Quit()
+	}
+	return last
+}
+
+func upload(ctx context.Context, t Target, m Model, name string, data []byte, progress func(sent int64), pin string, seen func(string), dataTLS bool) error {
 	cfg := tlsConfig(t.Serial, pin, seen)
 	// TLS 1.2 resumes the session with no surprises (the P2S only speaks it); plain PASV like Python's ftplib, which the printers are tested with
 	cfg.MaxVersion = tls.VersionTLS12
@@ -99,6 +145,15 @@ func upload(t Target, m Model, name string, data []byte, progress func(sent int6
 	}
 	defer c.Quit()
 	defer closeAll()
+	finished := make(chan struct{})
+	defer close(finished)
+	go func() {
+		select {
+		case <-ctx.Done():
+			closeAll()
+		case <-finished:
+		}
+	}()
 	if err := c.Login("bblp", t.AccessCode); err != nil {
 		return ftpError(err)
 	}

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -26,6 +27,28 @@ type Printer struct {
 	// FTPFingerprint is pinned on the first upload: the file server may present its own certificate
 	FTPFingerprint string `json:"ftpFingerprint,omitempty"`
 	Mock           bool   `json:"mock,omitempty"`
+
+	// Kind is "bambu" (or empty, the first kind there was), "prusa", "klipper" or "octoprint". The kinds other than Bambu are
+	// reached over HTTP at IP and Port, with a password (PrusaLink, user Username) or an API key. All of these stay in this file.
+	Kind     string `json:"kind,omitempty"`
+	Port     int    `json:"port,omitempty"`
+	TLS      bool   `json:"tls,omitempty"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	APIKey   string `json:"apiKey,omitempty"`
+}
+
+// IsBambu says whether the printer speaks Bambu's LAN protocol.
+func (p Printer) IsBambu() bool { return p.Kind == "" || p.Kind == "bambu" }
+
+func (p Printer) same(q Printer) bool {
+	if p.IsBambu() != q.IsBambu() {
+		return false
+	}
+	if p.IsBambu() {
+		return p.Serial == q.Serial
+	}
+	return p.Kind == q.Kind && strings.EqualFold(p.IP, q.IP) && p.Port == q.Port
 }
 
 // Store reads and writes printers.json and tokens.json.
@@ -116,12 +139,12 @@ func (s *Store) Printer(id string) (Printer, bool) {
 	return Printer{}, false
 }
 
-// Add stores a printer and gives it an id. A printer with the same serial is replaced.
+// Add stores a printer and gives it an id. A printer with the same serial (or the same kind, address and port) is replaced.
 func (s *Store) Add(p Printer) (Printer, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, q := range s.printers {
-		if q.Serial == p.Serial {
+		if q.same(p) {
 			p.ID = q.ID
 			s.printers[i] = p
 			return p, s.savePrinters()
