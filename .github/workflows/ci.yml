@@ -23,6 +23,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: cache the slicer engine download
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/slicer
+          key: slicer-engine-${{ hashFiles('scripts/slicer-pin.mjs') }}
       - name: typecheck and build
         run: pnpm build
       - name: unit tests
@@ -45,6 +50,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: cache the slicer engine download
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/slicer
+          key: slicer-engine-${{ hashFiles('scripts/slicer-pin.mjs') }}
       - name: get playwright version
         id: pw
         run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"

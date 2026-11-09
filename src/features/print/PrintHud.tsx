@@ -9,6 +9,9 @@ import { settingsOf } from './settings'
 import { useDrains } from './hollow'
 import { runMap, showMap, usePrintView, type MapKind } from './view'
 import './print.css'
+import { PreviewLegend, SlicePreviewHud, usePreviewOn } from './preview/PreviewHud'
+import { SliceCard } from './slice/SliceCard'
+import { SliceSheet } from './slice/SliceSheet'
 import { DEBUG_HANDLE } from '@/app/flags'
 
 const TITLES: Record<MapKind, string> = { overhang: 'Overhang map', thin: 'Thin walls', small: 'Small features' }
@@ -60,18 +63,19 @@ function FilamentLegend() {
   const rollback = useDoc((s) => s.rollback)
   const geometry = useDoc((s) => s.geometry)
   const kind = usePrintView((s) => s.kind)
+  const previewing = usePreviewOn()
   const items = useMemo(() => {
     const used = usedSlots(computePaintMap(features, rollback, geometry))
     if (!used.length) return []
     const s = settingsOf(features, rollback)
     return used.map((slot) => ({ slot, color: colorById(s.slotColors[slot - 1]) }))
   }, [features, rollback, geometry])
-  if (!items.length || kind) return null
+  if (!items.length || kind || previewing) return null
   return (
     <div className="print-card" data-testid="filament-legend">
       <div className="print-card-head"><span>Filaments</span></div>
       {items.map((i) => (
-        <div className="print-chip" key={i.slot}><span className="sw" style={{ background: i.color.hex }} />Filament {i.slot}: {i.color.label}</div>
+        <div className="print-chip" key={i.slot}><span className="sw chip" style={{ background: i.color.hex }} />Filament {i.slot}: {i.color.label}</div>
       ))}
     </div>
   )
@@ -101,6 +105,7 @@ function DrainBar() {
 
 /** Mounted once in the viewport. */
 export function PrintHud() {
+  const previewing = usePreviewOn()
   useEffect(() => {
     // test handle: the stores
     const w = window as unknown as { __caddy?: Record<string, unknown> }
@@ -109,10 +114,14 @@ export function PrintHud() {
   return (
     <>
       <DrainBar />
-      <div className="print-cards">
+      <SliceSheet />
+      <div className="print-cards" data-previewing={previewing}>
+        <PreviewLegend />
+        <SliceCard compact={previewing} />
         <MapPanel />
         <FilamentLegend />
       </div>
+      <SlicePreviewHud />
     </>
   )
 }

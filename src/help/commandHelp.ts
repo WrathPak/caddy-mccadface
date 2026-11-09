@@ -115,7 +115,12 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
   'detail.thread': h('Model a real screw thread on a round face, with extra clearance so a printed nut still turns. ISO metric sizes are built in.', 'A cylindrical face (the outside of a bolt or the inside of a hole)'),
 
   // ---- print
-  'print.settings': h('Tell the app about your printer and filament: nozzle, layer height, walls, infill, supports and filament colors. They are written into the 3MF so the slicer starts with them.'),
+  'print.settings': h('Pick your printer, nozzle, process and filament presets and change any OrcaSlicer setting, for the whole plate or for one body. Your choices are saved in the document.'),
+  'print.slice': h('Slice the plate right here with the OrcaSlicer engine. You get the print time, filament use and layers, with no upload. The first slice downloads the engine once.'),
+  'print.exportGcode': h('Save the sliced plate. Bambu printers get a .gcode.3mf they can print directly, other printers get a plain .gcode file.'),
+  'print.paintSupport': h('Paint where support must be added (enforcer) or kept away (blocker). Turn support on in the Print Settings; Painted only builds it just where you paint.', 'Nothing yet: click or paint on the model'),
+  'print.paintSeam': h('Paint where the seam, the line where each layer starts and ends, should hide (enforcer) or stay away (blocker).', 'Nothing yet: click or paint on the model'),
+  'print.paintFuzzy': h('Paint the faces that get a rough, fuzzy surface. Set Fuzzy skin to Painted only in the Print Settings.', 'Nothing yet: click or paint on the model'),
   'print.sendBambu': h('Save the plate as a 3MF you can open in Bambu Studio. The file is saved to your computer, nothing is uploaded.'),
   'print.sendOrca': h('Save the plate as a 3MF you can open in OrcaSlicer. The file is saved to your computer, nothing is uploaded.'),
   'print.export3mf': h('Download the plate as a 3MF for Bambu Studio or OrcaSlicer. Every visible body becomes an object, with its colors and print settings.'),

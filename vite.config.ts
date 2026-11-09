@@ -4,7 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import fs from 'node:fs'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import type { Plugin } from 'vite'
+import { VERSION as SLICER_VERSION } from './scripts/slicer-pin.mjs'
 
 // BASE_PATH is set for the github pages build (/caddy-mccadface/), local dev stays at /
 const base = process.env.BASE_PATH || '/'
@@ -30,11 +32,27 @@ function caddyApiTypes(): Plugin {
   }
 }
 
+/**
+ * The slicer engine is not in git: fetch the pinned release (sha256 checked, archives cached in node_modules/.cache/slicer) when
+ * public/slicer is missing or from another version, so `pnpm dev` and `pnpm build` always have it.
+ */
+function slicerEngine(): Plugin {
+  return {
+    name: 'slicer-engine',
+    buildStart() {
+      const stamp = path.resolve(import.meta.dirname, 'public/slicer/.version')
+      if (fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8').trim() === SLICER_VERSION) return
+      execFileSync(process.execPath, [path.resolve(import.meta.dirname, 'scripts/fetch-slicer.mjs')], { stdio: 'inherit' })
+    },
+  }
+}
+
 export default defineConfig({
   base,
   resolve: { alias: { '@': path.resolve(import.meta.dirname, "src") } },
   plugins: [
     caddyApiTypes(),
+    slicerEngine(),
     react(),
     tailwindcss(),
     VitePWA({
@@ -64,11 +82,19 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2,wasm}'],
+        // the slicer engine is big and only fetched when slicing: the http cache keeps it, not the precache
+        globIgnores: ['slicer/**'],
         maximumFileSizeToCacheInBytes: 64 * 1024 * 1024,
         // the new worker waits, and the old one keeps serving its own precache (lazy chunks too) until the person switches
         skipWaiting: false,
         clientsClaim: false,
         cleanupOutdatedCaches: true,
+        // the engine and the profiles are cached the first time they are used and then work offline; the cache is named after the pinned release
+        runtimeCaching: [{
+          urlPattern: ({ url }: { url: URL }) => url.pathname.includes('/slicer/'),
+          handler: 'CacheFirst',
+          options: { cacheName: `slicer-${SLICER_VERSION}`, cacheableResponse: { statuses: [200] }, expiration: { maxEntries: 200 } },
+        }],
       },
     }),
   ],

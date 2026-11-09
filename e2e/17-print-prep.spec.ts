@@ -25,26 +25,31 @@ async function unzipDownload(page: import('@playwright/test').Page, click: () =>
   return { name: dl.suggestedFilename(), files: unzipSync(bytes) }
 }
 
-test('PRINT tab: ribbon groups and the Print settings dialog', async ({ app, page }) => {
+test('PRINT tab: ribbon groups and the Slice settings panel', async ({ app, page }) => {
   await app.open()
   await app.tab('Print')
-  for (const name of ['Print Settings', 'Bambu Studio', 'OrcaSlicer', 'Export 3MF', 'Paint Body', 'Paint Faces', 'Overhangs', 'Thin Walls', 'Small Features', 'Auto Orient', 'Split Body', 'Hollow']) {
+  for (const name of ['Print Settings', 'Export G-code', 'Bambu Studio', 'OrcaSlicer', 'Export 3MF', 'Paint Body', 'Paint Faces', 'Paint Support', 'Overhangs', 'Thin Walls', 'Small Features', 'Auto Orient', 'Split Body', 'Hollow']) {
     await expect(app.ribbon(name)).toBeVisible()
   }
+  await expect(page.locator('.ribbon-body').getByRole('button', { name: 'Slice', exact: true })).toBeVisible()
   await app.ribbon('Print Settings').click()
-  await expect(app.inspector().locator('.panel-title')).toHaveText('Print settings')
-  await app.field('Layer height', '0.16')
-  await app.field('Wall loops', '4')
-  await selectField(app, 'Printer', 'Bambu Lab A1 mini')
-  await app.shot('print-settings')
-  await app.ok()
+  await expect(page.getByTestId('slice-sheet')).toBeVisible()
+  await expect(page.getByTestId('preset-process')).toContainText('0.20mm Standard', { timeout: 30_000 })
+  const quick = (key: string) => page.getByTestId(`quick-${key}`).locator('input').first()
+  await quick('layer_height').fill('0.16')
+  await quick('layer_height').press('Enter')
+  await quick('wall_loops').fill('4')
+  await quick('wall_loops').press('Enter')
+  await expect.poll(async () => (await app.features()).find((x) => x.type === 'printSettings')?.params.wallLoops).toBe(4)
   const f = (await states(app)).filter((x) => x.type === 'printSettings')
   expect(f).toHaveLength(1)
-  expect(f[0].params).toMatchObject({ layerHeight: 0.16, wallLoops: 4, printer: 'a1mini' })
+  expect(f[0].params).toMatchObject({ layerHeight: 0.16, wallLoops: 4 })
+  expect(JSON.parse(f[0].params.slicing).overrides.process).toMatchObject({ layer_height: '0.16', wall_loops: '4' })
+  await page.getByTestId('slice-close').click()
   // opening it again edits the same feature
   await app.ribbon('Print Settings').click()
-  await expect(app.inspector().locator('.field', { has: page.locator('.field-label', { hasText: 'Layer height' }) }).locator('input').first()).toHaveValue('0.16')
-  await app.inspector().getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByTestId('quick-layer_height').locator('input').first()).toHaveValue('0.16')
+  await page.getByTestId('slice-close').click()
   expect((await app.features()).filter((x) => x.type === 'printSettings')).toHaveLength(1)
 })
 

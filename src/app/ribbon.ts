@@ -7,6 +7,9 @@ export interface RibbonItem {
   /** a vertical stack of small buttons */
   stack?: string[]
 }
+/** Commands drawn as the one primary action of their group (accent fill). */
+export const PRIMARY_COMMANDS = new Set<string>(['print.slice'])
+
 export interface RibbonGroup { label: string; items: RibbonItem[] }
 export interface RibbonTab { id: string; label: string; disabled?: boolean; contextual?: boolean; groups: RibbonGroup[] }
 
