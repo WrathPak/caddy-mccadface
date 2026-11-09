@@ -9,6 +9,7 @@ import { colorById } from '../palette'
 import { computePaintMap, usedSlots } from '../paint'
 import { currentSettings, writeProfile } from '../settings'
 import { useDoc } from '@/doc/store'
+import { compatiblePlate } from './plates'
 import { applyWrites, withSlots, type SliceProfile, type UserRef } from './profile'
 import { saveMode, useSlicer, type PresetScopeTab } from './store'
 import { refOf, saveUserPreset, type UserPreset } from './userPresets'
@@ -79,7 +80,9 @@ export function syncFromDoc() {
 async function commit(next: SliceProfile, label: string) {
   const r = await resolveProfile(next, slotColours())
   const geo = next.machine !== currentSettings().profile.machine ? await machineGeometry(next.vendor, next.machine) : null
-  const profile = geo ? { ...next, bed: geo.bed, height: geo.height, nozzle: geo.nozzle } : next
+  // a plate the printer does not offer falls back to the printer's default
+  const kept = { ...next, bedType: r.plate && next.bedType === r.plate.current ? next.bedType : '' }
+  const profile = geo ? { ...kept, bed: geo.bed, height: geo.height, nozzle: geo.nozzle } : kept
   writeProfile(profile, quickValues(r), label)
   lastKey = keyOf()
   useSlicer.getState().set({ resolved: r, error: null })
@@ -172,6 +175,21 @@ export function setPrinter(machine: string) {
       user: { filaments: cur.user.filaments.map(() => null) },
       overrides: { machine: {}, process: cur.overrides.process, filaments: cur.overrides.filaments },
     }, 'Choose printer')
+  })
+}
+
+/** Choose the build plate (Orca's curr_bed_type). */
+export function setBedType(plate: string) {
+  return serial(async () => commit({ ...profileNow(), bedType: plate }, 'Choose build plate'))
+}
+
+/** Switch to a plate every filament of the plate can print on (the printer's default when it works). */
+export function fixBedType() {
+  return serial(async () => {
+    const cur = profileNow()
+    const r = useSlicer.getState().resolved ?? (await resolveProfile(cur, slotColours()))
+    const to = r.plate ? compatiblePlate(r.plate, r.filaments) : null
+    if (to) await commit({ ...cur, bedType: to }, 'Choose build plate')
   })
 }
 

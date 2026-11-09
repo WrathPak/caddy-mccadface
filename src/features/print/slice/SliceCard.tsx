@@ -9,6 +9,7 @@ import { useSlice } from '../engine/sliceStore'
 import { Tip } from '@/ui/Tooltip'
 import { setSendOpen } from '../link/client'
 import { exportGcode } from './exportGcode'
+import { fixBedType } from './controller'
 import { cancelSlice, plainWarning, runSlice } from './run'
 import { useSlicer } from './store'
 
@@ -45,6 +46,7 @@ export function SliceCard({ variant = 'result' }: { variant?: 'result' | 'status
         <>
           <div className="sc-line err" data-testid="slice-error"><WarningCircle size={14} weight="fill" /><span>{s.message}</span></div>
           <div className="sc-actions">
+            {/Pick another plate/.test(s.message) && <button type="button" className="btn" data-testid="slice-fix-plate" onClick={() => void fixBedType().then(() => runSlice())}>Switch plate and slice</button>}
             <button type="button" className="btn" onClick={() => useSlicer.getState().openSheet('process')}><Gear size={14} /> Settings</button>
             <button type="button" className="btn primary" onClick={() => void runSlice()}>Try again</button>
           </div>

@@ -10,6 +10,7 @@ import { colorById } from '../palette'
 import { showPreview } from '../preview/command'
 import { buildPlate, type BuiltPlate } from '../plate'
 import { bedOriginOf } from './bedOrigin'
+import { plateProblem } from './plates'
 import { withSlots, type SliceProfile } from './profile'
 
 export const engine = new MuonEngine()
@@ -68,6 +69,9 @@ export async function runSlice(): Promise<void> {
     const profile = withSlots(plate.settings.profile, plate.colors)
     const colours = Array.from({ length: Math.max(plate.colors, profile.filaments.length) }, (_, i) => colorById(plate.settings.slotColors[i] ?? 'white').hex.toUpperCase())
     const resolved = await resolveProfile(profile, colours)
+    // the engine refuses a filament its plate cannot take; say so before it does, with the way out
+    const bad = resolved.plate ? plateProblem(resolved.plate.current, resolved.filaments, resolved.filamentNames) : null
+    if (bad) throw new Error(bad)
     const placed = placeObjects(plate.plan.objects, plate.plan.placements)
     if (!engine.isReady) set({ message: 'Loading the slicer' })
     await engine.load((p) => { if (mine === token) set({ download: { loaded: p.loadedBytes, total: p.totalBytes }, progress: p.totalBytes ? Math.round((p.loadedBytes / p.totalBytes) * 100) : 0 }) })
@@ -88,7 +92,8 @@ export async function runSlice(): Promise<void> {
     const raw = e instanceof SliceError || e instanceof Error ? e.message : String(e)
     // Orca's path-conflict message, in words about the plate
     const clash = /conflicts? between object (.+?) and (.+?) \(/.exec(raw)
-    const msg = clash ? `${clash[1]} and ${clash[2]} overlap on the plate. Move them apart, or press Arrange.` : raw
+    const noPlate = /^(.+?) does not support filament (\d+)/m.exec(raw)
+    const msg = noPlate ? `${noPlate[1]} can't print filament ${noPlate[2]}. Pick another plate.` : clash ? `${clash[1]} and ${clash[2]} overlap on the plate. Move them apart, or press Arrange.` : raw
     set({ status: 'error', message: msg })
   } finally {
     if (mine === token) running = false
