@@ -43,7 +43,8 @@ export function currentInstances(): Instance[] {
   return expandInstances(d.assembly, d.geometry, currentPlacement().worlds)
 }
 export function useInstances(): Instance[] {
-  const geometry = useDoc((s) => s.geometry)
+  // (until the first regeneration after a reload is done, the bodies kept from before it stand in)
+  const geometry = useDoc((s) => (s.geometry.length === 0 && s.ghost ? s.ghost : s.geometry))
   const assembly = useDoc((s) => s.assembly)
   const placement = usePlacement()
   return useMemo(() => expandInstances(assembly, geometry, placement.worlds), [geometry, assembly, placement])

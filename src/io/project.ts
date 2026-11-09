@@ -34,10 +34,26 @@ export interface ProjectSection {
   save(): unknown | null
   /** called with the parsed file, or null when the project has none (new / older documents) */
   load(json: unknown | null): void
+  /** tells when the section's data changed (the session snapshot follows it); returns the stop function */
+  watch?(changed: () => void): () => void
 }
 const sections: ProjectSection[] = []
 export function registerProjectSection(s: ProjectSection) {
   sections.push(s)
+}
+/** What every section holds right now, by file name (sections with nothing to save are left out). The session snapshot keeps this. */
+export function saveSections(): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const sec of sections) { const v = sec.save(); if (v != null) out[sec.file] = v }
+  return out
+}
+/** Put sections back from `saveSections`: the ones it has nothing for go back to empty. */
+export function loadSections(saved: Record<string, unknown>) {
+  for (const sec of sections) sec.load(saved[sec.file] ?? null)
+}
+export function watchSections(changed: () => void) {
+  const offs = sections.map((s) => s.watch?.(changed))
+  return () => offs.forEach((f) => f?.())
 }
 /** New document: every section goes back to empty. */
 export function resetProjectSections() {

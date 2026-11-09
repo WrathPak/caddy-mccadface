@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Box3, MathUtils, Matrix4, Mesh, OrthographicCamera, PerspectiveCamera, Plane, Quaternion, Raycaster, Sphere, Vector2, Vector3 } from 'three'
 import { navClock } from './navClock'
+import { getPoseData, reportPose } from './pose'
 import { holdMotion } from './motion'
 import { viewportBus, type StepKind, type ViewDir } from './bus'
 import { dragAction, useNavSettings, wheelAction } from './navSettings'
@@ -138,14 +139,15 @@ export const navDebug: { pose: NavPose | null; pivot: Vector3 | null; bounds: Bo
  *  - Trackpad: pinch zooms, two-finger scroll pans, Shift + two-finger scroll orbits. Middle double-click fits all.
  *  - The button gestures follow the chosen preset (Settings); optional inertia.
  */
-/** The view as it was when the viewport last went away (the phone layout and the dock swap the viewport out when the screen turns). */
-let savedPose: NavPose | null = null
 
 export function NavControls() {
   const { gl, size, invalidate, scene } = useThree()
-  const s = useRef<NavPose>(savedPose ? { target: savedPose.target.clone(), q: savedPose.q.clone(), dist: savedPose.dist } : { target: HOME_TARGET.clone(), q: lookQuat(HOME_DIR), dist: HOME_DIST })
+  // the view as it was when the viewport last went away (the phone layout and the dock swap it out when the screen turns), or as a reload left it
+  const s = useRef<NavPose>((() => {
+    const p = getPoseData()
+    return p ? { target: new Vector3(...p.target), q: new Quaternion(...p.q).normalize(), dist: p.dist } : { target: HOME_TARGET.clone(), q: lookQuat(HOME_DIR), dist: HOME_DIST }
+  })())
   useEffect(() => registerFingerOwner(() => useSketch.getState().active || useHairPaint.getState().mode !== 'off' || useAssemblyRuntime.getState().tool === 'drag'), [])
-  useEffect(() => () => { savedPose = { target: s.current.target.clone(), q: s.current.q.clone(), dist: s.current.dist } }, [])
   const anim = useRef<Anim | null>(null)
   const sizeRef = useRef(size)
   sizeRef.current = size
@@ -249,6 +251,7 @@ export function NavControls() {
     state.scene.userData.cam = cam
     navDebug.pose = st
     navDebug.bounds = box
+    reportPose(st.target, st.q, st.dist)
 
     // pivot marker
     const m = marker.current

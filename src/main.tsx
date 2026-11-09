@@ -1,3 +1,4 @@
+import './kernel/early'
 import '@fontsource/inter/400.css'
 import '@fontsource/inter/500.css'
 import '@fontsource/inter/600.css'
@@ -18,6 +19,7 @@ import { App } from './app/App'
 import { installDebugHandle } from './app/debug'
 import { DEBUG_HANDLE } from './app/flags'
 import { markOfflineReady, startInstall } from './app/install'
+import { startSession } from './io/session'
 import { newVersionWaiting, setUpdater, watchForTakeover, watchForUpdates } from './app/updates'
 
 // the service worker would cache across e2e runs and is pointless in dev.
@@ -52,8 +54,12 @@ startDevice()
 startSettings()
 startGlass()
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+// A reload of this tab comes back to the project as it was: the snapshot is put into the stores before the first render, so the page never
+// shows a blank document or a recovery prompt first (see io/session.ts). It starts the regeneration; the renders do not wait for it.
+void startSession().then(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+})

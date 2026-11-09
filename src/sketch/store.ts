@@ -291,7 +291,7 @@ export function redoSketch() {
 
 export const sketchActive = () => get().active
 
-export async function beginSketch(o: { plane: PlaneDef; face?: string | null; model?: SketchModel; editing?: string | null; onClose?: () => void }) {
+export async function beginSketch(o: { plane: PlaneDef; face?: string | null; model?: SketchModel; editing?: string | null; onClose?: () => void; /** put a sketch back as it was (a reload): the view is left where it is */ quiet?: boolean }) {
   await ensureSolver()
   if (o.model) await ensureFonts(o.model)
   onClose = o.onClose ?? null
@@ -316,7 +316,8 @@ export async function beginSketch(o: { plane: PlaneDef; face?: string | null; mo
   ui.clearSelection()
   ui.setSketchMode(true)
   ui.setActiveTool(o.model ? null : 'sketch.line')
-  lookAtSketch()
+  if (o.quiet) invalidate()
+  else lookAtSketch()
 }
 
 /** Turn the view square to the sketch plane (Look At). */

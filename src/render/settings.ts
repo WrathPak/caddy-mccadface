@@ -18,4 +18,5 @@ registerProjectSection({
   file: 'render.json',
   save: () => settingsToJson(useRenderSettings.getState().s),
   load: (json) => useRenderSettings.setState({ s: json ? normalizeSettings(json) : DEFAULT_SETTINGS }),
+  watch: (fn) => useRenderSettings.subscribe((st, p) => { if (st.s !== p.s) fn() }),
 })

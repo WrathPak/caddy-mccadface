@@ -8,6 +8,7 @@
  */
 import { create } from 'zustand'
 import { flushAutosave } from '@/io/actions'
+import { flushSession } from '@/io/session'
 
 /** How often an open tab looks for a new version. A check is one small request for sw.js, so this can be frequent. */
 export const UPDATE_CHECK_MS = 3 * 60 * 1000
@@ -54,7 +55,8 @@ export async function applyUpdate(): Promise<void> {
   if (useUpdate.getState().applying) return
   useUpdate.setState({ applying: true })
   try {
-    try { await flushAutosave() } catch (e) { console.warn('[update] could not save before the update', e) }
+    // the session snapshot brings this tab back exactly as it is; the autosave copy is the fallback for a tab that has no snapshot
+    try { await Promise.all([flushSession(), flushAutosave()]) } catch (e) { console.warn('[update] could not save before the update', e) }
     if (!updater) throw new Error('no service worker to update')
     await updater(true)
     // updateSW(true) reloads the page once the new worker is in charge; if that never happens, the button is usable again
@@ -101,7 +103,7 @@ export function watchForTakeover(sw: Pick<ServiceWorkerContainer, 'addEventListe
   sw.addEventListener('controllerchange', () => {
     if (useUpdate.getState().applying) return
     useUpdate.setState({ ready: true, switched: true, cardDismissed: false })
-    void flushAutosave().catch(() => {})
+    void Promise.all([flushSession(), flushAutosave()]).catch(() => {})
     setUpdater(() => { window.location.reload() })
   })
 }

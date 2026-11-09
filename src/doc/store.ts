@@ -33,6 +33,10 @@ interface DocState extends DocData {
   meshes: TreeEntity[]
   dirty: boolean
   regenerating: boolean
+  /** signature (doc/sig.ts) of the document the current `geometry` was made from */
+  geometrySig: string | null
+  /** bodies kept from before a reload, drawn until the first regeneration is done (display only: they have no kernel handles, so nothing but the viewport and the Browser sees them) */
+  ghost: Body[] | null
   undoDepth: number
   redoDepth: number
   /** a past version is on show (History panel): nothing can be edited until it is closed */
@@ -71,6 +75,7 @@ interface DocState extends DocData {
   setActiveOcc: (id: string | null) => void
   // engine hooks
   setGeometry: (g: Body[]) => void
+  setGhost: (g: Body[] | null) => void
   applyStatus: (s: Record<string, FeatureStatus>) => void
 }
 
@@ -80,6 +85,11 @@ export const setRegenHandler = (fn: () => void) => { regenHandler = fn }
 
 const past: HistoryItem[] = []
 const future: HistoryItem[] = []
+
+/** The rollback marker the timeline had before an edit (a feature dialog, a sketch being edited) lowered it to sit just before that feature; null while no edit is open. The session snapshot keeps it so a reload can put both back. */
+let editRollback: number | null = null
+export const getEditRollback = () => editRollback
+export const setEditRollback = (n: number | null) => { editRollback = n }
 
 const empty = (): DocData => ({ name: 'Untitled', features: [], rollback: 0, userParams: [], bodyNames: {}, configs: [], activeConfig: null, assembly: emptyAssembly() })
 
@@ -131,6 +141,8 @@ export const useDoc = create<DocState>((set, get) => {
     meshes: [],
     dirty: false,
     regenerating: false,
+    geometrySig: null,
+    ghost: null,
     undoDepth: 0,
     redoDepth: 0,
     readOnly: false,
@@ -240,7 +252,8 @@ export const useDoc = create<DocState>((set, get) => {
       set({ undoDepth: past.length, redoDepth: future.length })
     },
 
-    setGeometry: (geometry) => set((s) => ({ geometry, ...derive({ geometry, bodyNames: s.bodyNames, features: s.features }) })),
+    setGhost: (ghost) => set((s) => ({ ghost, ...(ghost ? derive({ geometry: ghost, bodyNames: s.bodyNames, features: s.features }) : {}) })),
+    setGeometry: (geometry) => set((s) => ({ geometry, ghost: null, ...derive({ geometry, bodyNames: s.bodyNames, features: s.features }) })),
     applyStatus: (st) =>
       set((s) => {
         let changed = false
