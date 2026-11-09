@@ -1,0 +1,3 @@
+hms_en.json.gz and wiki_links.json.gz are copied from the ha-bambulab project
+(https://github.com/greghesp/ha-bambulab, custom_components/bambu_lab/pybambu/hms_error_text), MIT License,
+Copyright (c) 2023 ha-bambulab contributors. The license text is in LICENSE-ha-bambulab.
